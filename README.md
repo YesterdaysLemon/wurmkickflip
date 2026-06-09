@@ -47,6 +47,14 @@ The exported policy writes:
 The ONNX file and training checkpoints are local generated artifacts and are ignored by Git.
 
 The evolution scaffold reads the browser creature/environment configs and writes a local generation summary JSON under `training/runs/`.
+To publish the current best evolved controller back into the local browser exhibit, export a generated creature config and manifest:
+
+```powershell
+cd training
+uv run python -m wurmkickflip_rl.evolve --generations 8 --population-size 18 --out runs\evolution\summary.json --export-creature ..\public\configs\evolved\best-creature.json --export-manifest ..\public\configs\evolved\manifest.json
+```
+
+The browser loads `public/configs/evolved/manifest.json` when it exists and appends those generated creatures to the built-in selector. Generated evolved configs are ignored by Git until one is intentionally promoted.
 
 Smoke-test workflow:
 

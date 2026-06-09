@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import argparse
+import copy
 import json
 from dataclasses import dataclass
 from pathlib import Path
@@ -48,6 +49,8 @@ def main() -> None:
     parser.add_argument("--elite-count", type=int, default=3)
     parser.add_argument("--eval-seeds", type=int, nargs="+", default=[1337, 2027, 4099])
     parser.add_argument("--seed", type=int, default=7)
+    parser.add_argument("--export-creature", type=Path, default=None)
+    parser.add_argument("--export-manifest", type=Path, default=None)
     args = parser.parse_args()
 
     if args.generations <= 0:
@@ -94,15 +97,32 @@ def main() -> None:
         "best": score_to_json(best_score),
         "generationSummaries": summaries,
     }
+    if args.export_creature is not None:
+        output["bestCreaturePath"] = str(args.export_creature)
 
     args.out.parent.mkdir(parents=True, exist_ok=True)
     args.out.write_text(json.dumps(output, indent=2), encoding="utf-8")
+    if args.export_creature is not None:
+        evolved_creature = evolved_creature_config(creature, best_score, environment, args.seed, args.eval_seeds)
+        write_json(args.export_creature, evolved_creature)
+        print(f"wrote {args.export_creature}")
+    if args.export_manifest is not None:
+        if args.export_creature is None:
+            raise SystemExit("--export-manifest requires --export-creature")
+        write_json(args.export_manifest, creature_manifest(args.export_creature))
+        print(f"wrote {args.export_manifest}")
+
     print(f"wrote {args.out}")
     print(f"best fitness {best_score.fitness:.4f} from {best_score.candidate.candidate_id}")
 
 
 def load_json(path: Path) -> dict[str, Any]:
     return json.loads(path.read_text(encoding="utf-8"))
+
+
+def write_json(path: Path, value: dict[str, Any]) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps(value, indent=2) + "\n", encoding="utf-8")
 
 
 def initial_population(creature: dict[str, Any], population_size: int, rng: np.random.Generator) -> list[ControllerCandidate]:
@@ -258,6 +278,58 @@ def score_to_json(score: CandidateScore) -> dict[str, Any]:
             "forwardBias": round(score.candidate.forward_bias, 6),
         },
     }
+
+
+def evolved_creature_config(
+    creature: dict[str, Any],
+    best_score: CandidateScore,
+    environment: dict[str, Any],
+    seed: int,
+    eval_seeds: list[int],
+) -> dict[str, Any]:
+    evolved = copy.deepcopy(creature)
+    base_id = string_value(creature, "id") or "creature"
+    candidate_id = best_score.candidate.candidate_id
+    evolved["id"] = f"{base_id}-evolved-{candidate_id}"
+    evolved["name"] = f"{string_value(creature, 'name') or base_id} Evolved {candidate_id}"
+    evolved["description"] = (
+        "Controller evolved by the Python genetic algorithm from "
+        f"{base_id} against {string_value(environment, 'id') or 'environment'} "
+        f"with seed {seed} and eval seeds {', '.join(str(item) for item in eval_seeds)}. "
+        "Current GA mutates CPG controller parameters only; morphology remains inherited from the base creature."
+    )
+    evolved["controller"] = {
+        **dict(evolved.get("controller", {})),
+        "kind": "cpg",
+        "actionSize": int(evolved.get("controller", {}).get("actionSize", ACTION_SIZE)),
+        "parameters": {
+            **dict(evolved.get("controller", {}).get("parameters", {})),
+            "waveAmplitude": round(best_score.candidate.wave_amplitude, 6),
+            "waveFrequency": round(best_score.candidate.wave_frequency, 6),
+            "phaseOffset": round(best_score.candidate.phase_offset, 6),
+            "forwardBias": round(best_score.candidate.forward_bias, 6),
+            "evolutionFitness": round(best_score.fitness, 6),
+            "evolutionDistance": round(best_score.distance, 6),
+            "evolutionContactRatio": round(best_score.contact_ratio, 6),
+        },
+    }
+    return evolved
+
+
+def creature_manifest(export_creature: Path) -> dict[str, Any]:
+    return {
+        "schemaVersion": 1,
+        "kind": "wurmkickflip.generatedCreatureManifest",
+        "creatures": [browser_public_path(export_creature)],
+    }
+
+
+def browser_public_path(path: Path) -> str:
+    parts = path.as_posix().split("/")
+    if "public" in parts:
+        public_index = parts.index("public")
+        return "/" + "/".join(parts[public_index + 1 :])
+    return path.as_posix()
 
 
 def episode_seconds(environment: dict[str, Any]) -> float:

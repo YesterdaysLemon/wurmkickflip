@@ -16,10 +16,12 @@ No open P0 tasks. Keep contract and runtime verification green before longer tra
 ## P1 - Training Quality And Simulation Fidelity
 
 - Add Python evolution scaffold that reads creature/environment configs and emits generation summaries. Done in `npm run verify:evolution`.
+- Export best evolved CPG controller as a browser-loadable generated creature config. Done in `npm run verify:evolution`.
 - Add replay artifact schema for skateboard discovery/contact/rolling metrics. Done in `npm run verify:replay`.
 - Improve reward shaping for true board balance and forward progress.
 - Add episode metrics: fall reason, average contact ratio, energy use, distance, and survival time. Done in `npm run verify:env`.
 - Add a replay recorder that can save browser rollout JSON for later inspection.
+- Extend evolution beyond CPG controller parameters into calibrated morphology mutation.
 - Calibrate Python surrogate dynamics against the browser scene.
 - Evaluate adding MuJoCo for offline training while preserving the same policy contract.
 - Move more board and worm motion into Rapier bodies and constraints. Done for first visible physics lab pass.

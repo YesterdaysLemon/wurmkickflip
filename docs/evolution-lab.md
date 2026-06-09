@@ -43,6 +43,12 @@ Start with a simple genetic algorithm before adding complex RL:
 
 The first controller can be a central pattern generator with sinusoidal motor outputs. Later versions can train neural controllers per morphology or co-evolve policy weights.
 
+## Current Export Path
+
+The current Python genetic algorithm mutates CPG controller parameters and evaluates candidates in the surrogate environment. It does not yet mutate morphology in a physically meaningful way, because the surrogate environment does not consume body-part dimensions, masses, or joint settings.
+
+When run with `--export-creature` and `--export-manifest`, the GA writes the best controller back into a browser-readable creature genome. The emitted genome inherits morphology from the base creature and changes controller parameters plus evolution metrics. The browser treats `public/configs/evolved/manifest.json` as optional and appends generated creatures to the exhibit selector when the file exists.
+
 ## Frontend Role
 
 The frontend should not run massive training loops. It should:

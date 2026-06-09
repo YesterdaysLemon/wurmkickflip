@@ -7,6 +7,7 @@ const creaturePaths = [
   '/configs/creatures/tripod-pusher.json',
   '/configs/creatures/boxfish-scrambler.json',
 ]
+const generatedCreatureManifestPath = '/configs/evolved/manifest.json'
 
 const environmentPaths = [
   '/configs/environments/adaptive-skate-terrarium.json',
@@ -36,7 +37,10 @@ export function useLabConfigs(): LabConfigs {
   useEffect(() => {
     let mounted = true
 
-    Promise.all([Promise.all(creaturePaths.map(fetchJson)), Promise.all(environmentPaths.map(fetchJson))])
+    Promise.all([
+      loadCreatureConfigs(),
+      Promise.all(environmentPaths.map(fetchJson)),
+    ])
       .then(([creatureValues, environmentValues]) => {
         const creatures: CreatureGenome[] = []
         const environments: EnvironmentConfig[] = []
@@ -96,10 +100,43 @@ export function useLabConfigs(): LabConfigs {
   return configs
 }
 
+async function loadCreatureConfigs(): Promise<unknown[]> {
+  const builtIns = await Promise.all(creaturePaths.map(fetchJson))
+  const generatedPaths = await fetchGeneratedCreaturePaths()
+  const generated = await Promise.all(generatedPaths.map(fetchJson))
+  return [...builtIns, ...generated]
+}
+
+async function fetchGeneratedCreaturePaths(): Promise<string[]> {
+  const manifest = await fetchOptionalJson(generatedCreatureManifestPath)
+  if (!isRecord(manifest) || manifest.kind !== 'wurmkickflip.generatedCreatureManifest') {
+    return []
+  }
+  if (!Array.isArray(manifest.creatures)) {
+    return []
+  }
+  return manifest.creatures.filter((path): path is string => typeof path === 'string' && path.startsWith('/configs/'))
+}
+
 async function fetchJson(path: string): Promise<unknown> {
   const response = await fetch(path)
   if (!response.ok) {
     throw new Error(`Failed to load ${path}: ${response.status}`)
   }
   return response.json() as Promise<unknown>
+}
+
+async function fetchOptionalJson(path: string): Promise<unknown | null> {
+  const response = await fetch(path)
+  if (response.status === 404) {
+    return null
+  }
+  if (!response.ok) {
+    throw new Error(`Failed to load ${path}: ${response.status}`)
+  }
+  return response.json() as Promise<unknown>
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value)
 }
