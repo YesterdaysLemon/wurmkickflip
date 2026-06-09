@@ -1,0 +1,102 @@
+{
+  "schemaVersion": 1,
+  "id": "segmented-starter",
+  "name": "Segmented Starter",
+  "description": "A simple generated creature seed: six capsule body parts with hinge joints and a CPG controller.",
+  "morphology": {
+    "symmetry": "none",
+    "bodyParts": [
+      {
+        "id": "head",
+        "shape": "capsule",
+        "parentId": null,
+        "position": [-0.75, 0.62, 0],
+        "rotation": [0, 0, 1.5708],
+        "size": [0.16, 0.32, 0.16],
+        "mass": 0.16,
+        "material": { "friction": 0.9, "restitution": 0.05 },
+        "visual": { "color": "#d86b54" }
+      },
+      {
+        "id": "mid-1",
+        "shape": "capsule",
+        "parentId": "head",
+        "position": [-0.45, 0.61, 0],
+        "rotation": [0, 0, 1.5708],
+        "size": [0.15, 0.34, 0.15],
+        "mass": 0.18,
+        "material": { "friction": 0.9, "restitution": 0.05 },
+        "visual": { "color": "#eda66d" }
+      },
+      {
+        "id": "mid-2",
+        "shape": "capsule",
+        "parentId": "mid-1",
+        "position": [-0.15, 0.6, 0],
+        "rotation": [0, 0, 1.5708],
+        "size": [0.15, 0.34, 0.15],
+        "mass": 0.18,
+        "material": { "friction": 0.9, "restitution": 0.05 },
+        "visual": { "color": "#f3c08c" }
+      },
+      {
+        "id": "mid-3",
+        "shape": "capsule",
+        "parentId": "mid-2",
+        "position": [0.15, 0.6, 0],
+        "rotation": [0, 0, 1.5708],
+        "size": [0.15, 0.34, 0.15],
+        "mass": 0.18,
+        "material": { "friction": 0.9, "restitution": 0.05 },
+        "visual": { "color": "#f3c08c" }
+      },
+      {
+        "id": "mid-4",
+        "shape": "capsule",
+        "parentId": "mid-3",
+        "position": [0.45, 0.61, 0],
+        "rotation": [0, 0, 1.5708],
+        "size": [0.14, 0.32, 0.14],
+        "mass": 0.15,
+        "material": { "friction": 0.9, "restitution": 0.05 },
+        "visual": { "color": "#eda66d" }
+      },
+      {
+        "id": "tail",
+        "shape": "capsule",
+        "parentId": "mid-4",
+        "position": [0.72, 0.62, 0],
+        "rotation": [0, 0, 1.5708],
+        "size": [0.12, 0.28, 0.12],
+        "mass": 0.12,
+        "material": { "friction": 0.9, "restitution": 0.05 },
+        "visual": { "color": "#d86b54" }
+      }
+    ],
+    "joints": [
+      { "id": "j-head-mid-1", "parentId": "head", "childId": "mid-1", "type": "hinge", "axis": [0, 1, 0], "anchor": [-0.6, 0.61, 0], "limits": [-0.65, 0.65], "stiffness": 18, "damping": 2.2, "motorStrength": 4 },
+      { "id": "j-mid-1-mid-2", "parentId": "mid-1", "childId": "mid-2", "type": "hinge", "axis": [0, 1, 0], "anchor": [-0.3, 0.6, 0], "limits": [-0.7, 0.7], "stiffness": 16, "damping": 2, "motorStrength": 4 },
+      { "id": "j-mid-2-mid-3", "parentId": "mid-2", "childId": "mid-3", "type": "hinge", "axis": [0, 1, 0], "anchor": [0, 0.6, 0], "limits": [-0.7, 0.7], "stiffness": 16, "damping": 2, "motorStrength": 4 },
+      { "id": "j-mid-3-mid-4", "parentId": "mid-3", "childId": "mid-4", "type": "hinge", "axis": [0, 1, 0], "anchor": [0.3, 0.6, 0], "limits": [-0.7, 0.7], "stiffness": 16, "damping": 2, "motorStrength": 4 },
+      { "id": "j-mid-4-tail", "parentId": "mid-4", "childId": "tail", "type": "hinge", "axis": [0, 1, 0], "anchor": [0.585, 0.61, 0], "limits": [-0.65, 0.65], "stiffness": 18, "damping": 2.2, "motorStrength": 4 }
+    ]
+  },
+  "controller": {
+    "kind": "cpg",
+    "actionSize": 10,
+    "parameters": {
+      "waveAmplitude": 0.55,
+      "waveFrequency": 1.8,
+      "phaseOffset": 0.72,
+      "forwardBias": 0.2
+    }
+  },
+  "sensors": ["body_pose", "body_velocity", "joint_angles", "joint_velocities", "contacts", "target_direction"],
+  "mutation": {
+    "enabled": true,
+    "partScaleRange": [0.75, 1.35],
+    "massScaleRange": [0.65, 1.5],
+    "jointLimitJitter": 0.18,
+    "controllerJitter": 0.25
+  }
+}

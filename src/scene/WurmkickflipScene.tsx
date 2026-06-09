@@ -4,6 +4,8 @@ import { CuboidCollider, Physics, RigidBody } from '@react-three/rapier'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import type { Group } from 'three'
 import { Color, MathUtils, PCFShadowMap } from 'three'
+import { CreaturePreview } from '../creature/CreaturePreview'
+import type { CreatureGenome, EnvironmentConfig } from '../creature/types'
 import { PolicyRunner } from '../policy/policyRunner'
 import { makeInitialAction, snapshotToObservation } from '../policy/simulationAdapter'
 import {
@@ -20,6 +22,8 @@ type SceneProps = {
   policyRunner: PolicyRunner
   running: boolean
   resetNonce: number
+  creature: CreatureGenome | null
+  environmentConfig: EnvironmentConfig | null
   onMetrics: (metrics: ViewerMetrics) => void
   onPolicyStatus: (status: PolicyStatus) => void
 }
@@ -55,6 +59,8 @@ export function WurmkickflipScene({
   policyRunner,
   running,
   resetNonce,
+  creature,
+  environmentConfig,
   onMetrics,
   onPolicyStatus,
 }: SceneProps) {
@@ -79,13 +85,14 @@ export function WurmkickflipScene({
       <directionalLight castShadow intensity={2.1} position={[4, 6, 3]} shadow-mapSize={[2048, 2048]} />
       <Environment preset="park" />
       <Physics gravity={[0, -9.81, 0]} timeStep={POLICY_TIMESTEP}>
-        <Terrarium />
+        <Terrarium environmentConfig={environmentConfig} />
         <SimulationLoop
           onMetrics={onMetrics}
           policyRunner={policyRunner}
           resetNonce={resetNonce}
           running={running}
         />
+        <CreaturePreview genome={creature} />
       </Physics>
       <OrbitControls
         enableDamping
@@ -181,7 +188,11 @@ function SimulationLoop({ policyRunner, running, resetNonce, onMetrics }: Simula
   )
 }
 
-function Terrarium() {
+function Terrarium({ environmentConfig }: { environmentConfig: EnvironmentConfig | null }) {
+  const slope = environmentConfig?.terrain.slopeDegrees ?? 0
+  const roughness = environmentConfig?.terrain.roughness ?? 0
+  const obstacleDensity = environmentConfig?.terrain.obstacleDensity ?? 0
+
   return (
     <group>
       <RigidBody type="fixed" colliders={false}>
@@ -215,6 +226,34 @@ function Terrarium() {
       <GlassPanel position={[-4.6, 0.72, 0]} scale={[0.04, 1.6, 4.3]} />
       <GlassPanel position={[4.6, 0.72, 0]} scale={[0.04, 1.6, 4.3]} />
       <Sparkles count={32} opacity={0.35} position={[0, 1.2, 0]} scale={[8, 1.8, 3.7]} size={1.8} />
+      <EnvironmentMarkers obstacleDensity={obstacleDensity} roughness={roughness} slope={slope} />
+    </group>
+  )
+}
+
+function EnvironmentMarkers({
+  obstacleDensity,
+  roughness,
+  slope,
+}: {
+  obstacleDensity: number
+  roughness: number
+  slope: number
+}) {
+  const count = Math.max(2, Math.round(obstacleDensity * 32 + roughness * 10))
+  return (
+    <group rotation={[0, 0, MathUtils.degToRad(slope) * 0.05]}>
+      {Array.from({ length: count }, (_, index) => {
+        const x = -3.4 + (index % 8) * 0.92
+        const z = -1.35 + Math.floor(index / 8) * 0.58
+        const height = 0.025 + ((index * 17) % 7) * 0.009 * (1 + roughness)
+        return (
+          <mesh castShadow key={index} position={[x, 0.04 + height * 0.5, z]}>
+            <boxGeometry args={[0.18, height, 0.18]} />
+            <meshStandardMaterial color="#7d9b76" roughness={0.92} />
+          </mesh>
+        )
+      })}
     </group>
   )
 }

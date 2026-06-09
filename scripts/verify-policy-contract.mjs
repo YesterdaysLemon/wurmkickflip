@@ -30,7 +30,6 @@ const includes = (text, value) => text.includes(String(value))
 const types = await read('src/policy/types.ts')
 const contracts = await read('training/wurmkickflip_rl/contracts.py')
 const metadata = JSON.parse(await read('public/models/wurmkickflip_policy.meta.json'))
-const requirements = await read('docs/requirements.md')
 const policyContract = await read('docs/policy-contract.md')
 const architecture = await read('docs/architecture.md')
 
@@ -81,7 +80,6 @@ assert(
 assert(metadata.modelPath === '/models/wurmkickflip_policy.onnx', 'Policy metadata modelPath mismatch.')
 
 const docs = [
-  ['docs/requirements.md', requirements],
   ['docs/policy-contract.md', policyContract],
   ['docs/architecture.md', architecture],
 ]

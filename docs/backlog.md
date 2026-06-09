@@ -2,6 +2,7 @@
 
 ## P0 - Policy Integration And Contract Safety
 
+- Add typed creature genome and dynamic skateboard environment config layer. Done for first sample configs.
 - Add automated policy contract verification for TypeScript, Python, metadata, and docs. Done in `npm run verify:contract`.
 - Add shared observation layout tests that compare browser `snapshotToObservation` against Python `_observe` for the same fixture. Done in `npm run verify:parity`.
 - Train a short PPO smoke-test policy and export `wurmkickflip_policy.onnx`. Done locally with ignored `ppo-smoke-v1` artifacts.
@@ -12,6 +13,8 @@
 
 ## P1 - Training Quality And Simulation Fidelity
 
+- Add Python evolution scaffold that reads creature/environment configs and emits generation summaries.
+- Add replay artifact schema for skateboard discovery/contact/rolling metrics.
 - Improve reward shaping for true board balance and forward progress.
 - Add episode metrics: fall reason, average contact ratio, energy use, distance, and survival time.
 - Add a replay recorder that can save browser rollout JSON for later inspection.
@@ -24,8 +27,8 @@
 
 ## P2 - Visual Fidelity And OpenWorm Alignment
 
-- Investigate VirtualWorm/OpenWorm anatomy asset import path.
-- Add a procedural visual wrapper that better resembles C. elegans while still driven by the segment rig.
+- Add branching morphology rendering for non-worm creatures.
+- Add skateboard discovery visual markers and contact/rolling overlays.
 - Add optional neuron/muscle activity overlays.
 - Add terrarium visual details such as substrate variation, scale references, and better glass edge highlights.
 - Code-split ONNX Runtime so initial browser bundle size is smaller before a model is loaded.
@@ -38,6 +41,7 @@
 - Greenfield React + TypeScript + Vite app.
 - Three/R3F/Drei/Rapier scene shell.
 - Procedural terrarium, skateboard, trucks, wheels, and worm visual rig.
+- First creature genome and adaptive skateboard environment JSON configs.
 - Scripted muscle-wave fallback controller.
 - ONNX Runtime WebGPU/WASM policy loader path.
 - Python 3.11 `uv` training scaffold with Gymnasium + Stable Baselines3.

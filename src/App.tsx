@@ -1,6 +1,7 @@
-import { Brain, Cpu, Gauge, Pause, Play, RotateCcw } from 'lucide-react'
+import { Brain, Cpu, Dna, Gauge, Goal, Mountain, Pause, Play, RotateCcw } from 'lucide-react'
 import type { ReactNode } from 'react'
 import { useMemo, useState } from 'react'
+import { useLabConfigs } from './creature/useLabConfigs'
 import { PolicyRunner } from './policy/policyRunner'
 import type { PolicyStatus, ViewerMetrics } from './policy/types'
 import { WurmkickflipScene } from './scene/WurmkickflipScene'
@@ -24,6 +25,7 @@ const initialMetrics: ViewerMetrics = {
 
 export function App() {
   const policyRunner = useMemo(() => new PolicyRunner(), [])
+  const labConfigs = useLabConfigs()
   const [running, setRunning] = useState(true)
   const [resetNonce, setResetNonce] = useState(0)
   const [policyStatus, setPolicyStatus] = useState<PolicyStatus>(initialStatus)
@@ -40,6 +42,8 @@ export function App() {
     <main className="app-shell">
       <section className="sim-stage" aria-label="Wurmkickflip terrarium simulation">
         <WurmkickflipScene
+          creature={labConfigs.creature}
+          environmentConfig={labConfigs.environment}
           onMetrics={setMetrics}
           onPolicyStatus={setPolicyStatus}
           policyRunner={policyRunner}
@@ -51,7 +55,7 @@ export function App() {
       <aside className="control-panel" aria-label="Training viewer">
         <div className="panel-header">
           <div>
-            <p className="eyebrow">OpenWorm-inspired RL prototype</p>
+            <p className="eyebrow">Evolutionary skate lab</p>
             <h1>Wurmkickflip</h1>
           </div>
           <div className={`backend-pill backend-${displayedMetrics.backend}`}>
@@ -102,6 +106,65 @@ export function App() {
         </section>
 
         <section className="readout">
+          <div className="readout-title">
+            <Dna size={18} aria-hidden="true" />
+            <h2>Creature genome</h2>
+          </div>
+          <p>{labConfigs.creature?.name ?? labConfigs.message}</p>
+          {labConfigs.creature ? (
+            <div className="compact-grid">
+              <span>Parts</span>
+              <strong>{labConfigs.creature.morphology.bodyParts.length}</strong>
+              <span>Joints</span>
+              <strong>{labConfigs.creature.morphology.joints.length}</strong>
+              <span>Controller</span>
+              <strong>{labConfigs.creature.controller.kind}</strong>
+            </div>
+          ) : null}
+        </section>
+
+        <section className="readout">
+          <div className="readout-title">
+            <Mountain size={18} aria-hidden="true" />
+            <h2>Dynamic environment</h2>
+          </div>
+          <p>{labConfigs.environment?.name ?? labConfigs.message}</p>
+          {labConfigs.environment ? (
+            <div className="compact-grid">
+              <span>Task</span>
+              <strong>{labConfigs.environment.task.kind}</strong>
+              <span>Gravity</span>
+              <strong>{rangeLabel(labConfigs.environment.randomization.gravityScale)}</strong>
+              <span>Friction</span>
+              <strong>{rangeLabel(labConfigs.environment.randomization.frictionScale)}</strong>
+              <span>Terrain</span>
+              <strong>{labConfigs.environment.terrain.kind}</strong>
+            </div>
+          ) : null}
+        </section>
+
+        <section className="readout">
+          <div className="readout-title">
+            <Goal size={18} aria-hidden="true" />
+            <h2>Skateboard task</h2>
+          </div>
+          {labConfigs.environment ? (
+            <div className="compact-grid">
+              <span>Spawn X</span>
+              <strong>{rangeLabel(labConfigs.environment.randomization.skateboardSpawnX)} m</strong>
+              <span>Spawn Z</span>
+              <strong>{rangeLabel(labConfigs.environment.randomization.skateboardSpawnZ)} m</strong>
+              <span>Mass</span>
+              <strong>{rangeLabel(labConfigs.environment.randomization.skateboardMass)} kg</strong>
+              <span>Wheel friction</span>
+              <strong>{rangeLabel(labConfigs.environment.randomization.wheelFriction)}</strong>
+            </div>
+          ) : (
+            <p>{labConfigs.message}</p>
+          )}
+        </section>
+
+        <section className="readout">
           <h2>Policy status</h2>
           <p>{displayedMetrics.message}</p>
           <p>
@@ -111,6 +174,10 @@ export function App() {
       </aside>
     </main>
   )
+}
+
+function rangeLabel(range: [number, number]) {
+  return `${range[0]}-${range[1]}`
 }
 
 type MetricProps = {

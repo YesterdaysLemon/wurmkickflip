@@ -3,7 +3,9 @@
 ## Operating Rules
 
 - Read `/docs/README.md` and `/docs/policy-contract.md` before changing policy, training, or simulation code.
+- Read `/docs/evolution-lab.md` before changing creature, environment, or skateboard task logic.
 - Preserve TypeScript types and Python constants together. A policy contract change is not complete until browser code, training code, metadata, and docs agree.
+- Preserve the skateboard objective. Creature morphology can generalize, but the task family is finding and riding a skateboard.
 - Prefer small, committed checkpoints after successful verification.
 - Do not commit generated caches, local virtualenvs, build output, or training run directories.
 - Do not commit `public/models/wurmkickflip_policy.onnx` unless the user explicitly asks to version a trained model.
@@ -45,7 +47,7 @@ For training changes:
 - The browser simulation is a visual/control prototype, not a physically faithful RL environment.
 - Rapier is present but not yet the source of all board/worm motion.
 - The Python environment is a surrogate model and should eventually be calibrated against browser physics or replaced with a MuJoCo environment.
-- OpenWorm/VirtualWorm assets are not imported yet.
+- The project is no longer worm-only; the existing segmented body is a starter morphology.
 - WebGPU ONNX has not been validated with a real trained policy in this repo.
 
 ## Recommended Commit Practice

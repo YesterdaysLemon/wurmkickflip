@@ -1,5 +1,9 @@
 # Architecture
 
+## Direction
+
+The project is pivoting from a worm-specific skateboard demo into an evolutionary creature lab for skateboarding. The current worm/skateboard scene is the first scenario and should remain useful, but new code should favor generic creature, environment, controller, skateboard-task, and replay concepts.
+
 ## Browser App
 
 The browser app is a Vite + React + TypeScript application.
@@ -8,16 +12,39 @@ Primary responsibilities:
 
 - Mount the React UI in `src/main.tsx`.
 - Own application-level state and controls in `src/App.tsx`.
-- Render the terrarium, skateboard, worm visual rig, and simulation loop in `src/scene/WurmkickflipScene.tsx`.
-- Display policy status, rollout metrics, and muscle activity in the right-side training viewer.
+- Render the current scenario in `src/scene/WurmkickflipScene.tsx`.
+- Load creature/environment config artifacts from `public/configs/`.
+- Display policy status, rollout metrics, environment parameters, and creature/genome metadata in the viewer.
 
-The current scene is procedural. It uses code-native geometry for the terrarium, deck, trucks, wheels, and worm segments. OpenWorm/VirtualWorm visual import is a future enhancement, not a dependency of the current render path.
+The frontend is not intended to be the high-throughput trainer. It is the inspection surface for current best genomes, replay artifacts, and policy/model state.
 
-## Simulation Shape
+## Creature And Environment Configs
 
-The current browser simulation is intentionally lightweight. It is not a full rigid-body training environment yet. It advances a local state model that keeps the board moving, computes worm segment poses from muscle activations, and exposes enough state for policy inference and UI metrics.
+The new config layer separates generated artifacts from hard-coded visuals:
 
-Rapier is already present in the app to support future physical bodies, colliders, contacts, and constraints. Future work should move toward richer Rapier/MuJoCo parity without breaking the policy contract.
+- Creature genome JSON describes body parts, joints, controller hints, mutation ranges, and visual defaults.
+- Environment JSON describes scenario type, world dimensions, physics constants, terrain generation, obstacles, reward weights, and randomization ranges.
+- Skateboard parameters are part of the environment/task config, including spawn distribution, deck size, mass, wheel friction, discovery radius, and reward weights.
+- The frontend can render a config-derived creature even before training uses the full schema.
+- Python evolution/training code should emit artifacts that conform to the same config shape.
+
+## Dynamic Environment Generation
+
+Environment generation should follow a seed plus parameter-ranges model:
+
+1. Scenario config defines physics constants and randomization ranges.
+2. Training samples seeds and environment parameters for each rollout.
+3. Training tasks ask creatures to locomote, find the skateboard, make useful contact, and roll in a target direction.
+4. Evaluation uses held-out seeds to measure generalization.
+5. Frontend displays the concrete environment parameters used for a replay.
+
+Important dynamic parameters include gravity, friction, drag, restitution, slope, terrain roughness, obstacle density, skateboard spawn, skateboard mass, wheel friction, actuator latency, sensor noise, spawn pose, and reward weights.
+
+## Current Scenario
+
+The current browser simulation is intentionally lightweight. It advances a local state model that keeps a skateboard moving, computes segment poses from muscle activations, and exposes state for policy inference and UI metrics.
+
+Rapier is present to support future physical bodies, colliders, contacts, and constraints. Future work should move toward richer Rapier/MuJoCo parity without breaking the policy contract.
 
 ## Policy Runtime
 
@@ -34,37 +61,43 @@ Load order:
 
 For validation, append `?policyBackend=wasm` or `?policyBackend=webgpu` to the local app URL to force a specific ONNX execution provider when the model exists.
 
-The scripted fallback is implemented in `src/policy/scriptedPolicy.ts`. It exists so the scene is always inspectable before training succeeds.
-
 ## Training Scaffold
 
 The offline training workspace lives under `training/`.
 
-Primary files:
+Current files:
 
 - `training/wurmkickflip_rl/contracts.py` mirrors browser policy constants.
 - `training/wurmkickflip_rl/env.py` defines the current Gymnasium surrogate environment.
 - `training/wurmkickflip_rl/train.py` trains a Stable Baselines3 PPO policy.
 - `training/wurmkickflip_rl/export_policy.py` exports the policy to ONNX and writes browser metadata.
 
-The current Python environment is a surrogate trainer. The longer-term direction is to replace or augment it with a MuJoCo model while preserving the same observation/action wire shape.
+Future training should add a separate evolution layer that emits creature genomes, environment samples, generation summaries, and replay files.
 
 ## Data Flow
 
-At each browser simulation tick:
+Current policy data flow:
 
 1. Scene state is converted into a `SimulationSnapshot`.
 2. `snapshotToObservation` converts the snapshot into a `Float32Array` of length 118.
 3. `PolicyRunner.run` returns a `Float32Array` of length 32.
-4. The action is interpreted as dorsal/ventral activations for 16 worm segments.
-5. The scene updates board, worm, reward, contact, and muscle activity readouts.
+4. The action is interpreted as dorsal/ventral activations for 16 segments.
+5. The scene updates board, creature, reward, contact, and activity readouts.
+
+Future evolution data flow:
+
+1. Python generates creature genome candidates and sampled environments.
+2. Python evaluates each candidate on locomotion, skateboard discovery, skateboard contact, and rolling distance.
+3. Browser loads selected genome/environment/replay artifacts.
+4. Browser visualizes behavior and allows parameter inspection.
 
 ## Artifact Boundaries
 
 Tracked source:
 
 - TypeScript app and policy runtime.
-- Python training scaffold.
+- Config schemas and sample configs.
+- Python training/evolution scaffold.
 - `policy.meta.json` bootstrap metadata.
 - Markdown docs.
 
@@ -75,4 +108,5 @@ Generated or local-only artifacts:
 - Python `__pycache__/`
 - Python `.venv/`
 - training run outputs under `training/runs/`
+- evolved population outputs
 - trained ONNX files unless explicitly requested by the user.

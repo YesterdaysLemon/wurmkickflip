@@ -1,0 +1,63 @@
+{
+  "schemaVersion": 1,
+  "id": "adaptive-skate-terrarium",
+  "name": "Adaptive Skate Terrarium",
+  "description": "A dynamic locomotion scenario with randomized physics constants, terrain, and skateboard balance parameters.",
+  "seed": 1337,
+  "world": {
+    "size": [9.2, 2.4, 4.3],
+    "gravity": [0, -9.81, 0],
+    "airDrag": 0.025,
+    "solverIterations": 8
+  },
+  "terrain": {
+    "kind": "bumps",
+    "baseFriction": 0.9,
+    "restitution": 0.04,
+    "slopeDegrees": 0,
+    "roughness": 0.18,
+    "obstacleDensity": 0.08
+  },
+  "task": {
+    "kind": "find_and_ride_skateboard",
+    "targetDirection": [1, 0, 0],
+    "durationSeconds": 20,
+    "failureHeight": -0.35
+  },
+  "skateboard": {
+    "enabled": true,
+    "spawnPosition": [1.1, 0.42, 0],
+    "deckSize": [1.9, 0.12, 0.58],
+    "mass": 1.1,
+    "wheelRadius": 0.14,
+    "wheelFriction": 0.82,
+    "discoveryRadius": 1.35,
+    "mountHeightTolerance": 0.38
+  },
+  "randomization": {
+    "gravityScale": [0.72, 1.35],
+    "frictionScale": [0.45, 1.4],
+    "dragScale": [0, 2.5],
+    "slopeDegrees": [-8, 8],
+    "roughness": [0, 0.42],
+    "obstacleDensity": [0, 0.22],
+    "actuatorStrength": [0.55, 1.65],
+    "actuatorLatencyMs": [0, 80],
+    "sensorNoise": [0, 0.08],
+    "spawnYawDegrees": [-25, 25],
+    "skateboardSpawnX": [0.65, 2.4],
+    "skateboardSpawnZ": [-1.1, 1.1],
+    "skateboardMass": [0.75, 1.65],
+    "wheelFriction": [0.45, 1.25]
+  },
+  "rewardWeights": {
+    "forwardProgress": 1,
+    "stability": 0.45,
+    "energy": 0.08,
+    "survival": 0.3,
+    "targetAlignment": 0.5,
+    "skateboardDiscovery": 1.25,
+    "skateboardContact": 1.8,
+    "skateboardVelocity": 2
+  }
+}
