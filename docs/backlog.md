@@ -2,8 +2,8 @@
 
 ## P0 - Policy Integration And Contract Safety
 
+- Add automated policy contract verification for TypeScript, Python, metadata, and docs. Done in `npm run verify:contract`.
 - Add shared observation layout tests that compare browser `snapshotToObservation` against Python `_observe` for the same fixture.
-- Add metadata validation tests for `public/models/wurmkickflip_policy.meta.json`.
 - Train a short PPO smoke-test policy and export `wurmkickflip_policy.onnx`.
 - Validate ONNX inference in the browser with both WebGPU and WASM paths.
 - Add a policy output sanity check: length 32, finite values, clipped to `[-1, 1]`.

@@ -17,6 +17,12 @@ Build verification:
 npm run build
 ```
 
+Full verification:
+
+```powershell
+npm run check
+```
+
 ## Training Scaffold
 
 The Python workspace is under `training/` and is intended to be run with Python 3.11 through `uv`.
