@@ -4,6 +4,8 @@ A React, Three.js, Rapier, and WebGPU-ready prototype for training an OpenWorm-i
 
 The current app boots with a deterministic muscle-wave policy so the simulation is usable before RL training completes. When `public/models/wurmkickflip_policy.onnx` exists and matches `public/models/wurmkickflip_policy.meta.json`, the browser runtime attempts ONNX Runtime WebGPU first and falls back to WASM/scripted control.
 
+The viewer includes a selectable pool of primitive physics creatures and procedural terrain presets. The skateboard and creature parts are Rapier rigid bodies; current controllers are intentionally rough and may flop while the training loop matures.
+
 ## Web App
 
 ```powershell

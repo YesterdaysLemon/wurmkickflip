@@ -1,0 +1,63 @@
+{
+  "schemaVersion": 1,
+  "id": "ripple-yard",
+  "name": "Ripple Yard",
+  "description": "A rougher terrarium with offset tile heights and a slightly heavier board.",
+  "seed": 2468,
+  "world": {
+    "size": [9.2, 2.4, 4.3],
+    "gravity": [0, -9.81, 0],
+    "airDrag": 0.04,
+    "solverIterations": 10
+  },
+  "terrain": {
+    "kind": "obstacle_field",
+    "baseFriction": 1.05,
+    "restitution": 0.03,
+    "slopeDegrees": 1.5,
+    "roughness": 0.34,
+    "obstacleDensity": 0.16
+  },
+  "task": {
+    "kind": "find_and_ride_skateboard",
+    "targetDirection": [1, 0, 0],
+    "durationSeconds": 24,
+    "failureHeight": -0.35
+  },
+  "skateboard": {
+    "enabled": true,
+    "spawnPosition": [1.25, 0.48, -0.34],
+    "deckSize": [1.75, 0.12, 0.56],
+    "mass": 1.35,
+    "wheelRadius": 0.15,
+    "wheelFriction": 0.95,
+    "discoveryRadius": 1.5,
+    "mountHeightTolerance": 0.42
+  },
+  "randomization": {
+    "gravityScale": [0.8, 1.25],
+    "frictionScale": [0.7, 1.6],
+    "dragScale": [0.3, 2.8],
+    "slopeDegrees": [-5, 9],
+    "roughness": [0.15, 0.55],
+    "obstacleDensity": [0.08, 0.28],
+    "actuatorStrength": [0.65, 1.75],
+    "actuatorLatencyMs": [0, 95],
+    "sensorNoise": [0, 0.1],
+    "spawnYawDegrees": [-35, 35],
+    "skateboardSpawnX": [0.85, 2.6],
+    "skateboardSpawnZ": [-1.25, 1.25],
+    "skateboardMass": [0.95, 1.9],
+    "wheelFriction": [0.55, 1.35]
+  },
+  "rewardWeights": {
+    "forwardProgress": 1,
+    "stability": 0.55,
+    "energy": 0.09,
+    "survival": 0.32,
+    "targetAlignment": 0.5,
+    "skateboardDiscovery": 1.35,
+    "skateboardContact": 1.9,
+    "skateboardVelocity": 2.15
+  }
+}

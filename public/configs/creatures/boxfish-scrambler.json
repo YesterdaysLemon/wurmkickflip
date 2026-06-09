@@ -1,0 +1,90 @@
+{
+  "schemaVersion": 1,
+  "id": "boxfish-scrambler",
+  "name": "Boxfish Scrambler",
+  "description": "A blocky torso with four short cylinder limbs for noisy tumbling and board contact.",
+  "morphology": {
+    "symmetry": "bilateral",
+    "bodyParts": [
+      {
+        "id": "torso",
+        "shape": "box",
+        "parentId": null,
+        "position": [-1.28, 0.76, 0],
+        "rotation": [0.08, 0, 0.04],
+        "size": [0.48, 0.28, 0.34],
+        "mass": 0.74,
+        "material": { "friction": 0.95, "restitution": 0.1 },
+        "visual": { "color": "#4e6da8" }
+      },
+      {
+        "id": "front-left",
+        "shape": "cylinder",
+        "parentId": "torso",
+        "position": [-1.05, 0.52, -0.28],
+        "rotation": [1.5708, 0, 0.2],
+        "size": [0.14, 0.42, 0.14],
+        "mass": 0.18,
+        "material": { "friction": 1.05, "restitution": 0.04 },
+        "visual": { "color": "#a9c2ef" }
+      },
+      {
+        "id": "front-right",
+        "shape": "cylinder",
+        "parentId": "torso",
+        "position": [-1.05, 0.52, 0.28],
+        "rotation": [1.5708, 0, -0.2],
+        "size": [0.14, 0.42, 0.14],
+        "mass": 0.18,
+        "material": { "friction": 1.05, "restitution": 0.04 },
+        "visual": { "color": "#a9c2ef" }
+      },
+      {
+        "id": "rear-left",
+        "shape": "cylinder",
+        "parentId": "torso",
+        "position": [-1.52, 0.52, -0.25],
+        "rotation": [1.5708, 0, -0.35],
+        "size": [0.14, 0.38, 0.14],
+        "mass": 0.16,
+        "material": { "friction": 1.12, "restitution": 0.04 },
+        "visual": { "color": "#f0cd72" }
+      },
+      {
+        "id": "rear-right",
+        "shape": "cylinder",
+        "parentId": "torso",
+        "position": [-1.52, 0.52, 0.25],
+        "rotation": [1.5708, 0, 0.35],
+        "size": [0.14, 0.38, 0.14],
+        "mass": 0.16,
+        "material": { "friction": 1.12, "restitution": 0.04 },
+        "visual": { "color": "#f0cd72" }
+      }
+    ],
+    "joints": [
+      { "id": "j-torso-front-left", "parentId": "torso", "childId": "front-left", "type": "ball", "axis": [1, 0, 0], "anchor": [-1.12, 0.62, -0.18], "limits": [-0.75, 0.75], "stiffness": 15, "damping": 2.1, "motorStrength": 4.5 },
+      { "id": "j-torso-front-right", "parentId": "torso", "childId": "front-right", "type": "ball", "axis": [1, 0, 0], "anchor": [-1.12, 0.62, 0.18], "limits": [-0.75, 0.75], "stiffness": 15, "damping": 2.1, "motorStrength": 4.5 },
+      { "id": "j-torso-rear-left", "parentId": "torso", "childId": "rear-left", "type": "ball", "axis": [1, 0, 0], "anchor": [-1.43, 0.62, -0.16], "limits": [-0.75, 0.75], "stiffness": 15, "damping": 2.1, "motorStrength": 4.5 },
+      { "id": "j-torso-rear-right", "parentId": "torso", "childId": "rear-right", "type": "ball", "axis": [1, 0, 0], "anchor": [-1.43, 0.62, 0.16], "limits": [-0.75, 0.75], "stiffness": 15, "damping": 2.1, "motorStrength": 4.5 }
+    ]
+  },
+  "controller": {
+    "kind": "cpg",
+    "actionSize": 10,
+    "parameters": {
+      "waveAmplitude": 0.62,
+      "waveFrequency": 2.1,
+      "phaseOffset": 1.25,
+      "forwardBias": 0.18
+    }
+  },
+  "sensors": ["body_pose", "body_velocity", "joint_angles", "joint_velocities", "contacts", "target_direction"],
+  "mutation": {
+    "enabled": true,
+    "partScaleRange": [0.7, 1.35],
+    "massScaleRange": [0.65, 1.6],
+    "jointLimitJitter": 0.22,
+    "controllerJitter": 0.32
+  }
+}

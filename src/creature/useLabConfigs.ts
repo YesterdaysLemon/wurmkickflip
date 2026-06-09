@@ -2,9 +2,23 @@ import { useEffect, useState } from 'react'
 import { validateCreatureGenome, validateEnvironmentConfig } from './configValidation'
 import type { CreatureGenome, EnvironmentConfig } from './types'
 
+const creaturePaths = [
+  '/configs/creatures/segmented-starter.json',
+  '/configs/creatures/tripod-pusher.json',
+  '/configs/creatures/boxfish-scrambler.json',
+]
+
+const environmentPaths = [
+  '/configs/environments/adaptive-skate-terrarium.json',
+  '/configs/environments/ripple-yard.json',
+  '/configs/environments/tilt-basin.json',
+]
+
 export type LabConfigs = {
   creature: CreatureGenome | null
+  creatures: CreatureGenome[]
   environment: EnvironmentConfig | null
+  environments: EnvironmentConfig[]
   status: 'loading' | 'ready' | 'error'
   message: string
 }
@@ -12,7 +26,9 @@ export type LabConfigs = {
 export function useLabConfigs(): LabConfigs {
   const [configs, setConfigs] = useState<LabConfigs>({
     creature: null,
+    creatures: [],
     environment: null,
+    environments: [],
     status: 'loading',
     message: 'Loading lab configs.',
   })
@@ -20,24 +36,42 @@ export function useLabConfigs(): LabConfigs {
   useEffect(() => {
     let mounted = true
 
-    Promise.all([fetchJson('/configs/creatures/segmented-starter.json'), fetchJson('/configs/environments/adaptive-skate-terrarium.json')])
-      .then(([creature, environment]) => {
-        const creatureValidation = validateCreatureGenome(creature)
-        const environmentValidation = validateEnvironmentConfig(environment)
-        if (!creatureValidation.ok || !environmentValidation.ok) {
-          const errors = [
-            ...(creatureValidation.ok ? [] : creatureValidation.errors),
-            ...(environmentValidation.ok ? [] : environmentValidation.errors),
-          ]
+    Promise.all([Promise.all(creaturePaths.map(fetchJson)), Promise.all(environmentPaths.map(fetchJson))])
+      .then(([creatureValues, environmentValues]) => {
+        const creatures: CreatureGenome[] = []
+        const environments: EnvironmentConfig[] = []
+        const errors: string[] = []
+
+        for (const creature of creatureValues) {
+          const validation = validateCreatureGenome(creature)
+          if (validation.ok) {
+            creatures.push(validation.value)
+          } else {
+            errors.push(...validation.errors)
+          }
+        }
+
+        for (const environment of environmentValues) {
+          const validation = validateEnvironmentConfig(environment)
+          if (validation.ok) {
+            environments.push(validation.value)
+          } else {
+            errors.push(...validation.errors)
+          }
+        }
+
+        if (errors.length > 0) {
           throw new Error(`Invalid lab config: ${errors.slice(0, 3).join(' ')}`)
         }
 
         if (mounted) {
           setConfigs({
-            creature: creatureValidation.value,
-            environment: environmentValidation.value,
+            creature: creatures[0] ?? null,
+            creatures,
+            environment: environments[0] ?? null,
+            environments,
             status: 'ready',
-            message: `Loaded ${creatureValidation.value.name} in ${environmentValidation.value.name}.`,
+            message: `Loaded ${creatures.length} creatures and ${environments.length} environments.`,
           })
         }
       })
@@ -45,7 +79,9 @@ export function useLabConfigs(): LabConfigs {
         if (mounted) {
           setConfigs({
             creature: null,
+            creatures: [],
             environment: null,
+            environments: [],
             status: 'error',
             message: error instanceof Error ? error.message : 'Failed to load lab configs.',
           })

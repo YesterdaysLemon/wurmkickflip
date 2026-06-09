@@ -26,10 +26,25 @@ const initialMetrics: ViewerMetrics = {
 export function App() {
   const policyRunner = useMemo(() => new PolicyRunner(), [])
   const labConfigs = useLabConfigs()
+  const [selectedCreatureId, setSelectedCreatureId] = useState<string | null>(null)
+  const [selectedEnvironmentId, setSelectedEnvironmentId] = useState<string | null>(null)
   const [running, setRunning] = useState(true)
   const [resetNonce, setResetNonce] = useState(0)
   const [policyStatus, setPolicyStatus] = useState<PolicyStatus>(initialStatus)
   const [metrics, setMetrics] = useState<ViewerMetrics>(initialMetrics)
+
+  const selectedCreature = useMemo(
+    () =>
+      labConfigs.creatures.find((creature) => creature.id === selectedCreatureId) ??
+      labConfigs.creature,
+    [labConfigs.creature, labConfigs.creatures, selectedCreatureId],
+  )
+  const selectedEnvironment = useMemo(
+    () =>
+      labConfigs.environments.find((environment) => environment.id === selectedEnvironmentId) ??
+      labConfigs.environment,
+    [labConfigs.environment, labConfigs.environments, selectedEnvironmentId],
+  )
 
   const displayedMetrics = {
     ...metrics,
@@ -42,8 +57,8 @@ export function App() {
     <main className="app-shell">
       <section className="sim-stage" aria-label="Wurmkickflip terrarium simulation">
         <WurmkickflipScene
-          creature={labConfigs.creature}
-          environmentConfig={labConfigs.environment}
+          creature={selectedCreature}
+          environmentConfig={selectedEnvironment}
           onMetrics={setMetrics}
           onPolicyStatus={setPolicyStatus}
           policyRunner={policyRunner}
@@ -81,6 +96,45 @@ export function App() {
           </button>
         </div>
 
+        <section className="readout">
+          <div className="selector-grid">
+            <label>
+              <span>Creature</span>
+              <select
+                value={selectedCreature?.id ?? ''}
+                onChange={(event) => {
+                  setSelectedCreatureId(event.target.value)
+                  policyRunner.reset()
+                  setResetNonce((value) => value + 1)
+                }}
+              >
+                {labConfigs.creatures.map((creature) => (
+                  <option key={creature.id} value={creature.id}>
+                    {creature.name}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label>
+              <span>Environment</span>
+              <select
+                value={selectedEnvironment?.id ?? ''}
+                onChange={(event) => {
+                  setSelectedEnvironmentId(event.target.value)
+                  policyRunner.reset()
+                  setResetNonce((value) => value + 1)
+                }}
+              >
+                {labConfigs.environments.map((environment) => (
+                  <option key={environment.id} value={environment.id}>
+                    {environment.name}
+                  </option>
+                ))}
+              </select>
+            </label>
+          </div>
+        </section>
+
         <div className="metric-grid">
           <Metric icon={<Gauge size={18} />} label="Reward" value={displayedMetrics.reward.toFixed(2)} />
           <Metric label="Distance" value={`${displayedMetrics.distance.toFixed(2)} m`} />
@@ -110,15 +164,15 @@ export function App() {
             <Dna size={18} aria-hidden="true" />
             <h2>Creature genome</h2>
           </div>
-          <p>{labConfigs.creature?.name ?? labConfigs.message}</p>
-          {labConfigs.creature ? (
+          <p>{selectedCreature?.name ?? labConfigs.message}</p>
+          {selectedCreature ? (
             <div className="compact-grid">
               <span>Parts</span>
-              <strong>{labConfigs.creature.morphology.bodyParts.length}</strong>
+              <strong>{selectedCreature.morphology.bodyParts.length}</strong>
               <span>Joints</span>
-              <strong>{labConfigs.creature.morphology.joints.length}</strong>
+              <strong>{selectedCreature.morphology.joints.length}</strong>
               <span>Controller</span>
-              <strong>{labConfigs.creature.controller.kind}</strong>
+              <strong>{selectedCreature.controller.kind}</strong>
             </div>
           ) : null}
         </section>
@@ -128,17 +182,17 @@ export function App() {
             <Mountain size={18} aria-hidden="true" />
             <h2>Dynamic environment</h2>
           </div>
-          <p>{labConfigs.environment?.name ?? labConfigs.message}</p>
-          {labConfigs.environment ? (
+          <p>{selectedEnvironment?.name ?? labConfigs.message}</p>
+          {selectedEnvironment ? (
             <div className="compact-grid">
               <span>Task</span>
-              <strong>{labConfigs.environment.task.kind}</strong>
+              <strong>{selectedEnvironment.task.kind}</strong>
               <span>Gravity</span>
-              <strong>{rangeLabel(labConfigs.environment.randomization.gravityScale)}</strong>
+              <strong>{rangeLabel(selectedEnvironment.randomization.gravityScale)}</strong>
               <span>Friction</span>
-              <strong>{rangeLabel(labConfigs.environment.randomization.frictionScale)}</strong>
+              <strong>{rangeLabel(selectedEnvironment.randomization.frictionScale)}</strong>
               <span>Terrain</span>
-              <strong>{labConfigs.environment.terrain.kind}</strong>
+              <strong>{selectedEnvironment.terrain.kind}</strong>
             </div>
           ) : null}
         </section>
@@ -148,16 +202,16 @@ export function App() {
             <Goal size={18} aria-hidden="true" />
             <h2>Skateboard task</h2>
           </div>
-          {labConfigs.environment ? (
+          {selectedEnvironment ? (
             <div className="compact-grid">
               <span>Spawn X</span>
-              <strong>{rangeLabel(labConfigs.environment.randomization.skateboardSpawnX)} m</strong>
+              <strong>{rangeLabel(selectedEnvironment.randomization.skateboardSpawnX)} m</strong>
               <span>Spawn Z</span>
-              <strong>{rangeLabel(labConfigs.environment.randomization.skateboardSpawnZ)} m</strong>
+              <strong>{rangeLabel(selectedEnvironment.randomization.skateboardSpawnZ)} m</strong>
               <span>Mass</span>
-              <strong>{rangeLabel(labConfigs.environment.randomization.skateboardMass)} kg</strong>
+              <strong>{rangeLabel(selectedEnvironment.randomization.skateboardMass)} kg</strong>
               <span>Wheel friction</span>
-              <strong>{rangeLabel(labConfigs.environment.randomization.wheelFriction)}</strong>
+              <strong>{rangeLabel(selectedEnvironment.randomization.wheelFriction)}</strong>
             </div>
           ) : (
             <p>{labConfigs.message}</p>

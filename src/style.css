@@ -271,6 +271,39 @@ p {
   overflow-wrap: anywhere;
 }
 
+.selector-grid {
+  display: grid;
+  gap: 12px;
+}
+
+.selector-grid label {
+  display: grid;
+  gap: 7px;
+}
+
+.selector-grid span {
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 800;
+  text-transform: uppercase;
+}
+
+.selector-grid select {
+  width: 100%;
+  min-height: 38px;
+  padding: 0 10px;
+  border: 1px solid rgba(22, 32, 28, 0.18);
+  border-radius: 8px;
+  color: var(--ink);
+  background: #fff;
+  font: inherit;
+}
+
+.selector-grid select:focus {
+  border-color: rgba(46, 140, 116, 0.72);
+  outline: 2px solid rgba(46, 140, 116, 0.12);
+}
+
 canvas {
   display: block;
 }

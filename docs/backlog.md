@@ -22,14 +22,14 @@ No open P0 tasks. Keep contract and runtime verification green before longer tra
 - Add a replay recorder that can save browser rollout JSON for later inspection.
 - Calibrate Python surrogate dynamics against the browser scene.
 - Evaluate adding MuJoCo for offline training while preserving the same policy contract.
-- Move more board and worm motion into Rapier bodies and constraints.
+- Move more board and worm motion into Rapier bodies and constraints. Done for first visible physics lab pass.
 - Add wheel/truck tuning controls for friction, stiffness, mass, and deck dimensions.
 - Add a manual-control/debug mode for muscle activations.
 - Add a training summary panel for model version, reward, and export timestamp.
 
 ## P2 - Visual Fidelity And OpenWorm Alignment
 
-- Add branching morphology rendering for non-worm creatures.
+- Add branching morphology rendering for non-worm creatures. Done for first primitive creature pool.
 - Add skateboard discovery visual markers and contact/rolling overlays.
 - Add optional neuron/muscle activity overlays.
 - Add terrarium visual details such as substrate variation, scale references, and better glass edge highlights.

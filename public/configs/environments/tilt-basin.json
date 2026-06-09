@@ -1,0 +1,63 @@
+{
+  "schemaVersion": 1,
+  "id": "tilt-basin",
+  "name": "Tilt Basin",
+  "description": "A sloped skate basin with sparse blockers and a fast, light board.",
+  "seed": 97531,
+  "world": {
+    "size": [9.2, 2.4, 4.3],
+    "gravity": [0, -9.81, 0],
+    "airDrag": 0.018,
+    "solverIterations": 8
+  },
+  "terrain": {
+    "kind": "slope",
+    "baseFriction": 0.82,
+    "restitution": 0.05,
+    "slopeDegrees": -5,
+    "roughness": 0.1,
+    "obstacleDensity": 0.05
+  },
+  "task": {
+    "kind": "find_and_ride_skateboard",
+    "targetDirection": [1, 0, 0],
+    "durationSeconds": 18,
+    "failureHeight": -0.4
+  },
+  "skateboard": {
+    "enabled": true,
+    "spawnPosition": [0.9, 0.46, 0.42],
+    "deckSize": [2.05, 0.1, 0.54],
+    "mass": 0.88,
+    "wheelRadius": 0.13,
+    "wheelFriction": 0.68,
+    "discoveryRadius": 1.25,
+    "mountHeightTolerance": 0.36
+  },
+  "randomization": {
+    "gravityScale": [0.7, 1.18],
+    "frictionScale": [0.42, 1.05],
+    "dragScale": [0, 1.6],
+    "slopeDegrees": [-10, 4],
+    "roughness": [0, 0.24],
+    "obstacleDensity": [0, 0.12],
+    "actuatorStrength": [0.5, 1.55],
+    "actuatorLatencyMs": [0, 70],
+    "sensorNoise": [0, 0.07],
+    "spawnYawDegrees": [-30, 30],
+    "skateboardSpawnX": [0.5, 1.8],
+    "skateboardSpawnZ": [-1.2, 1.2],
+    "skateboardMass": [0.6, 1.25],
+    "wheelFriction": [0.35, 0.98]
+  },
+  "rewardWeights": {
+    "forwardProgress": 1.15,
+    "stability": 0.4,
+    "energy": 0.07,
+    "survival": 0.28,
+    "targetAlignment": 0.6,
+    "skateboardDiscovery": 1.15,
+    "skateboardContact": 1.65,
+    "skateboardVelocity": 2.35
+  }
+}

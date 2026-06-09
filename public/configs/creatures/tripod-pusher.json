@@ -1,0 +1,78 @@
+{
+  "schemaVersion": 1,
+  "id": "tripod-pusher",
+  "name": "Tripod Pusher",
+  "description": "A low center body with three hinged paddle legs intended to shove and crawl onto the board.",
+  "morphology": {
+    "symmetry": "radial",
+    "bodyParts": [
+      {
+        "id": "core",
+        "shape": "sphere",
+        "parentId": null,
+        "position": [-1.35, 0.72, 0],
+        "rotation": [0, 0, 0],
+        "size": [0.42, 0.32, 0.42],
+        "mass": 0.62,
+        "material": { "friction": 1.05, "restitution": 0.08 },
+        "visual": { "color": "#3b806f" }
+      },
+      {
+        "id": "left-paddle",
+        "shape": "box",
+        "parentId": "core",
+        "position": [-1.5, 0.52, -0.36],
+        "rotation": [0.25, 0.12, -0.35],
+        "size": [0.18, 0.18, 0.62],
+        "mass": 0.2,
+        "material": { "friction": 1.15, "restitution": 0.05 },
+        "visual": { "color": "#86b86f" }
+      },
+      {
+        "id": "right-paddle",
+        "shape": "box",
+        "parentId": "core",
+        "position": [-1.5, 0.52, 0.36],
+        "rotation": [-0.25, -0.12, -0.35],
+        "size": [0.18, 0.18, 0.62],
+        "mass": 0.2,
+        "material": { "friction": 1.15, "restitution": 0.05 },
+        "visual": { "color": "#86b86f" }
+      },
+      {
+        "id": "rear-paddle",
+        "shape": "capsule",
+        "parentId": "core",
+        "position": [-1.78, 0.5, 0],
+        "rotation": [0, 0, 1.5708],
+        "size": [0.18, 0.62, 0.18],
+        "mass": 0.22,
+        "material": { "friction": 1.2, "restitution": 0.05 },
+        "visual": { "color": "#d7b15d" }
+      }
+    ],
+    "joints": [
+      { "id": "j-core-left", "parentId": "core", "childId": "left-paddle", "type": "ball", "axis": [0, 1, 0], "anchor": [-1.42, 0.61, -0.2], "limits": [-0.85, 0.85], "stiffness": 12, "damping": 1.8, "motorStrength": 5 },
+      { "id": "j-core-right", "parentId": "core", "childId": "right-paddle", "type": "ball", "axis": [0, 1, 0], "anchor": [-1.42, 0.61, 0.2], "limits": [-0.85, 0.85], "stiffness": 12, "damping": 1.8, "motorStrength": 5 },
+      { "id": "j-core-rear", "parentId": "core", "childId": "rear-paddle", "type": "hinge", "axis": [0, 0, 1], "anchor": [-1.56, 0.6, 0], "limits": [-0.7, 0.7], "stiffness": 14, "damping": 1.6, "motorStrength": 5.5 }
+    ]
+  },
+  "controller": {
+    "kind": "cpg",
+    "actionSize": 8,
+    "parameters": {
+      "waveAmplitude": 0.72,
+      "waveFrequency": 1.35,
+      "phaseOffset": 1.8,
+      "forwardBias": 0.12
+    }
+  },
+  "sensors": ["body_pose", "body_velocity", "joint_angles", "contacts", "target_direction", "environment_probe"],
+  "mutation": {
+    "enabled": true,
+    "partScaleRange": [0.72, 1.4],
+    "massScaleRange": [0.6, 1.7],
+    "jointLimitJitter": 0.2,
+    "controllerJitter": 0.3
+  }
+}

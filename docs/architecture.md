@@ -15,6 +15,7 @@ Primary responsibilities:
 - Render the current scenario in `src/scene/WurmkickflipScene.tsx`.
 - Load creature/environment config artifacts from `public/configs/`.
 - Display policy status, rollout metrics, environment parameters, and creature/genome metadata in the viewer.
+- Let the user switch between the current creature pool and procedural environment presets.
 
 The frontend is not intended to be the high-throughput trainer. It is the inspection surface for current best genomes, replay artifacts, and policy/model state.
 
@@ -42,9 +43,9 @@ Important dynamic parameters include gravity, friction, drag, restitution, slope
 
 ## Current Scenario
 
-The current browser simulation is intentionally lightweight. It advances a local state model that keeps a skateboard moving, computes segment poses from muscle activations, and exposes state for policy inference and UI metrics.
+The current browser simulation is a Rapier-backed inspection sandbox. It creates dynamic rigid bodies for the skateboard and selected creature body parts, connects creature parts with joint constraints, drives the bodies with scripted/ONNX-compatible motor impulses, and exposes state for policy inference and UI metrics.
 
-Rapier is present to support future physical bodies, colliders, contacts, and constraints. Future work should move toward richer Rapier/MuJoCo parity without breaking the policy contract.
+Terrain is procedurally generated from the selected environment seed and parameters. Visual tiles are lightweight, while the physical world uses a base collider, generated obstacle colliders, terrarium walls, and dynamic board/creature bodies. Future work should improve Rapier/MuJoCo parity without breaking the policy contract.
 
 ## Policy Runtime
 

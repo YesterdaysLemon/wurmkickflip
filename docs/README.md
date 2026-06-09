@@ -9,12 +9,13 @@ This folder is the handoff point for future AI agents working on Wurmkickflip. R
 3. [`evolution-lab.md`](evolution-lab.md) - creature evolution, dynamic environments, and skateboarding objective.
 4. [`policy-contract.md`](policy-contract.md) - source-of-truth observation/action contract that must stay aligned across TypeScript, Python, and exported metadata.
 5. [`replay-artifacts.md`](replay-artifacts.md) - source-of-truth replay artifact shape for skateboard task inspection.
-6. [`agent-handoff.md`](agent-handoff.md) - rules and verification checklist for future agents.
-7. [`backlog.md`](backlog.md) - prioritized task board for next implementation passes.
+6. [`asset-roadmap.md`](asset-roadmap.md) - current primitive assets and future authored asset needs.
+7. [`agent-handoff.md`](agent-handoff.md) - rules and verification checklist for future agents.
+8. [`backlog.md`](backlog.md) - prioritized task board for next implementation passes.
 
 ## Current Project Status
 
-The repository contains a working TypeScript prototype. The browser app renders a procedural terrarium with a skateboard and current segmented creature scenario, loads creature/environment configs, and drives the compatibility policy path with scripted or ONNX control.
+The repository contains a working TypeScript prototype. The browser app renders a procedural terrarium with a dynamic skateboard, a selectable pool of primitive creatures, configurable environment presets, and a compatibility policy path with scripted or ONNX control.
 
 The training scaffold under `training/` is a surrogate Gymnasium + Stable Baselines3 PPO environment. It is designed to produce an ONNX policy compatible with the browser runtime, but the current repo does not include a trained `wurmkickflip_policy.onnx` artifact.
 
