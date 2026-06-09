@@ -89,8 +89,9 @@ Future evolution data flow:
 
 1. Python generates creature genome candidates and sampled environments.
 2. Python evaluates each candidate on locomotion, skateboard discovery, skateboard contact, and rolling distance.
-3. Browser loads selected genome/environment/replay artifacts.
-4. Browser visualizes behavior and allows parameter inspection.
+3. Python or the browser writes replay artifacts using the schema in `docs/replay-artifacts.md`.
+4. Browser loads selected genome/environment/replay artifacts.
+5. Browser visualizes behavior and allows parameter inspection.
 
 ## Artifact Boundaries
 

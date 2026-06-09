@@ -16,7 +16,7 @@ No open P0 tasks. Keep contract and runtime verification green before longer tra
 ## P1 - Training Quality And Simulation Fidelity
 
 - Add Python evolution scaffold that reads creature/environment configs and emits generation summaries. Done in `npm run verify:evolution`.
-- Add replay artifact schema for skateboard discovery/contact/rolling metrics.
+- Add replay artifact schema for skateboard discovery/contact/rolling metrics. Done in `npm run verify:replay`.
 - Improve reward shaping for true board balance and forward progress.
 - Add episode metrics: fall reason, average contact ratio, energy use, distance, and survival time.
 - Add a replay recorder that can save browser rollout JSON for later inspection.

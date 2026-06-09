@@ -1,0 +1,91 @@
+{
+  "schemaVersion": 1,
+  "kind": "wurmkickflip.replay",
+  "replayId": "scripted-smoke-replay",
+  "createdAt": "2026-06-09T00:00:00.000Z",
+  "source": {
+    "creatureId": "segmented-starter",
+    "environmentId": "adaptive-skate-terrarium",
+    "policyBackend": "scripted",
+    "modelVersion": "scripted-v0"
+  },
+  "timestep": 0.016666666666666666,
+  "durationSeconds": 0.05,
+  "frameCount": 3,
+  "environmentSample": {
+    "seed": 1337,
+    "gravityScale": 1,
+    "frictionScale": 1,
+    "dragScale": 1,
+    "slopeDegrees": 0,
+    "roughness": 0.18,
+    "obstacleDensity": 0.08,
+    "skateboardSpawn": [1.1, 0],
+    "skateboardMass": 1.1,
+    "wheelFriction": 0.82
+  },
+  "taskMetrics": {
+    "skateboardDiscoveredAt": 0,
+    "firstContactAt": 0.016666666666666666,
+    "mountTime": 0.05,
+    "rollingDistance": 0.032,
+    "maxRollingVelocity": 0.64,
+    "averageContactRatio": 1,
+    "energy": 0.42,
+    "survivalTime": 0.05,
+    "fallReason": "none"
+  },
+  "frames": [
+    {
+      "time": 0,
+      "board": {
+        "position": [-1, 0.42, 0],
+        "velocity": [0, 0, 0],
+        "rotation": [-0.03, 0.02, 0]
+      },
+      "creatureRoot": {
+        "position": [-1.62, 0.63, 0],
+        "velocity": [0, 0, 0],
+        "rotation": [0, 0, 0]
+      },
+      "contactRatio": 1,
+      "skateboardDiscovered": true,
+      "rollingVelocity": 0,
+      "reward": 3.92
+    },
+    {
+      "time": 0.016666666666666666,
+      "board": {
+        "position": [-0.994, 0.42036, 0.00001],
+        "velocity": [0.36, 0, 0.0006],
+        "rotation": [-0.029, 0.019, 0.0001]
+      },
+      "creatureRoot": {
+        "position": [-1.7815, 0.601, 0.016],
+        "velocity": [-9.69, -1.74, 0.96],
+        "rotation": [0.06, 0, 0.012]
+      },
+      "contactRatio": 1,
+      "skateboardDiscovered": true,
+      "rollingVelocity": 0.36,
+      "reward": 3.94
+    },
+    {
+      "time": 0.03333333333333333,
+      "board": {
+        "position": [-0.984, 0.42072, 0.00003],
+        "velocity": [0.64, 0, 0.0012],
+        "rotation": [-0.028, 0.018, 0.0002]
+      },
+      "creatureRoot": {
+        "position": [-1.7715, 0.603, 0.024],
+        "velocity": [0.6, 0.12, 0.48],
+        "rotation": [0.09, 0, 0.018]
+      },
+      "contactRatio": 1,
+      "skateboardDiscovered": true,
+      "rollingVelocity": 0.64,
+      "reward": 3.96
+    }
+  ]
+}

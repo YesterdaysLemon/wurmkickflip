@@ -8,8 +8,9 @@ This folder is the handoff point for future AI agents working on Wurmkickflip. R
 2. [`architecture.md`](architecture.md) - current app, scene, policy runtime, and training scaffold.
 3. [`evolution-lab.md`](evolution-lab.md) - creature evolution, dynamic environments, and skateboarding objective.
 4. [`policy-contract.md`](policy-contract.md) - source-of-truth observation/action contract that must stay aligned across TypeScript, Python, and exported metadata.
-5. [`agent-handoff.md`](agent-handoff.md) - rules and verification checklist for future agents.
-6. [`backlog.md`](backlog.md) - prioritized task board for next implementation passes.
+5. [`replay-artifacts.md`](replay-artifacts.md) - source-of-truth replay artifact shape for skateboard task inspection.
+6. [`agent-handoff.md`](agent-handoff.md) - rules and verification checklist for future agents.
+7. [`backlog.md`](backlog.md) - prioritized task board for next implementation passes.
 
 ## Current Project Status
 

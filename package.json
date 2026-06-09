@@ -10,8 +10,9 @@
     "verify:contract": "node scripts/verify-policy-contract.mjs",
     "verify:evolution": "tsx scripts/verify-evolution.ts",
     "verify:parity": "tsx scripts/verify-observation-parity.ts",
+    "verify:replay": "tsx scripts/verify-replay-schema.ts",
     "verify:runtime": "tsx scripts/verify-policy-runtime.ts",
-    "check": "npm run verify:configs && npm run verify:contract && npm run verify:parity && npm run verify:runtime && npm run verify:evolution && npm run build",
+    "check": "npm run verify:configs && npm run verify:contract && npm run verify:parity && npm run verify:runtime && npm run verify:evolution && npm run verify:replay && npm run build",
     "preview": "vite preview"
   },
   "devDependencies": {
