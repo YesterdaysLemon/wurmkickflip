@@ -3,6 +3,7 @@
 ## P0 - Policy Integration And Contract Safety
 
 - Add typed creature genome and dynamic skateboard environment config layer. Done for first sample configs.
+- Validate creature and environment config JSON before runtime use. Done in `npm run verify:configs`.
 - Add automated policy contract verification for TypeScript, Python, metadata, and docs. Done in `npm run verify:contract`.
 - Add shared observation layout tests that compare browser `snapshotToObservation` against Python `_observe` for the same fixture. Done in `npm run verify:parity`.
 - Train a short PPO smoke-test policy and export `wurmkickflip_policy.onnx`. Done locally with ignored `ppo-smoke-v1` artifacts.

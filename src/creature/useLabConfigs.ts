@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import { validateCreatureGenome, validateEnvironmentConfig } from './configValidation'
 import type { CreatureGenome, EnvironmentConfig } from './types'
 
 export type LabConfigs = {
@@ -19,19 +20,24 @@ export function useLabConfigs(): LabConfigs {
   useEffect(() => {
     let mounted = true
 
-    Promise.all([
-      fetch('/configs/creatures/segmented-starter.json').then((response) => response.json() as Promise<CreatureGenome>),
-      fetch('/configs/environments/adaptive-skate-terrarium.json').then(
-        (response) => response.json() as Promise<EnvironmentConfig>,
-      ),
-    ])
+    Promise.all([fetchJson('/configs/creatures/segmented-starter.json'), fetchJson('/configs/environments/adaptive-skate-terrarium.json')])
       .then(([creature, environment]) => {
+        const creatureValidation = validateCreatureGenome(creature)
+        const environmentValidation = validateEnvironmentConfig(environment)
+        if (!creatureValidation.ok || !environmentValidation.ok) {
+          const errors = [
+            ...(creatureValidation.ok ? [] : creatureValidation.errors),
+            ...(environmentValidation.ok ? [] : environmentValidation.errors),
+          ]
+          throw new Error(`Invalid lab config: ${errors.slice(0, 3).join(' ')}`)
+        }
+
         if (mounted) {
           setConfigs({
-            creature,
-            environment,
+            creature: creatureValidation.value,
+            environment: environmentValidation.value,
             status: 'ready',
-            message: `Loaded ${creature.name} in ${environment.name}.`,
+            message: `Loaded ${creatureValidation.value.name} in ${environmentValidation.value.name}.`,
           })
         }
       })
@@ -52,4 +58,12 @@ export function useLabConfigs(): LabConfigs {
   }, [])
 
   return configs
+}
+
+async function fetchJson(path: string): Promise<unknown> {
+  const response = await fetch(path)
+  if (!response.ok) {
+    throw new Error(`Failed to load ${path}: ${response.status}`)
+  }
+  return response.json() as Promise<unknown>
 }
