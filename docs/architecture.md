@@ -55,9 +55,9 @@ Load order:
 
 1. Fetch `public/models/wurmkickflip_policy.meta.json`.
 2. Validate metadata shapes against TypeScript constants.
-3. Check for `public/models/wurmkickflip_policy.onnx`.
-4. Use ONNX Runtime WebGPU when `navigator.gpu` exists.
-5. Use ONNX Runtime WASM when WebGPU is unavailable.
+3. Use scripted control by default so the interactive physics lab starts quickly.
+4. If `?policyBackend=webgpu` or `?policyBackend=wasm` is present, check for `public/models/wurmkickflip_policy.onnx`.
+5. Load ONNX Runtime with the requested provider.
 6. Fall back to scripted muscle waves if metadata/model load or inference setup fails.
 
 For validation, append `?policyBackend=wasm` or `?policyBackend=webgpu` to the local app URL to force a specific ONNX execution provider when the model exists.

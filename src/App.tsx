@@ -105,7 +105,6 @@ export function App() {
                 onChange={(event) => {
                   setSelectedCreatureId(event.target.value)
                   policyRunner.reset()
-                  setResetNonce((value) => value + 1)
                 }}
               >
                 {labConfigs.creatures.map((creature) => (
@@ -122,7 +121,6 @@ export function App() {
                 onChange={(event) => {
                   setSelectedEnvironmentId(event.target.value)
                   policyRunner.reset()
-                  setResetNonce((value) => value + 1)
                 }}
               >
                 {labConfigs.environments.map((environment) => (

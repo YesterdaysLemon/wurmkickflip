@@ -8,22 +8,21 @@ import {
   Physics,
   type RapierRigidBody,
   RigidBody,
-  useSphericalJoint,
 } from '@react-three/rapier'
 import { createRef, useEffect, useMemo, useRef } from 'react'
 import type { RefObject } from 'react'
-import { Color, Euler, MathUtils, PCFShadowMap, Quaternion } from 'three'
+import { Color, MathUtils, PCFShadowMap } from 'three'
+import type { Mesh } from 'three'
+import { Vector3 } from 'three'
 import type { CreatureBodyPart, CreatureGenome, EnvironmentConfig, Vec3 } from '../creature/types'
 import { PolicyRunner } from '../policy/policyRunner'
-import { makeInitialAction, snapshotToObservation } from '../policy/simulationAdapter'
+import { makeInitialAction } from '../policy/simulationAdapter'
 import {
   ACTION_SIZE,
   POLICY_TIMESTEP,
   SEGMENT_COUNT,
   type PolicyAction,
   type PolicyStatus,
-  type SegmentSnapshot,
-  type SimulationSnapshot,
   type ViewerMetrics,
 } from '../policy/types'
 
@@ -87,9 +86,8 @@ export function WurmkickflipScene({
       <ambientLight intensity={0.58} />
       <directionalLight castShadow intensity={2.15} position={[4, 7, 3]} shadow-mapSize={[2048, 2048]} />
       <Environment preset="park" />
-      <Physics gravity={gravity} paused={!running} timeStep={POLICY_TIMESTEP}>
+      <Physics key={sceneKey} gravity={gravity} paused={!running} timeStep={POLICY_TIMESTEP}>
         <PhysicsLab
-          key={sceneKey}
           creature={creature}
           environmentConfig={environmentConfig}
           onMetrics={onMetrics}
@@ -118,11 +116,11 @@ type PhysicsLabProps = {
 
 function PhysicsLab({ creature, environmentConfig, onMetrics, policyRunner, running }: PhysicsLabProps) {
   const boardRef = useRef<RapierRigidBody>(null)
-  const pendingPolicy = useRef(false)
   const latestAction = useRef<PolicyAction>(makeInitialAction())
   const time = useRef(0)
   const distance = useRef(0)
   const reward = useRef(0)
+  const lastMetricsAt = useRef(0)
   const previousBoardX = useRef(environmentConfig?.skateboard.spawnPosition[0] ?? 1.1)
   const partRefs = usePartRefs(creature)
 
@@ -130,6 +128,7 @@ function PhysicsLab({ creature, environmentConfig, onMetrics, policyRunner, runn
     time.current = 0
     distance.current = 0
     reward.current = 0
+    lastMetricsAt.current = 0
     previousBoardX.current = environmentConfig?.skateboard.spawnPosition[0] ?? 1.1
     latestAction.current = makeInitialAction()
     policyRunner.reset()
@@ -142,21 +141,10 @@ function PhysicsLab({ creature, environmentConfig, onMetrics, policyRunner, runn
 
     const delta = Math.min(rawDelta, 1 / 30)
     time.current += delta
-    const snapshot = snapshotFromPhysics(boardRef.current, partRefs, latestAction.current, time.current)
-
-    if (!pendingPolicy.current) {
-      pendingPolicy.current = true
-      policyRunner
-        .run(snapshotToObservation(snapshot))
-        .then((action) => {
-          latestAction.current = action
-        })
-        .finally(() => {
-          pendingPolicy.current = false
-        })
-    }
+    latestAction.current = makeCreatureAction(creature, time.current)
 
     const contactRatio = computeContactRatio(boardRef.current, partRefs, creature, environmentConfig)
+    applyJointSprings(partRefs, creature)
     applyCreatureDrive(partRefs, creature, latestAction.current, time.current, contactRatio)
     applyBoardAssist(boardRef.current, latestAction.current, contactRatio, environmentConfig)
 
@@ -169,6 +157,11 @@ function PhysicsLab({ creature, environmentConfig, onMetrics, policyRunner, runn
     const energy = latestAction.current.reduce((total, value) => total + Math.abs(value), 0) / ACTION_SIZE
     const boardSpeed = Math.max(0, boardVelocity?.x ?? 0)
     reward.current = distance.current * 0.9 + contactRatio * 3 + boardSpeed * 0.6 - energy * 0.35
+
+    if (time.current - lastMetricsAt.current < 0.1) {
+      return
+    }
+    lastMetricsAt.current = time.current
 
     onMetrics({
       time: time.current,
@@ -224,10 +217,11 @@ function ProceduralTerrain({ environmentConfig }: { environmentConfig: Environme
             position={obstacle.position}
           />
         ))}
-        <CuboidCollider args={[4.6, 0.75, 0.06]} position={[0, 0.62, -2.15]} />
-        <CuboidCollider args={[4.6, 0.75, 0.06]} position={[0, 0.62, 2.15]} />
-        <CuboidCollider args={[0.06, 0.75, 2.15]} position={[-4.6, 0.62, 0]} />
-        <CuboidCollider args={[0.06, 0.75, 2.15]} position={[4.6, 0.62, 0]} />
+        <CuboidCollider args={[4.6, 1.25, 0.12]} position={[0, 1.05, -2.15]} />
+        <CuboidCollider args={[4.6, 1.25, 0.12]} position={[0, 1.05, 2.15]} />
+        <CuboidCollider args={[0.12, 1.25, 2.15]} position={[-4.6, 1.05, 0]} />
+        <CuboidCollider args={[0.12, 1.25, 2.15]} position={[4.6, 1.05, 0]} />
+        <CuboidCollider args={[4.6, 0.08, 2.15]} position={[0, 2.32, 0]} />
       </RigidBody>
 
       <group rotation={[0, 0, slope * 0.08]}>
@@ -261,6 +255,7 @@ function ProceduralTerrain({ environmentConfig }: { environmentConfig: Environme
       <GlassPanel position={[0, 0.72, 2.15]} scale={[9.2, 1.6, 0.04]} />
       <GlassPanel position={[-4.6, 0.72, 0]} scale={[0.04, 1.6, 4.3]} />
       <GlassPanel position={[4.6, 0.72, 0]} scale={[0.04, 1.6, 4.3]} />
+      <GlassPanel position={[0, 2.32, 0]} scale={[9.2, 0.04, 4.3]} />
     </group>
   )
 }
@@ -385,48 +380,52 @@ function PhysicsCreature({
           </mesh>
         </RigidBody>
       ))}
-      {creature.morphology.joints.map((joint) => {
-        const parent = creature.morphology.bodyParts.find((part) => part.id === joint.parentId)
-        const child = creature.morphology.bodyParts.find((part) => part.id === joint.childId)
-        if (!parent || !child) return null
-        return (
-          <CreatureJointConstraint
-            child={child}
-            childRef={partRefs[joint.childId]}
-            jointAnchor={joint.anchor}
-            jointId={joint.id}
-            key={joint.id}
-            parent={parent}
-            parentRef={partRefs[joint.parentId]}
-          />
-        )
-      })}
       {creature.morphology.joints.map((joint) => (
-        <mesh castShadow key={`marker-${joint.id}`} position={joint.anchor}>
-          <sphereGeometry args={[0.045, 12, 12]} />
-          <meshStandardMaterial color="#202725" roughness={0.45} />
-        </mesh>
+        <CreatureConnector
+          childRef={partRefs[joint.childId]}
+          key={`connector-${joint.id}`}
+          parentRef={partRefs[joint.parentId]}
+        />
       ))}
     </group>
   )
 }
 
-function CreatureJointConstraint({
-  child,
+function CreatureConnector({
   childRef,
-  jointAnchor,
-  parent,
   parentRef,
 }: {
-  child: CreatureBodyPart
   childRef: RefObject<RapierRigidBody>
-  jointAnchor: Vec3
-  jointId: string
-  parent: CreatureBodyPart
   parentRef: RefObject<RapierRigidBody>
 }) {
-  useSphericalJoint(parentRef, childRef, [subtractVec3(jointAnchor, parent.position), subtractVec3(jointAnchor, child.position)])
-  return null
+  const meshRef = useRef<Mesh>(null)
+
+  useFrame(() => {
+    const mesh = meshRef.current
+    const parent = parentRef.current?.translation()
+    const child = childRef.current?.translation()
+    if (!mesh || !parent || !child) return
+
+    const start = new Vector3(parent.x, parent.y, parent.z)
+    const end = new Vector3(child.x, child.y, child.z)
+    const delta = end.clone().sub(start)
+    const length = delta.length()
+    if (length < 0.01) {
+      mesh.visible = false
+      return
+    }
+    mesh.visible = true
+    mesh.position.copy(start.add(end).multiplyScalar(0.5))
+    mesh.scale.set(1, length, 1)
+    mesh.quaternion.setFromUnitVectors(new Vector3(0, 1, 0), delta.normalize())
+  })
+
+  return (
+    <mesh castShadow ref={meshRef}>
+      <cylinderGeometry args={[0.035, 0.035, 1, 10]} />
+      <meshStandardMaterial color="#26342e" roughness={0.58} />
+    </mesh>
+  )
 }
 
 function PartCollider({ part }: { part: CreatureBodyPart }) {
@@ -517,6 +516,56 @@ function applyCreatureDrive(
   })
 }
 
+function makeCreatureAction(creature: CreatureGenome, time: number): PolicyAction {
+  const action = makeInitialAction()
+  const amplitude = creature.controller.parameters.waveAmplitude ?? 0.55
+  const frequency = creature.controller.parameters.waveFrequency ?? 1.6
+  const phaseOffset = creature.controller.parameters.phaseOffset ?? 0.75
+  const forwardBias = creature.controller.parameters.forwardBias ?? 0.1
+
+  for (let index = 0; index < ACTION_SIZE / 2; index += 1) {
+    const phase = time * frequency * Math.PI * 2 - index * phaseOffset
+    const drive = MathUtils.clamp(Math.sin(phase) * amplitude + forwardBias, -1, 1)
+    action[index * 2] = drive
+    action[index * 2 + 1] = -drive
+  }
+
+  return action
+}
+
+function applyJointSprings(partRefs: Record<string, RefObject<RapierRigidBody>>, creature: CreatureGenome) {
+  for (const joint of creature.morphology.joints) {
+    const parentPart = creature.morphology.bodyParts.find((part) => part.id === joint.parentId)
+    const childPart = creature.morphology.bodyParts.find((part) => part.id === joint.childId)
+    const parent = partRefs[joint.parentId]?.current
+    const child = partRefs[joint.childId]?.current
+    if (!parentPart || !childPart || !parent || !child) continue
+
+    const parentPosition = parent.translation()
+    const childPosition = child.translation()
+    const current = new Vector3(
+      childPosition.x - parentPosition.x,
+      childPosition.y - parentPosition.y,
+      childPosition.z - parentPosition.z,
+    )
+    const currentLength = current.length()
+    if (currentLength < 0.001) continue
+
+    const rest = new Vector3(
+      childPart.position[0] - parentPart.position[0],
+      childPart.position[1] - parentPart.position[1],
+      childPart.position[2] - parentPart.position[2],
+    ).length()
+    const error = MathUtils.clamp(currentLength - rest, -0.35, 0.35)
+    const direction = current.normalize()
+    const strength = 0.018 + joint.stiffness * 0.0009
+    const impulse = direction.multiplyScalar(error * strength)
+
+    child.applyImpulse({ x: -impulse.x, y: -impulse.y, z: -impulse.z }, true)
+    parent.applyImpulse({ x: impulse.x, y: impulse.y, z: impulse.z }, true)
+  }
+}
+
 function applyBoardAssist(
   board: RapierRigidBody | null,
   action: PolicyAction,
@@ -553,62 +602,6 @@ function computeContactRatio(
   return contacts / Math.max(1, creature.morphology.bodyParts.length)
 }
 
-function snapshotFromPhysics(
-  board: RapierRigidBody | null,
-  partRefs: Record<string, RefObject<RapierRigidBody>>,
-  previousAction: PolicyAction,
-  time: number,
-): SimulationSnapshot {
-  const boardPosition = board?.translation()
-  const boardVelocity = board?.linvel()
-  const boardRotation = bodyEuler(board)
-  const bodies = Object.values(partRefs).map((ref) => ref.current).filter(Boolean)
-  const segments: SegmentSnapshot[] = []
-
-  for (let index = 0; index < SEGMENT_COUNT; index += 1) {
-    const body = bodies[index % Math.max(1, bodies.length)]
-    const position = body?.translation()
-    const velocity = body?.linvel()
-    const rotation = bodyEuler(body ?? null)
-    segments.push({
-      x: position?.x ?? -1 + index * 0.08,
-      y: position?.y ?? 0.65,
-      z: position?.z ?? 0,
-      vx: velocity?.x ?? 0,
-      vy: velocity?.y ?? 0,
-      vz: velocity?.z ?? 0,
-      pitch: rotation.x,
-      yaw: rotation.y,
-    })
-  }
-
-  return {
-    time,
-    board: {
-      x: boardPosition?.x ?? 0,
-      y: boardPosition?.y ?? 0.45,
-      z: boardPosition?.z ?? 0,
-      vx: boardVelocity?.x ?? 0,
-      vy: boardVelocity?.y ?? 0,
-      vz: boardVelocity?.z ?? 0,
-      pitch: boardRotation.x,
-      roll: boardRotation.z,
-      yaw: boardRotation.y,
-    },
-    segments,
-    contactRatio: 0,
-    targetDirection: [1, 0, 0],
-    previousAction,
-  }
-}
-
-function bodyEuler(body: RapierRigidBody | null): Euler {
-  if (!body) return new Euler()
-  const rotation = body.rotation()
-  const quaternion = new Quaternion(rotation.x, rotation.y, rotation.z, rotation.w)
-  return new Euler().setFromQuaternion(quaternion)
-}
-
 function GlassPanel({ position, scale }: { position: Vec3; scale: Vec3 }) {
   return (
     <mesh position={position} scale={scale}>
@@ -620,10 +613,6 @@ function GlassPanel({ position, scale }: { position: Vec3; scale: Vec3 }) {
 
 function addVec3(a: Vec3, b: Vec3): Vec3 {
   return [a[0] + b[0], a[1] + b[1], a[2] + b[2]]
-}
-
-function subtractVec3(a: Vec3, b: Vec3): Vec3 {
-  return [a[0] - b[0], a[1] - b[1], a[2] - b[2]]
 }
 
 function seededNoise(seed: number, value: number): number {

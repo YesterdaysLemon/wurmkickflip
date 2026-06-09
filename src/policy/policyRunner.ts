@@ -11,6 +11,7 @@ import {
 type OrtModule = typeof import('onnxruntime-web/webgpu')
 type OrtSession = Awaited<ReturnType<OrtModule['InferenceSession']['create']>>
 type OnnxProvider = 'webgpu' | 'wasm'
+type RequestedProvider = OnnxProvider | 'scripted'
 
 export class PolicyRunner {
   private status: PolicyStatus = {
@@ -63,6 +64,16 @@ export class PolicyRunner {
       return this.status
     }
 
+    const provider = getRequestedProvider()
+    if (provider === 'scripted') {
+      this.status = {
+        backend: 'scripted',
+        message: 'Using scripted control. Add ?policyBackend=webgpu or ?policyBackend=wasm to load ONNX.',
+        modelVersion: meta.modelVersion,
+      }
+      return this.status
+    }
+
     try {
       const modelResponse = await fetch(meta.modelPath, { method: 'HEAD' })
       const contentType = modelResponse.headers.get('content-type') ?? ''
@@ -73,7 +84,6 @@ export class PolicyRunner {
       const ort = await import('onnxruntime-web/webgpu')
       this.ort = ort
 
-      const provider = getRequestedProvider()
       this.session = await ort.InferenceSession.create(meta.modelPath, {
         executionProviders: [provider],
       })
@@ -136,7 +146,7 @@ export function sanitizePolicyAction(data: ArrayLike<number>): PolicyAction | nu
   return action
 }
 
-function getRequestedProvider(): OnnxProvider {
+function getRequestedProvider(): RequestedProvider {
   const params = typeof window !== 'undefined' ? new URLSearchParams(window.location.search) : null
   const forced = params?.get('policyBackend')
   if (forced === 'wasm') {
@@ -145,7 +155,9 @@ function getRequestedProvider(): OnnxProvider {
   if (forced === 'webgpu') {
     return 'webgpu'
   }
+  if (forced === 'scripted') {
+    return 'scripted'
+  }
 
-  const webgpuAvailable = typeof navigator !== 'undefined' && 'gpu' in navigator
-  return webgpuAvailable ? 'webgpu' : 'wasm'
+  return 'scripted'
 }
