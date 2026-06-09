@@ -43,9 +43,9 @@ Important dynamic parameters include gravity, friction, drag, restitution, slope
 
 ## Current Scenario
 
-The current browser simulation is a Rapier-backed inspection sandbox. It creates dynamic rigid bodies for the skateboard and selected creature body parts, connects creature parts with joint constraints, drives the bodies with scripted/ONNX-compatible motor impulses, and exposes state for policy inference and UI metrics.
+The current browser simulation is a Rapier-backed inspection sandbox. It creates dynamic rigid bodies for the skateboard and selected creature body parts, keeps creature parts aligned with spring impulses plus hard separation caps, drives the bodies with scripted/ONNX-compatible motor impulses, and exposes state for policy inference and UI metrics.
 
-Terrain is procedurally generated from the selected environment seed and parameters. Visual tiles are lightweight, while the physical world uses a base collider, generated obstacle colliders, terrarium walls, and dynamic board/creature bodies. Future work should improve Rapier/MuJoCo parity without breaking the policy contract.
+Terrain is procedurally generated from the selected environment seed and parameters. Visual tiles are lightweight, while the physical world uses a base collider, generated obstacle colliders, terrarium walls, a top collider, and dynamic board/creature bodies. Segment and board velocities are capped each frame to keep unstable controllers inspectable inside the terrarium. Future work should improve Rapier/MuJoCo parity without breaking the policy contract.
 
 ## Policy Runtime
 

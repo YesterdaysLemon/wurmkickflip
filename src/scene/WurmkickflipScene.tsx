@@ -53,6 +53,26 @@ type Obstacle = {
 const deckColor = new Color('#70432f')
 const truckColor = new Color('#aeb5b0')
 const wheelColor = new Color('#202725')
+const segmentMotionCap = {
+  bounds: { minX: -4.12, maxX: 4.12, minY: 0.04, maxY: 2.02, minZ: -1.78, maxZ: 1.78 },
+  maxSpeed: 3.2,
+  maxSpin: 5.5,
+  maxJointStretch: 1.42,
+}
+const boardMotionCap = {
+  bounds: { minX: -4.1, maxX: 4.1, minY: 0.08, maxY: 1.6, minZ: -1.65, maxZ: 1.65 },
+  maxSpeed: 4.2,
+  maxSpin: 6,
+}
+
+type MotionBounds = {
+  minX: number
+  maxX: number
+  minY: number
+  maxY: number
+  minZ: number
+  maxZ: number
+}
 
 export function WurmkickflipScene({
   policyRunner,
@@ -147,6 +167,8 @@ function PhysicsLab({ creature, environmentConfig, onMetrics, policyRunner, runn
     applyJointSprings(partRefs, creature)
     applyCreatureDrive(partRefs, creature, latestAction.current, time.current, contactRatio)
     applyBoardAssist(boardRef.current, latestAction.current, contactRatio, environmentConfig)
+    capCreatureMotion(partRefs, creature)
+    capRigidBodyMotion(boardRef.current, boardMotionCap.bounds, boardMotionCap.maxSpeed, boardMotionCap.maxSpin)
 
     const boardPosition = boardRef.current?.translation()
     const boardVelocity = boardRef.current?.linvel()
@@ -564,6 +586,111 @@ function applyJointSprings(partRefs: Record<string, RefObject<RapierRigidBody>>,
     child.applyImpulse({ x: -impulse.x, y: -impulse.y, z: -impulse.z }, true)
     parent.applyImpulse({ x: impulse.x, y: impulse.y, z: impulse.z }, true)
   }
+}
+
+function capCreatureMotion(partRefs: Record<string, RefObject<RapierRigidBody>>, creature: CreatureGenome) {
+  for (const part of creature.morphology.bodyParts) {
+    capRigidBodyMotion(partRefs[part.id]?.current ?? null, segmentMotionCap.bounds, segmentMotionCap.maxSpeed, segmentMotionCap.maxSpin)
+  }
+  capJointSeparation(partRefs, creature)
+  for (const part of creature.morphology.bodyParts) {
+    capRigidBodyMotion(partRefs[part.id]?.current ?? null, segmentMotionCap.bounds, segmentMotionCap.maxSpeed, segmentMotionCap.maxSpin)
+  }
+}
+
+function capRigidBodyMotion(body: RapierRigidBody | null, bounds: MotionBounds, maxSpeed: number, maxSpin: number) {
+  if (!body) return
+
+  const linvel = body.linvel()
+  const speed = Math.hypot(linvel.x, linvel.y, linvel.z)
+  let nextLinvel = linvel
+  if (speed > maxSpeed) {
+    const scale = maxSpeed / speed
+    nextLinvel = { x: linvel.x * scale, y: linvel.y * scale, z: linvel.z * scale }
+    body.setLinvel(nextLinvel, true)
+  }
+
+  const angvel = body.angvel()
+  const spin = Math.hypot(angvel.x, angvel.y, angvel.z)
+  if (spin > maxSpin) {
+    const scale = maxSpin / spin
+    body.setAngvel({ x: angvel.x * scale, y: angvel.y * scale, z: angvel.z * scale }, true)
+  }
+
+  const position = body.translation()
+  const clamped = {
+    x: MathUtils.clamp(position.x, bounds.minX, bounds.maxX),
+    y: MathUtils.clamp(position.y, bounds.minY, bounds.maxY),
+    z: MathUtils.clamp(position.z, bounds.minZ, bounds.maxZ),
+  }
+  if (clamped.x === position.x && clamped.y === position.y && clamped.z === position.z) return
+
+  body.setTranslation(clamped, true)
+  body.setLinvel(
+    {
+      x: dampVelocityAtBounds(nextLinvel.x, position.x, clamped.x),
+      y: dampVelocityAtBounds(nextLinvel.y, position.y, clamped.y),
+      z: dampVelocityAtBounds(nextLinvel.z, position.z, clamped.z),
+    },
+    true,
+  )
+}
+
+function dampVelocityAtBounds(velocity: number, originalPosition: number, clampedPosition: number) {
+  return originalPosition === clampedPosition ? velocity : velocity * -0.18
+}
+
+function capJointSeparation(partRefs: Record<string, RefObject<RapierRigidBody>>, creature: CreatureGenome) {
+  for (const joint of creature.morphology.joints) {
+    const parentPart = creature.morphology.bodyParts.find((part) => part.id === joint.parentId)
+    const childPart = creature.morphology.bodyParts.find((part) => part.id === joint.childId)
+    const parent = partRefs[joint.parentId]?.current
+    const child = partRefs[joint.childId]?.current
+    if (!parentPart || !childPart || !parent || !child) continue
+
+    const rest = new Vector3(
+      childPart.position[0] - parentPart.position[0],
+      childPart.position[1] - parentPart.position[1],
+      childPart.position[2] - parentPart.position[2],
+    ).length()
+    const maxDistance = Math.max(rest * segmentMotionCap.maxJointStretch, rest + 0.2)
+
+    const parentPosition = parent.translation()
+    const childPosition = child.translation()
+    const offset = new Vector3(
+      childPosition.x - parentPosition.x,
+      childPosition.y - parentPosition.y,
+      childPosition.z - parentPosition.z,
+    )
+    const distance = offset.length()
+    if (distance <= maxDistance || distance < 0.001) continue
+
+    const correction = offset.normalize().multiplyScalar((distance - maxDistance) * 0.5)
+    parent.setTranslation(
+      {
+        x: parentPosition.x + correction.x,
+        y: parentPosition.y + correction.y,
+        z: parentPosition.z + correction.z,
+      },
+      true,
+    )
+    child.setTranslation(
+      {
+        x: childPosition.x - correction.x,
+        y: childPosition.y - correction.y,
+        z: childPosition.z - correction.z,
+      },
+      true,
+    )
+    dampPairVelocity(parent, child)
+  }
+}
+
+function dampPairVelocity(parent: RapierRigidBody, child: RapierRigidBody) {
+  const parentVelocity = parent.linvel()
+  const childVelocity = child.linvel()
+  parent.setLinvel({ x: parentVelocity.x * 0.72, y: parentVelocity.y * 0.72, z: parentVelocity.z * 0.72 }, true)
+  child.setLinvel({ x: childVelocity.x * 0.72, y: childVelocity.y * 0.72, z: childVelocity.z * 0.72 }, true)
 }
 
 function applyBoardAssist(

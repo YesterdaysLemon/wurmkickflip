@@ -62,11 +62,17 @@ When a local ONNX artifact exists, force browser providers with:
 - `http://127.0.0.1:5173/?policyBackend=webgpu`
 - `http://127.0.0.1:5173/?policyBackend=wasm`
 
+Runtime modes:
+
+- `scripted` is the default deterministic muscle-wave controller. It is fastest to boot and best for debugging scene physics, but it is not learned behavior.
+- `ONNX + wasm` runs the exported neural policy on the CPU through WebAssembly. It is the most broadly compatible ONNX path, but can use more CPU and run slower.
+- `ONNX + webgpu` runs the exported neural policy on the GPU. It should scale better for larger models, but browser/GPU support and shader warm-up can make it less predictable during development.
+
 ## Architecture
 
 - Browser scene: procedural terrarium, skateboard, trucks, wheels, and worm visual wrapper.
 - Policy contract: 118 float observations to 32 dorsal/ventral muscle activations at 60 Hz.
-- Runtime: `onnxruntime-web/webgpu` when available, with WASM/scripted fallback.
+- Runtime: scripted control by default, with ONNX Runtime Web available through explicit WebGPU or WASM query parameters.
 - Training: Gymnasium + Stable Baselines3 PPO surrogate environment, ready to be replaced by a MuJoCo model behind the same observation/action contract.
 
 ## Documentation
