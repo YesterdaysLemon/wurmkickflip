@@ -1,0 +1,18 @@
+[project]
+name = "wurmkickflip-rl"
+version = "0.1.0"
+description = "Offline RL training scaffold for the Wurmkickflip browser policy."
+requires-python = ">=3.11,<3.12"
+dependencies = [
+  "gymnasium>=1.2.0",
+  "numpy>=2.1.0",
+  "onnx>=1.17.0",
+  "stable-baselines3>=2.7.0",
+  "torch>=2.5.0",
+]
+
+[tool.uv]
+package = true
+
+[tool.setuptools.packages.find]
+where = ["."]

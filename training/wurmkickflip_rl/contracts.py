@@ -1,0 +1,6 @@
+from __future__ import annotations
+
+SEGMENT_COUNT = 16
+ACTION_SIZE = SEGMENT_COUNT * 2
+OBSERVATION_SIZE = 118
+POLICY_TIMESTEP = 1.0 / 60.0

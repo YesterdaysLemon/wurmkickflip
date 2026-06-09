@@ -1,0 +1,290 @@
+:root {
+  --ink: #16201c;
+  --muted: #607068;
+  --panel: rgba(248, 250, 246, 0.92);
+  --panel-strong: #ffffff;
+  --line: rgba(43, 64, 54, 0.16);
+  --accent: #c74c38;
+  --accent-2: #2e8c74;
+  --sand: #d8ba88;
+  --leaf: #5f926f;
+  --shadow: rgba(28, 39, 33, 0.18) 0 18px 48px;
+  font-family:
+    Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  color: var(--ink);
+  background: #dbe8df;
+  font-synthesis: none;
+  text-rendering: optimizeLegibility;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#app {
+  width: 100%;
+  min-width: 320px;
+  height: 100%;
+  min-height: 100svh;
+  margin: 0;
+}
+
+button {
+  font: inherit;
+}
+
+.app-shell {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 360px;
+  min-height: 100svh;
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.48), rgba(255, 255, 255, 0)),
+    #dbe8df;
+}
+
+.sim-stage {
+  position: relative;
+  min-height: 100svh;
+}
+
+.control-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+  min-height: 100svh;
+  padding: 22px;
+  border-left: 1px solid var(--line);
+  background: var(--panel);
+  box-shadow: var(--shadow);
+  backdrop-filter: blur(20px);
+  overflow-y: auto;
+}
+
+.panel-header {
+  display: flex;
+  gap: 16px;
+  align-items: flex-start;
+  justify-content: space-between;
+}
+
+.eyebrow {
+  margin: 0 0 6px;
+  color: var(--accent-2);
+  font-size: 12px;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+h1,
+h2,
+p {
+  margin-block-start: 0;
+}
+
+h1 {
+  margin-block-end: 0;
+  font-size: 34px;
+  line-height: 1;
+  letter-spacing: 0;
+}
+
+h2 {
+  margin-block-end: 8px;
+  font-size: 15px;
+  line-height: 1.2;
+  letter-spacing: 0;
+}
+
+p {
+  color: var(--muted);
+  font-size: 14px;
+  line-height: 1.55;
+}
+
+.backend-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  max-width: 164px;
+  padding: 7px 9px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  color: var(--ink);
+  background: var(--panel-strong);
+  font-size: 12px;
+  font-weight: 800;
+  text-transform: uppercase;
+}
+
+.backend-onnx-webgpu {
+  color: #155f4c;
+  border-color: rgba(46, 140, 116, 0.34);
+  background: rgba(46, 140, 116, 0.12);
+}
+
+.backend-scripted {
+  color: #853d2d;
+  border-color: rgba(199, 76, 56, 0.32);
+  background: rgba(199, 76, 56, 0.1);
+}
+
+.actions {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+}
+
+.actions button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  min-height: 42px;
+  padding: 0 12px;
+  border: 1px solid rgba(22, 32, 28, 0.18);
+  border-radius: 8px;
+  color: var(--ink);
+  background: #fff;
+  cursor: pointer;
+}
+
+.actions button:hover {
+  border-color: rgba(22, 32, 28, 0.32);
+  background: #f7f7f2;
+}
+
+.metric-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+}
+
+.metric-card,
+.readout {
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.74);
+}
+
+.metric-card {
+  min-height: 76px;
+  padding: 13px;
+}
+
+.metric-card span {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 800;
+  text-transform: uppercase;
+}
+
+.metric-card strong {
+  display: block;
+  margin-top: 10px;
+  font-size: 24px;
+  line-height: 1;
+}
+
+.readout {
+  padding: 15px;
+}
+
+.readout-title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.readout-title h2 {
+  margin: 0;
+}
+
+.muscle-grid {
+  display: grid;
+  grid-template-columns: repeat(8, minmax(0, 1fr));
+  gap: 8px;
+  margin-top: 14px;
+}
+
+.muscle-cell {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 5px;
+}
+
+.muscle-cell span {
+  color: var(--muted);
+  font-size: 10px;
+  font-weight: 800;
+}
+
+.muscle-cell div {
+  position: relative;
+  width: 100%;
+  height: 54px;
+  border-radius: 6px;
+  background: linear-gradient(180deg, rgba(46, 140, 116, 0.12), rgba(199, 76, 56, 0.12));
+  overflow: hidden;
+}
+
+.muscle-cell i {
+  position: absolute;
+  inset: auto 4px 4px;
+  height: 46px;
+  border-radius: 5px;
+  background: linear-gradient(180deg, var(--accent), #f0b66d);
+  transform-origin: bottom center;
+}
+
+canvas {
+  display: block;
+}
+
+@media (max-width: 940px) {
+  .app-shell {
+    grid-template-columns: 1fr;
+  }
+
+  .sim-stage {
+    min-height: 62svh;
+  }
+
+  .control-panel {
+    min-height: auto;
+    border-top: 1px solid var(--line);
+    border-left: 0;
+  }
+}
+
+@media (max-width: 520px) {
+  .control-panel {
+    padding: 16px;
+  }
+
+  .panel-header,
+  .actions,
+  .metric-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .panel-header {
+    display: grid;
+  }
+
+  .backend-pill {
+    max-width: none;
+  }
+
+  .muscle-grid {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+  }
+}

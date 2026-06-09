@@ -1,0 +1,10 @@
+{
+  "modelVersion": "scripted-bootstrap-v0",
+  "modelPath": "/models/wurmkickflip_policy.onnx",
+  "observationSize": 118,
+  "actionSize": 32,
+  "timestep": 0.016666666666666666,
+  "trainingReward": null,
+  "observationMean": [],
+  "observationStd": []
+}
