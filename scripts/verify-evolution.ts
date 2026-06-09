@@ -44,7 +44,7 @@ const summary = JSON.parse(await readFile(outPath, 'utf8')) as {
   creatureId?: string
   environmentId?: string
   generationSummaries?: unknown[]
-  best?: { fitness?: number; controller?: Record<string, unknown> }
+  best?: { fitness?: number; controller?: Record<string, unknown>; fallReasons?: Record<string, number> }
 }
 
 const failures: string[] = []
@@ -60,6 +60,9 @@ if (typeof summary.best?.fitness !== 'number' || !Number.isFinite(summary.best.f
 }
 if (summary.best?.controller?.kind !== 'cpg') {
   failures.push('best controller kind must be cpg.')
+}
+if (!summary.best?.fallReasons || Object.keys(summary.best.fallReasons).length === 0) {
+  failures.push('best fallReasons must include at least one reason count.')
 }
 
 if (failures.length > 0) {

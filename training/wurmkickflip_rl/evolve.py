@@ -35,6 +35,7 @@ class CandidateScore:
     contact_ratio: float
     energy: float
     survival_time: float
+    fall_reasons: dict[str, int]
 
 
 def main() -> None:
@@ -174,31 +175,29 @@ def evaluate_candidate(
         contact_ratio=float(np.mean([score["contact_ratio"] for score in scores])),
         energy=float(np.mean([score["energy"] for score in scores])),
         survival_time=float(np.mean([score["survival_time"] for score in scores])),
+        fall_reasons=count_fall_reasons([str(score["fall_reason"]) for score in scores]),
     )
 
 
-def run_episode(candidate: ControllerCandidate, seed: int, environment: dict[str, Any]) -> dict[str, float]:
+def run_episode(candidate: ControllerCandidate, seed: int, environment: dict[str, Any]) -> dict[str, float | str]:
     env = WurmkickflipEnv()
     observation, _info = env.reset(seed=seed)
     total_reward = 0.0
-    total_energy = 0.0
-    total_contact = 0.0
     steps = min(int(episode_seconds(environment) / POLICY_TIMESTEP), 1200)
+    info: dict[str, float | str] = {}
 
     for step in range(steps):
         action = cpg_action(candidate, step)
         observation, reward, terminated, truncated, info = env.step(action)
         total_reward += float(reward)
-        total_energy += float(np.mean(np.abs(action)))
-        total_contact += float(info.get("contact_ratio", 0.0))
         if terminated or truncated:
             steps = step + 1
             break
 
-    distance = max(0.0, float(env.board[0] + 1.0))
-    contact_ratio = total_contact / max(steps, 1)
-    energy = total_energy / max(steps, 1)
-    survival_time = steps * POLICY_TIMESTEP
+    distance = float(info.get("distance", max(0.0, float(env.board[0] + 1.0))))
+    contact_ratio = float(info.get("average_contact_ratio", 0.0))
+    energy = float(info.get("energy_use", 0.0))
+    survival_time = float(info.get("survival_time", steps * POLICY_TIMESTEP))
     weights = environment.get("rewardWeights", {})
     fitness = (
         distance * float(weights.get("forwardProgress", 1.0))
@@ -216,6 +215,7 @@ def run_episode(candidate: ControllerCandidate, seed: int, environment: dict[str
         "contact_ratio": contact_ratio,
         "energy": energy,
         "survival_time": survival_time,
+        "fall_reason": str(info.get("fall_reason", "none")),
     }
 
 
@@ -249,6 +249,7 @@ def score_to_json(score: CandidateScore) -> dict[str, Any]:
         "contactRatio": round(score.contact_ratio, 6),
         "energy": round(score.energy, 6),
         "survivalTime": round(score.survival_time, 6),
+        "fallReasons": score.fall_reasons,
         "controller": {
             "kind": "cpg",
             "waveAmplitude": round(score.candidate.wave_amplitude, 6),
@@ -266,6 +267,13 @@ def episode_seconds(environment: dict[str, Any]) -> float:
 def string_value(value: dict[str, Any], key: str) -> str:
     item = value.get(key)
     return item if isinstance(item, str) else ""
+
+
+def count_fall_reasons(reasons: list[str]) -> dict[str, int]:
+    counts: dict[str, int] = {}
+    for reason in reasons:
+        counts[reason] = counts.get(reason, 0) + 1
+    return counts
 
 
 def clamp(value: float, lower: float, upper: float) -> float:

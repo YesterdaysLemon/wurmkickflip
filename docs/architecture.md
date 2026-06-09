@@ -73,6 +73,8 @@ Current files:
 - `training/wurmkickflip_rl/export_policy.py` exports the policy to ONNX and writes browser metadata.
 - `training/wurmkickflip_rl/evolve.py` runs a first CPG-controller evolution scaffold from the browser creature/environment configs and writes generation summary artifacts.
 
+The surrogate environment returns episode metrics in `info`: fall reason, current and average contact ratio, energy use, distance, and survival time. Evolution summaries consume those fields so future replay writers and trainers share metric names.
+
 Future training should expand the evolution layer to emit creature genomes, environment samples, and replay files.
 
 ## Data Flow
