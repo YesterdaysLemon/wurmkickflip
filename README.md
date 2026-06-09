@@ -34,6 +34,7 @@ uv sync
 uv run python -m wurmkickflip_rl.train --timesteps 200000
 uv run python -m wurmkickflip_rl.export_policy --checkpoint runs\ppo_wurmkickflip.zip
 uv run python -m wurmkickflip_rl.validate_onnx
+uv run python -m wurmkickflip_rl.evolve --generations 4 --population-size 12 --out runs\evolution\summary.json
 ```
 
 The exported policy writes:
@@ -42,6 +43,8 @@ The exported policy writes:
 - `public/models/wurmkickflip_policy.meta.json`
 
 The ONNX file and training checkpoints are local generated artifacts and are ignored by Git.
+
+The evolution scaffold reads the browser creature/environment configs and writes a local generation summary JSON under `training/runs/`.
 
 Smoke-test workflow:
 

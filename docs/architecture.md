@@ -71,8 +71,9 @@ Current files:
 - `training/wurmkickflip_rl/env.py` defines the current Gymnasium surrogate environment.
 - `training/wurmkickflip_rl/train.py` trains a Stable Baselines3 PPO policy.
 - `training/wurmkickflip_rl/export_policy.py` exports the policy to ONNX and writes browser metadata.
+- `training/wurmkickflip_rl/evolve.py` runs a first CPG-controller evolution scaffold from the browser creature/environment configs and writes generation summary artifacts.
 
-Future training should add a separate evolution layer that emits creature genomes, environment samples, generation summaries, and replay files.
+Future training should expand the evolution layer to emit creature genomes, environment samples, and replay files.
 
 ## Data Flow
 
