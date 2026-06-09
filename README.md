@@ -40,3 +40,7 @@ The exported policy writes:
 - Policy contract: 118 float observations to 32 dorsal/ventral muscle activations at 60 Hz.
 - Runtime: `onnxruntime-web/webgpu` when available, with WASM/scripted fallback.
 - Training: Gymnasium + Stable Baselines3 PPO surrogate environment, ready to be replaced by a MuJoCo model behind the same observation/action contract.
+
+## Documentation
+
+Agent-facing requirements, architecture notes, policy contract details, and the prioritized backlog live in [`docs/README.md`](docs/README.md).
