@@ -51,7 +51,12 @@ const summary = JSON.parse(await readFile(outPath, 'utf8')) as {
   creatureId?: string
   environmentId?: string
   generationSummaries?: unknown[]
-  best?: { fitness?: number; controller?: Record<string, unknown>; fallReasons?: Record<string, number> }
+  best?: {
+    fitness?: number
+    controller?: Record<string, unknown>
+    morphology?: Record<string, unknown>
+    fallReasons?: Record<string, number>
+  }
   bestCreaturePath?: string
 }
 const bestCreature = JSON.parse(await readFile(bestCreaturePath, 'utf8')) as unknown
@@ -71,6 +76,9 @@ if (typeof summary.best?.fitness !== 'number' || !Number.isFinite(summary.best.f
 if (summary.best?.controller?.kind !== 'cpg') {
   failures.push('best controller kind must be cpg.')
 }
+if (typeof summary.best?.morphology?.partScale !== 'number') {
+  failures.push('best morphology must include partScale.')
+}
 if (!summary.best?.fallReasons || Object.keys(summary.best.fallReasons).length === 0) {
   failures.push('best fallReasons must include at least one reason count.')
 }
@@ -86,6 +94,9 @@ if (!bestCreatureValidation.ok) {
   }
   if (typeof bestCreatureValidation.value.controller.parameters.evolutionFitness !== 'number') {
     failures.push('exported best creature must include evolutionFitness in controller parameters.')
+  }
+  if (typeof bestCreatureValidation.value.controller.parameters.partScale !== 'number') {
+    failures.push('exported best creature must include morphology scale parameters.')
   }
 }
 if (manifest.kind !== 'wurmkickflip.generatedCreatureManifest') {

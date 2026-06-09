@@ -69,14 +69,14 @@ The offline training workspace lives under `training/`.
 Current files:
 
 - `training/wurmkickflip_rl/contracts.py` mirrors browser policy constants.
-- `training/wurmkickflip_rl/env.py` defines the current Gymnasium surrogate environment.
+- `training/wurmkickflip_rl/env.py` defines the current Gymnasium surrogate environment and derives dynamics from browser-readable creature/environment JSON.
 - `training/wurmkickflip_rl/train.py` trains a Stable Baselines3 PPO policy.
 - `training/wurmkickflip_rl/export_policy.py` exports the policy to ONNX and writes browser metadata.
-- `training/wurmkickflip_rl/evolve.py` runs a first CPG-controller evolution scaffold from the browser creature/environment configs and writes generation summary artifacts.
+- `training/wurmkickflip_rl/evolve.py` evolves CPG controller parameters plus morphology scales from the browser creature/environment configs and writes generation summary artifacts or browser-loadable generated creatures.
 
 The surrogate environment returns episode metrics in `info`: fall reason, current and average contact ratio, energy use, distance, and survival time. Evolution summaries consume those fields so future replay writers and trainers share metric names.
 
-Future training should expand the evolution layer to emit creature genomes, environment samples, and replay files.
+The surrogate models morphology through body size, mass, material friction, body spread, joint stiffness, damping, and motor strength, and it samples terrain/skateboard/randomization fields from the environment config. It is not a Rapier clone; transfer quality should be improved by calibrating Python rollouts against browser behavior.
 
 ## Data Flow
 

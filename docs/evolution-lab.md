@@ -45,9 +45,11 @@ The first controller can be a central pattern generator with sinusoidal motor ou
 
 ## Current Export Path
 
-The current Python genetic algorithm mutates CPG controller parameters and evaluates candidates in the surrogate environment. It does not yet mutate morphology in a physically meaningful way, because the surrogate environment does not consume body-part dimensions, masses, or joint settings.
+The current Python genetic algorithm mutates CPG controller parameters plus morphology scales for part size, mass, material friction, body spread, joint stiffness, joint damping, and motor strength. The surrogate environment derives rollout dynamics from the same creature and environment JSON fields that the browser uses, so morphology is part of fitness rather than only display metadata.
 
-When run with `--export-creature` and `--export-manifest`, the GA writes the best controller back into a browser-readable creature genome. The emitted genome inherits morphology from the base creature and changes controller parameters plus evolution metrics. The browser treats `public/configs/evolved/manifest.json` as optional and appends generated creatures to the exhibit selector when the file exists.
+When run with `--export-creature` and `--export-manifest`, the GA writes the best controller and mutated morphology back into a browser-readable creature genome. The browser treats `public/configs/evolved/manifest.json` as optional and appends generated creatures to the exhibit selector when the file exists.
+
+This is still a transfer surrogate, not the browser's Rapier simulation. Keep improving calibration by comparing Python fitness trends against browser behavior before trusting long evolution runs.
 
 ## Frontend Role
 

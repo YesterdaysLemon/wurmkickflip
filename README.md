@@ -46,7 +46,7 @@ The exported policy writes:
 
 The ONNX file and training checkpoints are local generated artifacts and are ignored by Git.
 
-The evolution scaffold reads the browser creature/environment configs and writes a local generation summary JSON under `training/runs/`.
+The evolution scaffold reads the browser creature/environment configs and writes a local generation summary JSON under `training/runs/`. The Python surrogate consumes creature morphology, joint, material, skateboard, terrain, and randomization fields so evolved controller/body scales affect rollout fitness before export.
 To publish the current best evolved controller back into the local browser exhibit, export a generated creature config and manifest:
 
 ```powershell

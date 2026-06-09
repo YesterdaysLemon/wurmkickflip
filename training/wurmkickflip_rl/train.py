@@ -1,22 +1,27 @@
 from __future__ import annotations
 
 import argparse
+import json
 from pathlib import Path
 
 from stable_baselines3 import PPO
 from stable_baselines3.common.env_checker import check_env
 
-from .env import WurmkickflipEnv
+from .env import DEFAULT_CREATURE, DEFAULT_ENVIRONMENT, WurmkickflipEnv
 
 
 def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("--timesteps", type=int, default=200_000)
     parser.add_argument("--out", type=Path, default=Path("runs/ppo_wurmkickflip.zip"))
+    parser.add_argument("--creature", type=Path, default=DEFAULT_CREATURE)
+    parser.add_argument("--environment", type=Path, default=DEFAULT_ENVIRONMENT)
     parser.add_argument("--progress-bar", action="store_true")
     args = parser.parse_args()
 
-    env = WurmkickflipEnv()
+    creature = json.loads(args.creature.read_text(encoding="utf-8"))
+    environment = json.loads(args.environment.read_text(encoding="utf-8"))
+    env = WurmkickflipEnv(creature_config=creature, environment_config=environment)
     check_env(env, warn=True)
     model = PPO(
         "MlpPolicy",
