@@ -8,7 +8,8 @@
     "build": "tsc && vite build",
     "verify:contract": "node scripts/verify-policy-contract.mjs",
     "verify:parity": "tsx scripts/verify-observation-parity.ts",
-    "check": "npm run verify:contract && npm run verify:parity && npm run build",
+    "verify:runtime": "tsx scripts/verify-policy-runtime.ts",
+    "check": "npm run verify:contract && npm run verify:parity && npm run verify:runtime && npm run build",
     "preview": "vite preview"
   },
   "devDependencies": {

@@ -7,8 +7,8 @@
 - Add shared observation layout tests that compare browser `snapshotToObservation` against Python `_observe` for the same fixture. Done in `npm run verify:parity`.
 - Train a short PPO smoke-test policy and export `wurmkickflip_policy.onnx`. Done locally with ignored `ppo-smoke-v1` artifacts.
 - Validate ONNX inference in the browser with both WebGPU and WASM paths. Done locally for `ppo-smoke-v1`.
-- Add a policy output sanity check: length 32, finite values, clipped to `[-1, 1]`.
-- Record a deterministic scripted rollout fixture for regression checks.
+- Add a policy output sanity check: length 32, finite values, clipped to `[-1, 1]`. Done in `npm run verify:runtime`.
+- Record a deterministic scripted rollout fixture for regression checks. Done in `npm run verify:runtime`.
 - Fix any mismatch between Python observation semantics and browser observation semantics before longer training runs.
 
 ## P1 - Training Quality And Simulation Fidelity

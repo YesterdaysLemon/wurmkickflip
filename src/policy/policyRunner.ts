@@ -106,19 +106,34 @@ export class PolicyRunner {
     const tensor = new this.ort.Tensor('float32', observation, [1, OBSERVATION_SIZE])
     const output = await this.session.run({ [this.inputName]: tensor })
     const actionTensor = output[this.outputName]
-    const action = new Float32Array(ACTION_SIZE)
 
     if (!actionTensor || !(actionTensor.data instanceof Float32Array)) {
       return this.scripted.run(observation)
     }
 
-    action.set(actionTensor.data.slice(0, ACTION_SIZE))
-    return action
+    return sanitizePolicyAction(actionTensor.data) ?? this.scripted.run(observation)
   }
 
   reset() {
     this.scripted.reset()
   }
+}
+
+export function sanitizePolicyAction(data: ArrayLike<number>): PolicyAction | null {
+  if (data.length !== ACTION_SIZE) {
+    return null
+  }
+
+  const action = new Float32Array(ACTION_SIZE)
+  for (let index = 0; index < ACTION_SIZE; index += 1) {
+    const value = data[index]
+    if (!Number.isFinite(value)) {
+      return null
+    }
+    action[index] = Math.max(-1, Math.min(1, value))
+  }
+
+  return action
 }
 
 function getRequestedProvider(): OnnxProvider {
