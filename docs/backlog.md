@@ -2,6 +2,8 @@
 
 ## P0 - Policy Integration And Contract Safety
 
+No open P0 tasks. Keep contract and runtime verification green before longer training runs.
+
 - Add typed creature genome and dynamic skateboard environment config layer. Done for first sample configs.
 - Validate creature and environment config JSON before runtime use. Done in `npm run verify:configs`.
 - Add automated policy contract verification for TypeScript, Python, metadata, and docs. Done in `npm run verify:contract`.
@@ -10,7 +12,6 @@
 - Validate ONNX inference in the browser with both WebGPU and WASM paths. Done locally for `ppo-smoke-v1`.
 - Add a policy output sanity check: length 32, finite values, clipped to `[-1, 1]`. Done in `npm run verify:runtime`.
 - Record a deterministic scripted rollout fixture for regression checks. Done in `npm run verify:runtime`.
-- Fix any mismatch between Python observation semantics and browser observation semantics before longer training runs.
 
 ## P1 - Training Quality And Simulation Fidelity
 
@@ -47,3 +48,7 @@
 - ONNX Runtime WebGPU/WASM policy loader path.
 - Python 3.11 `uv` training scaffold with Gymnasium + Stable Baselines3.
 - Initial local Git commit.
+
+## Guardrails
+
+- Fix any mismatch between Python observation semantics and browser observation semantics before longer training runs.
