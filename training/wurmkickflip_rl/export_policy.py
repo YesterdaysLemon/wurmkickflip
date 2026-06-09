@@ -16,7 +16,13 @@ class OnnxablePolicy(th.nn.Module):
         self.policy = policy
 
     def forward(self, observation: th.Tensor) -> th.Tensor:
-        actions, _values, _log_prob = self.policy(observation, deterministic=True)
+        features = self.policy.extract_features(observation)
+        if self.policy.share_features_extractor:
+            latent_pi, _latent_vf = self.policy.mlp_extractor(features)
+        else:
+            pi_features, _vf_features = features
+            latent_pi = self.policy.mlp_extractor.forward_actor(pi_features)
+        actions = self.policy.action_net(latent_pi)
         return th.clamp(actions, -1.0, 1.0)
 
 
@@ -42,6 +48,7 @@ def main() -> None:
         output_names=["action"],
         dynamic_axes={"observation": {0: "batch"}, "action": {0: "batch"}},
         opset_version=17,
+        dynamo=False,
     )
 
     meta = {

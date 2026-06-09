@@ -7,7 +7,8 @@
     "dev": "vite",
     "build": "tsc && vite build",
     "verify:contract": "node scripts/verify-policy-contract.mjs",
-    "check": "npm run verify:contract && npm run build",
+    "verify:parity": "tsx scripts/verify-observation-parity.ts",
+    "check": "npm run verify:contract && npm run verify:parity && npm run build",
     "preview": "vite preview"
   },
   "devDependencies": {
@@ -15,6 +16,7 @@
     "@types/react-dom": "^19.2.3",
     "@types/three": "^0.184.1",
     "@vitejs/plugin-react": "^6.0.2",
+    "tsx": "^4.22.4",
     "typescript": "~6.0.2",
     "vite": "^8.0.12"
   },

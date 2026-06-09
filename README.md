@@ -33,12 +33,29 @@ uv python install 3.11
 uv sync
 uv run python -m wurmkickflip_rl.train --timesteps 200000
 uv run python -m wurmkickflip_rl.export_policy --checkpoint runs\ppo_wurmkickflip.zip
+uv run python -m wurmkickflip_rl.validate_onnx
 ```
 
 The exported policy writes:
 
 - `public/models/wurmkickflip_policy.onnx`
 - `public/models/wurmkickflip_policy.meta.json`
+
+The ONNX file and training checkpoints are local generated artifacts and are ignored by Git.
+
+Smoke-test workflow:
+
+```powershell
+cd training
+uv run python -m wurmkickflip_rl.train --timesteps 4096 --out runs\ppo_smoke.zip
+uv run python -m wurmkickflip_rl.export_policy --checkpoint runs\ppo_smoke.zip --version ppo-smoke-v1
+uv run python -m wurmkickflip_rl.validate_onnx
+```
+
+When a local ONNX artifact exists, force browser providers with:
+
+- `http://127.0.0.1:5173/?policyBackend=webgpu`
+- `http://127.0.0.1:5173/?policyBackend=wasm`
 
 ## Architecture
 

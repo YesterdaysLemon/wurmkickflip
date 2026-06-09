@@ -10,6 +10,7 @@ import {
 
 type OrtModule = typeof import('onnxruntime-web/webgpu')
 type OrtSession = Awaited<ReturnType<OrtModule['InferenceSession']['create']>>
+type OnnxProvider = 'webgpu' | 'wasm'
 
 export class PolicyRunner {
   private status: PolicyStatus = {
@@ -72,8 +73,7 @@ export class PolicyRunner {
       const ort = await import('onnxruntime-web/webgpu')
       this.ort = ort
 
-      const webgpuAvailable = typeof navigator !== 'undefined' && 'gpu' in navigator
-      const provider = webgpuAvailable ? 'webgpu' : 'wasm'
+      const provider = getRequestedProvider()
       this.session = await ort.InferenceSession.create(meta.modelPath, {
         executionProviders: [provider],
       })
@@ -119,4 +119,18 @@ export class PolicyRunner {
   reset() {
     this.scripted.reset()
   }
+}
+
+function getRequestedProvider(): OnnxProvider {
+  const params = typeof window !== 'undefined' ? new URLSearchParams(window.location.search) : null
+  const forced = params?.get('policyBackend')
+  if (forced === 'wasm') {
+    return 'wasm'
+  }
+  if (forced === 'webgpu') {
+    return 'webgpu'
+  }
+
+  const webgpuAvailable = typeof navigator !== 'undefined' && 'gpu' in navigator
+  return webgpuAvailable ? 'webgpu' : 'wasm'
 }

@@ -13,6 +13,7 @@ def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("--timesteps", type=int, default=200_000)
     parser.add_argument("--out", type=Path, default=Path("runs/ppo_wurmkickflip.zip"))
+    parser.add_argument("--progress-bar", action="store_true")
     args = parser.parse_args()
 
     env = WurmkickflipEnv()
@@ -26,7 +27,7 @@ def main() -> None:
         gamma=0.995,
         verbose=1,
     )
-    model.learn(total_timesteps=args.timesteps, progress_bar=True)
+    model.learn(total_timesteps=args.timesteps, progress_bar=args.progress_bar)
     args.out.parent.mkdir(parents=True, exist_ok=True)
     model.save(args.out)
     print(f"saved {args.out}")

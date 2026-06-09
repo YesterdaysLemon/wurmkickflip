@@ -32,6 +32,8 @@ Load order:
 5. Use ONNX Runtime WASM when WebGPU is unavailable.
 6. Fall back to scripted muscle waves if metadata/model load or inference setup fails.
 
+For validation, append `?policyBackend=wasm` or `?policyBackend=webgpu` to the local app URL to force a specific ONNX execution provider when the model exists.
+
 The scripted fallback is implemented in `src/policy/scriptedPolicy.ts`. It exists so the scene is always inspectable before training succeeds.
 
 ## Training Scaffold

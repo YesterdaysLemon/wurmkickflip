@@ -1,5 +1,5 @@
 {
-  "modelVersion": "scripted-bootstrap-v0",
+  "modelVersion": "ppo-smoke-v1",
   "modelPath": "/models/wurmkickflip_policy.onnx",
   "observationSize": 118,
   "actionSize": 32,
