@@ -1,3 +1,5 @@
+# !!! DEEPLY UNSERIOUS REPO MOSTLY CODEX SLOP EXPERIMENTATION !!!
+
 # Wurmkickflip
 
 A React, Three.js, Rapier, and WebGPU-ready prototype for training an OpenWorm-inspired worm controller to ride a skateboard in a small terrarium.
