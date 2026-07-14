@@ -7,7 +7,7 @@ from typing import Any
 
 REPLAY_SCHEMA_VERSION = 1
 REPLAY_KIND = "wurmkickflip.replay"
-POLICY_BACKENDS = {"scripted", "onnx-webgpu", "onnx-wasm", "training"}
+POLICY_BACKENDS = {"scripted", "neural-js", "onnx-webgpu", "onnx-wasm", "training"}
 FALL_REASONS = {"none", "lost_contact", "fell_below_height", "out_of_bounds", "timeout"}
 
 

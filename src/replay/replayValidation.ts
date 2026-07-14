@@ -11,7 +11,7 @@ export type ReplayValidationResult =
   | { ok: true; value: ReplayArtifact }
   | { ok: false; errors: string[] }
 
-const policyBackends = ['scripted', 'onnx-webgpu', 'onnx-wasm', 'training'] as const satisfies readonly ReplayPolicyBackend[]
+const policyBackends = ['scripted', 'neural-js', 'onnx-webgpu', 'onnx-wasm', 'training'] as const satisfies readonly ReplayPolicyBackend[]
 const fallReasons = ['none', 'lost_contact', 'fell_below_height', 'out_of_bounds', 'timeout'] as const satisfies readonly ReplayFallReason[]
 
 export function validateReplayArtifact(value: unknown): ReplayValidationResult {

@@ -1,7 +1,7 @@
 export const REPLAY_SCHEMA_VERSION = 1
 export const REPLAY_KIND = 'wurmkickflip.replay'
 
-export type ReplayPolicyBackend = 'scripted' | 'onnx-webgpu' | 'onnx-wasm' | 'training'
+export type ReplayPolicyBackend = 'scripted' | 'neural-js' | 'onnx-webgpu' | 'onnx-wasm' | 'training'
 
 export type ReplayFallReason = 'none' | 'lost_contact' | 'fell_below_height' | 'out_of_bounds' | 'timeout'
 

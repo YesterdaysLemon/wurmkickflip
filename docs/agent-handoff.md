@@ -44,11 +44,12 @@ For training changes:
 
 ## Current Known Limits
 
-- The browser simulation is a visual/control prototype, not a physically faithful RL environment.
-- Rapier is present but not yet the source of all board/worm motion.
-- The Python environment is a surrogate model and should eventually be calibrated against browser physics or replaced with a MuJoCo environment.
+- The browser simulation is a deterministic, physically inspired stunt showcase, not a physically faithful RL environment.
+- The current board/worm plant is authored fixed-step state dynamics, not Rapier rigid-body physics.
+- The tracked JSON policy is behavior-distilled imitation, not PPO/RL.
+- The Python environment is a separate surrogate and should eventually be replaced or calibrated against a high-fidelity trainable physics environment, not treated as validated transfer from the showcase.
 - The project is no longer worm-only; the existing segmented body is a starter morphology.
-- WebGPU ONNX has not been validated with a real trained policy in this repo.
+- The optional local ONNX smoke artifact predates the 174-input contract and must be regenerated before WebGPU/WASM claims are renewed.
 
 ## Recommended Commit Practice
 

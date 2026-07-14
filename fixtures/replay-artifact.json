@@ -1,13 +1,13 @@
 {
   "schemaVersion": 1,
   "kind": "wurmkickflip.replay",
-  "replayId": "scripted-smoke-replay",
+  "replayId": "neural-js-smoke-replay",
   "createdAt": "2026-06-09T00:00:00.000Z",
   "source": {
     "creatureId": "segmented-starter",
     "environmentId": "adaptive-skate-terrarium",
-    "policyBackend": "scripted",
-    "modelVersion": "scripted-v0"
+    "policyBackend": "neural-js",
+    "modelVersion": "stunt-distilled-v1"
   },
   "timestep": 0.016666666666666666,
   "durationSeconds": 0.05,

@@ -13,7 +13,8 @@
     "verify:parity": "tsx scripts/verify-observation-parity.ts",
     "verify:replay": "tsx scripts/verify-replay-schema.ts",
     "verify:runtime": "tsx scripts/verify-policy-runtime.ts",
-    "check": "npm run verify:configs && npm run verify:contract && npm run verify:parity && npm run verify:runtime && npm run verify:env && npm run verify:evolution && npm run verify:replay && npm run build",
+    "verify:stunt-policy": "tsx scripts/verify-stunt-policy.ts",
+    "check": "npm run verify:configs && npm run verify:contract && npm run verify:parity && npm run verify:stunt-policy && npm run verify:runtime && npm run verify:env && npm run verify:evolution && npm run verify:replay && npm run build",
     "preview": "vite preview"
   },
   "devDependencies": {
@@ -28,7 +29,6 @@
   "dependencies": {
     "@react-three/drei": "^10.7.7",
     "@react-three/fiber": "^9.6.1",
-    "@react-three/rapier": "^2.2.0",
     "lucide-react": "^1.17.0",
     "onnxruntime-web": "^1.26.0",
     "react": "^19.2.7",

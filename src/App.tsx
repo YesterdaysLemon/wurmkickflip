@@ -1,10 +1,39 @@
-import { Brain, Cpu, Dna, Gauge, Goal, Mountain, Pause, Play, RotateCcw } from 'lucide-react'
-import type { ReactNode } from 'react'
+import {
+  Activity,
+  Brain,
+  Cpu,
+  Gauge,
+  Hand,
+  Mountain,
+  Pause,
+  Play,
+  RotateCcw,
+  Sparkles,
+  Timer,
+  Trophy,
+  Zap,
+} from 'lucide-react'
+import type { CSSProperties, ReactNode } from 'react'
 import { useMemo, useState } from 'react'
+import { deriveWurmAnatomy } from './creature/anatomy'
 import { useLabConfigs } from './creature/useLabConfigs'
 import { PolicyRunner } from './policy/policyRunner'
-import type { PolicyStatus, ViewerMetrics } from './policy/types'
+import type { PolicyBackend, PolicyStatus, ViewerMetrics } from './policy/types'
 import { WurmkickflipScene } from './scene/WurmkickflipScene'
+
+type ShowcaseMode = 'kickflip' | 'freestyle'
+
+type StuntMetrics = ViewerMetrics & {
+  phase?: string
+  flipProgress?: number
+  flipsLanded?: number
+  airtime?: number
+  height?: number
+  speed?: number
+  landingQuality?: number
+  attempt?: number
+  stuntName?: string
+}
 
 const initialStatus: PolicyStatus = {
   backend: 'loading',
@@ -12,7 +41,7 @@ const initialStatus: PolicyStatus = {
   modelVersion: 'scripted-v0',
 }
 
-const initialMetrics: ViewerMetrics = {
+const initialMetrics: StuntMetrics = {
   time: 0,
   reward: 0,
   distance: 0,
@@ -21,6 +50,15 @@ const initialMetrics: ViewerMetrics = {
   message: 'Policy runtime is starting.',
   running: true,
   muscleActivity: new Array(16).fill(0),
+  phase: 'ready',
+  flipProgress: 0,
+  flipsLanded: 0,
+  airtime: 0,
+  height: 0,
+  speed: 0,
+  landingQuality: 0,
+  attempt: 1,
+  stuntName: 'Kickflip',
 }
 
 export function App() {
@@ -30,8 +68,10 @@ export function App() {
   const [selectedEnvironmentId, setSelectedEnvironmentId] = useState<string | null>(null)
   const [running, setRunning] = useState(true)
   const [resetNonce, setResetNonce] = useState(0)
+  const [interactionNonce, setInteractionNonce] = useState(0)
+  const [showcaseMode, setShowcaseMode] = useState<ShowcaseMode>('kickflip')
   const [policyStatus, setPolicyStatus] = useState<PolicyStatus>(initialStatus)
-  const [metrics, setMetrics] = useState<ViewerMetrics>(initialMetrics)
+  const [metrics, setMetrics] = useState<StuntMetrics>(initialMetrics)
 
   const selectedCreature = useMemo(
     () =>
@@ -45,18 +85,48 @@ export function App() {
       labConfigs.environment,
     [labConfigs.environment, labConfigs.environments, selectedEnvironmentId],
   )
+  const selectedAnatomy = useMemo(() => deriveWurmAnatomy(selectedCreature), [selectedCreature])
 
-  const displayedMetrics = {
+  const displayedMetrics: StuntMetrics = {
     ...metrics,
     backend: policyStatus.backend,
     message: policyStatus.message,
     running,
+  }
+  const flipProgress = clamp01(displayedMetrics.flipProgress)
+  const flipPercent = Math.round(flipProgress * 100)
+  const flipDegrees = Math.round(flipProgress * 360)
+  const landingPercent = toPercent(displayedMetrics.landingQuality)
+  const attempt = Math.max(1, Math.floor(finite(displayedMetrics.attempt, 1)))
+  const phase = displayedMetrics.phase || 'ready'
+  const stuntName = displayedMetrics.stuntName || (showcaseMode === 'kickflip' ? 'Kickflip' : 'Free flop')
+  const neural = getNeuralStatus(policyStatus.backend)
+  const sceneInteractionProps = { interactionNonce, showcaseMode }
+
+  const restartSimulation = (mode: ShowcaseMode = showcaseMode) => {
+    setRunning(true)
+    setMetrics({
+      ...initialMetrics,
+      backend: policyStatus.backend,
+      message: policyStatus.message,
+      stuntName: mode === 'kickflip' ? 'Neural kickflip' : 'Free flop',
+    })
+    policyRunner.reset()
+    setResetNonce((value) => value + 1)
+  }
+
+  const resetSimulation = () => restartSimulation()
+
+  const chooseMode = (mode: ShowcaseMode) => {
+    setShowcaseMode(mode)
+    restartSimulation(mode)
   }
 
   return (
     <main className="app-shell">
       <section className="sim-stage" aria-label="Wurmkickflip terrarium simulation">
         <WurmkickflipScene
+          {...sceneInteractionProps}
           creature={selectedCreature}
           environmentConfig={selectedEnvironment}
           onMetrics={setMetrics}
@@ -65,187 +135,296 @@ export function App() {
           resetNonce={resetNonce}
           running={running}
         />
+
+        <div className="scene-corner-tag" aria-hidden="true">
+          <span className="live-dot" />
+          <span>Terrarium live</span>
+          <b>Attempt {String(attempt).padStart(2, '0')}</b>
+        </div>
+        <div className="scene-counter" aria-hidden="true">
+          <span>Clean landings</span>
+          <strong>{Math.max(0, Math.floor(finite(displayedMetrics.flipsLanded)))}</strong>
+        </div>
+        <p className="scene-hint" aria-hidden="true">Drag to orbit · Scroll to zoom</p>
       </section>
 
-      <aside className="control-panel" aria-label="Training viewer">
-        <div className="panel-header">
-          <div>
-            <p className="eyebrow">Evolutionary skate lab</p>
-            <h1>Wurmkickflip</h1>
+      <aside className="control-panel" aria-label="Wurm stunt controls and telemetry">
+        <header className="panel-header">
+          <div className="brand-lockup">
+            <p className="eyebrow">Neural terrarium / unit 01</p>
+            <h1>Wurm<br />Kickflip</h1>
+            <p className="brand-note">Tiny brain. Impossible sport.</p>
           </div>
-          <div className={`backend-pill backend-${displayedMetrics.backend}`}>
-            <Cpu size={16} aria-hidden="true" />
-            <span>{displayedMetrics.backend}</span>
-          </div>
-        </div>
 
-        <div className="actions">
-          <button type="button" onClick={() => setRunning((value) => !value)}>
-            {running ? <Pause size={18} aria-hidden="true" /> : <Play size={18} aria-hidden="true" />}
-            {running ? 'Pause' : 'Run'}
-          </button>
+          <div className={`neural-status neural-status--${neural.tone}`} role="status" aria-live="polite">
+            <span className="neural-status__icon"><Brain size={19} aria-hidden="true" /></span>
+            <span>
+              <small>Neural control</small>
+              <strong>{neural.label}</strong>
+              <em>{formatBackend(policyStatus.backend)}</em>
+            </span>
+          </div>
+        </header>
+
+        <section className="mode-section" aria-labelledby="showcase-heading">
+          <div className="section-kicker">
+            <Sparkles size={15} aria-hidden="true" />
+            <h2 id="showcase-heading">Choose the assignment</h2>
+          </div>
+          <div className="mode-switch">
+            <button
+              className={`mode-button mode-button--kickflip${showcaseMode === 'kickflip' ? ' is-active' : ''}`}
+              type="button"
+              aria-pressed={showcaseMode === 'kickflip'}
+              onClick={() => chooseMode('kickflip')}
+            >
+              <Zap size={20} aria-hidden="true" />
+              <span><strong>Do a kickflip</strong><small>Neural stunt loop</small></span>
+            </button>
+            <button
+              className={`mode-button${showcaseMode === 'freestyle' ? ' is-active' : ''}`}
+              type="button"
+              aria-pressed={showcaseMode === 'freestyle'}
+              onClick={() => chooseMode('freestyle')}
+            >
+              <Activity size={20} aria-hidden="true" />
+              <span><strong>Free flop</strong><small>No agenda. Just wurm.</small></span>
+            </button>
+          </div>
+        </section>
+
+        <section className={`stunt-card phase-${slugify(phase)}`} aria-labelledby="stunt-name">
+          <div className="stunt-copy">
+            <div className="attempt-row">
+              <span>Attempt {String(attempt).padStart(2, '0')}</span>
+              <b aria-live="polite">{formatPhase(phase)}</b>
+            </div>
+            <h2 id="stunt-name">{stuntName}</h2>
+            <p>{phaseMessage(phase, showcaseMode)}</p>
+
+            <div className="landed-count" aria-label={`${Math.max(0, Math.floor(finite(displayedMetrics.flipsLanded)))} kickflips landed`}>
+              <Trophy size={18} aria-hidden="true" />
+              <span>landed</span>
+              <strong>{Math.max(0, Math.floor(finite(displayedMetrics.flipsLanded)))}</strong>
+            </div>
+          </div>
+
+          <div
+            className="flip-dial"
+            role="progressbar"
+            aria-label="Kickflip rotation progress"
+            aria-valuemin={0}
+            aria-valuemax={100}
+            aria-valuenow={flipPercent}
+            style={{ '--flip-progress': `${flipPercent * 3.6}deg` } as CSSProperties}
+          >
+            <div>
+              <strong>{flipDegrees}°</strong>
+              <span>board roll</span>
+            </div>
+          </div>
+        </section>
+
+        <dl className="telemetry-grid" aria-label="Live stunt telemetry">
+          <Telemetry icon={<Timer size={16} />} label="Airtime" value={`${fixed(displayedMetrics.airtime, 2)} s`} />
+          <Telemetry icon={<Mountain size={16} />} label="Height" value={`${fixed(displayedMetrics.height, 2)} m`} />
+          <Telemetry icon={<Gauge size={16} />} label="Speed" value={`${fixed(displayedMetrics.speed, 1)} m/s`} />
+          <Telemetry
+            icon={<Sparkles size={16} />}
+            label="Landing"
+            value={`${landingPercent}%`}
+            meter={landingPercent}
+          />
+        </dl>
+
+        <div className="utility-actions">
           <button
+            className="poke-button"
             type="button"
             onClick={() => {
-              policyRunner.reset()
-              setResetNonce((value) => value + 1)
+              setRunning(true)
+              setInteractionNonce((value) => value + 1)
             }}
           >
-            <RotateCcw size={18} aria-hidden="true" />
+            <Hand size={18} aria-hidden="true" />
+            Poke wurm
+          </button>
+          <button type="button" aria-pressed={!running} onClick={() => setRunning((value) => !value)}>
+            {running ? <Pause size={17} aria-hidden="true" /> : <Play size={17} aria-hidden="true" />}
+            {running ? 'Pause' : 'Resume'}
+          </button>
+          <button type="button" onClick={resetSimulation}>
+            <RotateCcw size={17} aria-hidden="true" />
             Reset
           </button>
         </div>
 
-        <section className="readout">
-          <div className="selector-grid">
-            <label>
-              <span>Creature</span>
+        <section className="terrarium-controls" aria-labelledby="terrarium-heading">
+          <div className="section-kicker">
+            <Mountain size={15} aria-hidden="true" />
+            <h2 id="terrarium-heading">Terrarium</h2>
+          </div>
+          <label className="select-control">
+            <span>Environment</span>
+            <select
+              value={selectedEnvironment?.id ?? ''}
+              disabled={labConfigs.environments.length === 0}
+              onChange={(event) => {
+                setSelectedEnvironmentId(event.target.value)
+                restartSimulation()
+              }}
+            >
+              {labConfigs.environments.map((environment) => (
+                <option key={environment.id} value={environment.id}>{environment.name}</option>
+              ))}
+            </select>
+          </label>
+          {selectedEnvironment ? (
+            <dl className="environment-facts" aria-label="Selected environment parameters">
+              <div><dt>Terrain</dt><dd>{selectedEnvironment.terrain.kind} / seed {selectedEnvironment.seed}</dd></div>
+              <div><dt>Gravity</dt><dd>{Math.abs(selectedEnvironment.world.gravity[1]).toFixed(1)} m/s²</dd></div>
+              <div><dt>Deck</dt><dd>{selectedEnvironment.skateboard.deckSize[0].toFixed(2)} × {selectedEnvironment.skateboard.deckSize[2].toFixed(2)} m</dd></div>
+              <div><dt>Grip</dt><dd>{selectedEnvironment.terrain.baseFriction.toFixed(2)} ground / {selectedEnvironment.skateboard.wheelFriction.toFixed(2)} wheel</dd></div>
+            </dl>
+          ) : null}
+
+          <details className="genome-drawer">
+            <summary>
+              <span>Wurm body</span>
+              <strong>{selectedCreature?.name ?? labConfigs.message}</strong>
+            </summary>
+            <label className="select-control select-control--inside">
+              <span>Creature genome</span>
               <select
                 value={selectedCreature?.id ?? ''}
+                disabled={labConfigs.creatures.length === 0}
                 onChange={(event) => {
                   setSelectedCreatureId(event.target.value)
-                  policyRunner.reset()
+                  restartSimulation()
                 }}
               >
                 {labConfigs.creatures.map((creature) => (
-                  <option key={creature.id} value={creature.id}>
-                    {creature.name}
-                  </option>
+                  <option key={creature.id} value={creature.id}>{creature.name}</option>
                 ))}
               </select>
             </label>
-            <label>
-              <span>Environment</span>
-              <select
-                value={selectedEnvironment?.id ?? ''}
-                onChange={(event) => {
-                  setSelectedEnvironmentId(event.target.value)
-                  policyRunner.reset()
-                }}
-              >
-                {labConfigs.environments.map((environment) => (
-                  <option key={environment.id} value={environment.id}>
-                    {environment.name}
-                  </option>
-                ))}
-              </select>
-            </label>
+            <dl className="genome-facts" aria-label="Selected genome anatomy">
+              <div><dt>Form</dt><dd>{selectedAnatomy.silhouette}</dd></div>
+              <div><dt>Source body</dt><dd>{selectedAnatomy.bodyPartCount} parts / {selectedAnatomy.appendages.length} limbs</dd></div>
+              <div><dt>Mass</dt><dd>{selectedAnatomy.totalMass.toFixed(2)} kg</dd></div>
+              <div><dt>Stance</dt><dd>{selectedAnatomy.stanceWidth.toFixed(2)} m</dd></div>
+            </dl>
+            <p className="genome-contract">Projected onto the policy's fixed 16-node muscle lattice.</p>
+          </details>
+        </section>
+
+        <section className="muscle-readout" aria-labelledby="muscle-heading">
+          <div className="section-kicker">
+            <Activity size={15} aria-hidden="true" />
+            <h2 id="muscle-heading">Muscle bus</h2>
+            <span>16 channels</span>
+          </div>
+          <div className="muscle-grid" aria-label="Live segment muscle activation">
+            {displayedMetrics.muscleActivity.map((value, index) => {
+              const level = Math.max(0.06, Math.min(1, Math.abs(value)))
+              return (
+                <span
+                  className={`muscle-cell${value < 0 ? ' is-ventral' : ''}`}
+                  key={index}
+                  title={`Segment ${index + 1}: ${value.toFixed(2)}`}
+                >
+                  <i style={{ '--muscle-level': level } as CSSProperties} />
+                  <b className="sr-only">Segment {index + 1}: {value.toFixed(2)}</b>
+                </span>
+              )
+            })}
           </div>
         </section>
 
-        <div className="metric-grid">
-          <Metric icon={<Gauge size={18} />} label="Reward" value={displayedMetrics.reward.toFixed(2)} />
-          <Metric label="Distance" value={`${displayedMetrics.distance.toFixed(2)} m`} />
-          <Metric label="Contact" value={`${Math.round(displayedMetrics.contactRatio * 100)}%`} />
-          <Metric label="Rollout" value={`${displayedMetrics.time.toFixed(1)} s`} />
+        <div className="lab-tape" aria-label="Rollout diagnostics">
+          <span>RWD <b>{fixed(displayedMetrics.reward, 1)}</b></span>
+          <span>RUN <b>{fixed(displayedMetrics.distance, 1)}m</b></span>
+          <span>GRIP <b>{toPercent(displayedMetrics.contactRatio)}%</b></span>
+          <span>T <b>{fixed(displayedMetrics.time, 1)}s</b></span>
         </div>
 
-        <section className="readout">
-          <div className="readout-title">
-            <Brain size={18} aria-hidden="true" />
-            <h2>Muscle activity</h2>
-          </div>
-          <div className="muscle-grid" aria-label="Segment muscle activity">
-            {displayedMetrics.muscleActivity.map((value, index) => (
-              <div className="muscle-cell" key={index}>
-                <span>{index + 1}</span>
-                <div>
-                  <i style={{ transform: `scaleY(${Math.max(0.08, Math.abs(value))})` }} />
-                </div>
-              </div>
-            ))}
-          </div>
-        </section>
-
-        <section className="readout">
-          <div className="readout-title">
-            <Dna size={18} aria-hidden="true" />
-            <h2>Creature genome</h2>
-          </div>
-          <p>{selectedCreature?.name ?? labConfigs.message}</p>
-          {selectedCreature ? (
-            <div className="compact-grid">
-              <span>Parts</span>
-              <strong>{selectedCreature.morphology.bodyParts.length}</strong>
-              <span>Joints</span>
-              <strong>{selectedCreature.morphology.joints.length}</strong>
-              <span>Controller</span>
-              <strong>{selectedCreature.controller.kind}</strong>
-            </div>
-          ) : null}
-        </section>
-
-        <section className="readout">
-          <div className="readout-title">
-            <Mountain size={18} aria-hidden="true" />
-            <h2>Dynamic environment</h2>
-          </div>
-          <p>{selectedEnvironment?.name ?? labConfigs.message}</p>
-          {selectedEnvironment ? (
-            <div className="compact-grid">
-              <span>Task</span>
-              <strong>{selectedEnvironment.task.kind}</strong>
-              <span>Gravity</span>
-              <strong>{rangeLabel(selectedEnvironment.randomization.gravityScale)}</strong>
-              <span>Friction</span>
-              <strong>{rangeLabel(selectedEnvironment.randomization.frictionScale)}</strong>
-              <span>Terrain</span>
-              <strong>{selectedEnvironment.terrain.kind}</strong>
-            </div>
-          ) : null}
-        </section>
-
-        <section className="readout">
-          <div className="readout-title">
-            <Goal size={18} aria-hidden="true" />
-            <h2>Skateboard task</h2>
-          </div>
-          {selectedEnvironment ? (
-            <div className="compact-grid">
-              <span>Spawn X</span>
-              <strong>{rangeLabel(selectedEnvironment.randomization.skateboardSpawnX)} m</strong>
-              <span>Spawn Z</span>
-              <strong>{rangeLabel(selectedEnvironment.randomization.skateboardSpawnZ)} m</strong>
-              <span>Mass</span>
-              <strong>{rangeLabel(selectedEnvironment.randomization.skateboardMass)} kg</strong>
-              <span>Wheel friction</span>
-              <strong>{rangeLabel(selectedEnvironment.randomization.wheelFriction)}</strong>
-            </div>
-          ) : (
-            <p>{labConfigs.message}</p>
-          )}
-        </section>
-
-        <section className="readout">
-          <h2>Policy status</h2>
+        <details className="policy-note">
+          <summary><Cpu size={14} aria-hidden="true" /> Brain note · {policyStatus.modelVersion}</summary>
           <p>{displayedMetrics.message}</p>
-          <p>
-            Contract: 118 observation floats to 32 dorsal/ventral muscle activations at 60 Hz.
-          </p>
-        </section>
+          <code>174 observations → 32 muscles @ 60 Hz</code>
+        </details>
       </aside>
     </main>
   )
 }
 
-function rangeLabel(range: [number, number]) {
-  return `${range[0]}-${range[1]}`
-}
-
-type MetricProps = {
-  icon?: ReactNode
+type TelemetryProps = {
+  icon: ReactNode
   label: string
   value: string
+  meter?: number
 }
 
-function Metric({ icon, label, value }: MetricProps) {
+function Telemetry({ icon, label, value, meter }: TelemetryProps) {
   return (
-    <div className="metric-card">
-      <span>
-        {icon}
-        {label}
-      </span>
-      <strong>{value}</strong>
+    <div className="telemetry-card">
+      <dt>{icon}{label}</dt>
+      <dd>{value}</dd>
+      {meter === undefined ? null : (
+        <span className="telemetry-meter" aria-hidden="true"><i style={{ width: `${meter}%` }} /></span>
+      )}
     </div>
   )
+}
+
+function getNeuralStatus(backend: PolicyBackend) {
+  if (backend === 'loading') return { label: 'Waking', tone: 'loading' }
+  if (backend === 'neural-js' || backend === 'onnx-webgpu' || backend === 'onnx-wasm') {
+    return { label: 'Online', tone: 'online' }
+  }
+  return { label: 'Fallback', tone: 'fallback' }
+}
+
+function formatBackend(backend: PolicyBackend) {
+  if (backend === 'neural-js') return 'Neural JS / 39,552 synapses'
+  if (backend === 'onnx-webgpu') return 'ONNX / WebGPU'
+  if (backend === 'onnx-wasm') return 'ONNX / WASM'
+  if (backend === 'scripted') return 'Scripted cortex'
+  return 'Neural cortex warming'
+}
+
+function formatPhase(phase: string) {
+  return phase.replace(/[-_]/g, ' ').trim().toUpperCase() || 'READY'
+}
+
+function phaseMessage(phase: string, mode: ShowcaseMode) {
+  const normalized = slugify(phase)
+  if (normalized.includes('landed')) return 'Four wheels down. Maximum glory.'
+  if (normalized.includes('landing')) return 'Find the bolts, tiny champion.'
+  if (normalized.includes('flip') || normalized.includes('air')) return 'No ground. Only courage.'
+  if (normalized.includes('pop') || normalized.includes('launch')) return 'Tail down. Wurm up.'
+  if (normalized.includes('flop') || normalized.includes('tumble')) return 'That absolutely counts as research.'
+  if (normalized.includes('coil') || normalized.includes('setup')) return 'Coiling the little athlete.'
+  return mode === 'kickflip' ? 'Brain linked. Board ready. Believe in wurm.' : 'No objectives. Excellent.'
+}
+
+function slugify(value: string) {
+  return value.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '') || 'ready'
+}
+
+function finite(value: number | undefined, fallback = 0) {
+  return Number.isFinite(value) ? (value as number) : fallback
+}
+
+function clamp01(value: number | undefined) {
+  return Math.max(0, Math.min(1, finite(value)))
+}
+
+function toPercent(value: number | undefined) {
+  const safe = finite(value)
+  return Math.round(Math.max(0, Math.min(100, safe > 1 ? safe : safe * 100)))
+}
+
+function fixed(value: number | undefined, digits: number) {
+  return finite(value).toFixed(digits)
 }

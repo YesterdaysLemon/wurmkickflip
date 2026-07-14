@@ -1,4 +1,5 @@
 import { ScriptedMusclePolicy } from './scriptedPolicy'
+import { NeuralStuntPolicy, parseStuntPolicy, STUNT_POLICY_PATH } from './neuralPolicy'
 import {
   ACTION_SIZE,
   OBSERVATION_SIZE,
@@ -11,7 +12,7 @@ import {
 type OrtModule = typeof import('onnxruntime-web/webgpu')
 type OrtSession = Awaited<ReturnType<OrtModule['InferenceSession']['create']>>
 type OnnxProvider = 'webgpu' | 'wasm'
-type RequestedProvider = OnnxProvider | 'scripted'
+type RequestedProvider = OnnxProvider | 'neural' | 'scripted'
 
 export class PolicyRunner {
   private status: PolicyStatus = {
@@ -25,6 +26,7 @@ export class PolicyRunner {
   private inputName = ''
   private outputName = ''
   private scripted = new ScriptedMusclePolicy()
+  private neural: NeuralStuntPolicy | null = null
   private loadPromise: Promise<PolicyStatus> | null = null
 
   getStatus(): PolicyStatus {
@@ -41,6 +43,38 @@ export class PolicyRunner {
   }
 
   private async loadOnce(): Promise<PolicyStatus> {
+    const provider = getRequestedProvider()
+    if (provider === 'scripted') {
+      this.status = {
+        backend: 'scripted',
+        message: 'Using the deterministic diagnostic wave by request.',
+        modelVersion: 'scripted-v0',
+      }
+      return this.status
+    }
+
+    if (provider === 'neural') {
+      try {
+        const response = await fetch(STUNT_POLICY_PATH)
+        if (!response.ok) throw new Error(`model request returned ${response.status}`)
+        const artifact = parseStuntPolicy(await response.json())
+        this.neural = new NeuralStuntPolicy(artifact)
+        this.status = {
+          backend: 'neural-js',
+          message: `Distilled stunt brain live — ${artifact.training.teacherAgreement.toLocaleString(undefined, { style: 'percent', maximumFractionDigits: 1 })} teacher agreement.`,
+          modelVersion: artifact.modelVersion,
+        }
+      } catch (error) {
+        this.neural = null
+        this.status = {
+          backend: 'scripted',
+          message: error instanceof Error ? `Neural artifact unavailable: ${error.message}` : 'Neural artifact unavailable.',
+          modelVersion: 'scripted-v0',
+        }
+      }
+      return this.status
+    }
+
     let meta: PolicyMeta | null = null
 
     try {
@@ -59,16 +93,6 @@ export class PolicyRunner {
       this.status = {
         backend: 'scripted',
         message: 'Policy metadata shape mismatch; using scripted muscle waves.',
-        modelVersion: meta.modelVersion,
-      }
-      return this.status
-    }
-
-    const provider = getRequestedProvider()
-    if (provider === 'scripted') {
-      this.status = {
-        backend: 'scripted',
-        message: 'Using scripted control. Add ?policyBackend=webgpu or ?policyBackend=wasm to load ONNX.',
         modelVersion: meta.modelVersion,
       }
       return this.status
@@ -109,19 +133,32 @@ export class PolicyRunner {
   }
 
   async run(observation: PolicyObservation): Promise<PolicyAction> {
+    if (this.neural) {
+      return this.neural.run(observation)
+    }
     if (!this.session || !this.ort) {
       return this.scripted.run(observation)
     }
 
-    const tensor = new this.ort.Tensor('float32', observation, [1, OBSERVATION_SIZE])
-    const output = await this.session.run({ [this.inputName]: tensor })
-    const actionTensor = output[this.outputName]
+    try {
+      const tensor = new this.ort.Tensor('float32', observation, [1, OBSERVATION_SIZE])
+      const output = await this.session.run({ [this.inputName]: tensor })
+      const actionTensor = output[this.outputName]
 
-    if (!actionTensor || !(actionTensor.data instanceof Float32Array)) {
+      if (!actionTensor || !(actionTensor.data instanceof Float32Array)) {
+        throw new Error('model returned an invalid action tensor')
+      }
+      return sanitizePolicyAction(actionTensor.data) ?? this.scripted.run(observation)
+    } catch (error) {
+      this.session = null
+      this.ort = null
+      this.status = {
+        backend: 'scripted',
+        message: error instanceof Error ? `ONNX inference failed: ${error.message}` : 'ONNX inference failed.',
+        modelVersion: this.status.modelVersion,
+      }
       return this.scripted.run(observation)
     }
-
-    return sanitizePolicyAction(actionTensor.data) ?? this.scripted.run(observation)
   }
 
   reset() {
@@ -158,6 +195,9 @@ function getRequestedProvider(): RequestedProvider {
   if (forced === 'scripted') {
     return 'scripted'
   }
+  if (forced === 'neural') {
+    return 'neural'
+  }
 
-  return 'scripted'
+  return 'neural'
 }

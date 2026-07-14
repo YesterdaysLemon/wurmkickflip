@@ -39,6 +39,12 @@ export function snapshotToObservation(snapshot: SimulationSnapshot): PolicyObser
 
   for (let i = 0; i < SEGMENT_COUNT; i += 1) {
     const segment = snapshot.segments[i]
+    if (!segment) {
+      for (let field = 0; field < 8; field += 1) {
+        push(0)
+      }
+      continue
+    }
     push(segment.x - snapshot.board.x)
     push(segment.y - snapshot.board.y)
     push(segment.z - snapshot.board.z)
@@ -49,8 +55,8 @@ export function snapshotToObservation(snapshot: SimulationSnapshot): PolicyObser
     push(segment.yaw)
   }
 
-  for (const value of snapshot.previousAction) {
-    push(value)
+  for (let i = 0; i < ACTION_SIZE; i += 1) {
+    push(snapshot.previousAction[i] ?? 0)
   }
 
   return observation

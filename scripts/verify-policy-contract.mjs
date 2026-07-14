@@ -6,7 +6,9 @@ const root = resolve(import.meta.dirname, '..')
 const expected = {
   segmentCount: 16,
   muscleCount: 32,
-  observationSize: 118,
+  observationHeaderSize: 14,
+  segmentObservationSize: 8,
+  observationSize: 174,
   actionSize: 32,
   timestepTs: '1 / 60',
   timestepPy: '1.0 / 60.0',
@@ -22,6 +24,12 @@ const assert = (condition, message) => {
     failures.push(message)
   }
 }
+
+assert(
+  expected.observationSize ===
+    expected.observationHeaderSize + expected.segmentCount * expected.segmentObservationSize + expected.actionSize,
+  'Verifier observation layout arithmetic is inconsistent.',
+)
 
 const escapeRegExp = (value) => value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
 

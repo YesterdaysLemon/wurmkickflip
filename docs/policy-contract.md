@@ -7,10 +7,15 @@ This document describes the browser/training interface that future agents must p
 Keep these files aligned:
 
 - `src/policy/types.ts`
+- `src/policy/simulationAdapter.ts`
+- `src/policy/neuralPolicy.ts`
 - `training/wurmkickflip_rl/contracts.py`
+- `training/wurmkickflip_rl/train_stunt_policy.py`
+- `training/wurmkickflip_rl/validate_stunt_policy.py`
+- `public/models/wurmkickflip_stunt_policy.json`
 - `public/models/wurmkickflip_policy.meta.json`
 
-Any change to segment count, observation size, action size, or timestep must update all three files and the code that constructs observations/actions.
+Any change to segment count, observation size, action size, or timestep must update every applicable contract, artifact, validator, and observation/action implementation in the same change.
 
 ## Constants
 
@@ -18,7 +23,7 @@ Current values:
 
 - `SEGMENT_COUNT = 16`
 - `MUSCLE_COUNT = 32`
-- `OBSERVATION_SIZE = 118`
+- `OBSERVATION_SIZE = 174`
 - `ACTION_SIZE = 32`
 - `POLICY_TIMESTEP = 1 / 60`
 
@@ -47,7 +52,9 @@ Current order:
    - `pitch`
    - `yaw`
 8. previous action, 32 floats
-9. zero padding to length 118 if needed
+9. zero-fill any missing segment record or previous-action value in its fixed slot
+
+The size is exact: 14 board/task values + (16 segments x 8 values) + 32 previous-action values = 174. Segment 16 occupies indices 134-141, and the complete previous action occupies indices 142-173. Records never shift when one is missing.
 
 The Python environment must emit the same semantic layout before any trained policy is considered browser-compatible.
 
@@ -60,10 +67,29 @@ For segment `i`:
 - `action[i * 2]` is dorsal activation.
 - `action[i * 2 + 1]` is ventral activation.
 - Bend is currently interpreted as `(dorsal - ventral) * 0.5`, clamped to `[-1, 1]`.
+- Co-contraction is interpreted as `(dorsal + ventral) * 0.5`.
+- The browser stunt plant combines per-segment bend, co-contraction, and left/right asymmetry into locomotion, coil, pop, tuck, and kick signals.
 
 Future physics may convert these activations into Rapier joint motors, soft-body approximations, or MuJoCo actuator controls. Do not change the exported action shape unless there is a deliberate contract migration.
 
-## Metadata Contract
+## Default Learned JSON Contract
+
+`public/models/wurmkickflip_stunt_policy.json` is the tracked default browser policy. It must include:
+
+- `schemaVersion = 1`
+- `kind = "wurmkickflip.stuntPolicy"`
+- non-empty `modelVersion`
+- `inputSize = 174`
+- positive `hiddenSize`
+- `outputSize = 32`
+- `activation = "tanh"`
+- finite `hiddenWeights[hiddenSize][174]` and `hiddenBias[hiddenSize]`
+- finite `outputWeights[32][hiddenSize]` and `outputBias[32]`
+- training provenance: `seed`, `samples`, `epochs`, `validationMse`, and `teacherAgreement`
+
+The JavaScript runtime validates this shape before inference. `npm run verify:stunt-policy` also runs held-out canonical behavior checks for coil, release, kick, airborne tuck, traveling waves, and roll feedback. The model is behavior-distilled imitation from a deterministic state-aware teacher; it is not PPO/RL and its passing signals are not proof of transfer in a high-fidelity physics simulator.
+
+## Optional ONNX Metadata Contract
 
 `public/models/wurmkickflip_policy.meta.json` must include:
 
@@ -76,12 +102,13 @@ Future physics may convert these activations into Rapier joint motors, soft-body
 - `observationMean`
 - `observationStd`
 
-The runtime validates `observationSize` and `actionSize` before loading ONNX. Add stricter validation only if it keeps scripted fallback behavior intact.
+The runtime validates `observationSize` and `actionSize` before loading ONNX. ONNX is an explicit optional backend, not the default. Old local `ppo-smoke-v1` files with 118-float inputs are stale and must be retrained and re-exported for the 174-float contract.
 
 ## Compatibility Rules
 
 - Do not silently change observation order.
 - Do not train against a Python layout that differs from the browser layout.
+- Do not accept a learned JSON artifact whose matrix dimensions or behavior checks fail.
 - Do not export ONNX with input/output names that future browser code cannot discover or map.
-- Keep scripted fallback working when no ONNX model exists.
+- Keep scripted fallback working when a requested learned JSON or ONNX artifact is absent or invalid.
 - Add parity tests before any contract expansion.

@@ -47,11 +47,13 @@ The first implementation can use a simple segmented creature. Future implementat
 
 - Render a nonblank 3D environment in a modern browser.
 - Load a creature genome JSON and render the creature from config.
+- Make creature selection visibly change anatomy (primitive silhouette, proportions, and configured branching appendages), not only palette.
 - Load an environment JSON and show key environment parameters in the viewer.
 - Keep the existing worm/skateboard policy demo working as the first skateboard scenario.
-- Run today without a trained policy by using deterministic scripted control.
-- Load ONNX policy artifacts when present and compatible with metadata.
-- Prefer ONNX Runtime WebGPU when available, and degrade to WASM or scripted control when unavailable.
+- Load the tracked distilled JSON neural policy by default and clearly identify it as imitation learning.
+- Run without a learned artifact by falling back to deterministic scripted control.
+- Load ONNX policy artifacts only when explicitly requested and compatible with the current metadata contract.
+- Degrade safely to scripted control when a requested JSON or ONNX policy is unavailable or invalid.
 
 ## Success Criteria
 
@@ -81,7 +83,7 @@ Longer-term success:
 
 ## Runtime Requirements
 
-- Web app: Vite, React, TypeScript, Three.js, React Three Fiber, Drei, Rapier, ONNX Runtime Web.
+- Web app: Vite, React, TypeScript, Three.js, React Three Fiber, Drei, ONNX Runtime Web.
 - Browser: Chrome or Edge recommended for WebGPU; fallback must keep the app usable elsewhere.
 - Training: Python 3.11 managed with `uv`, Gymnasium, Stable Baselines3, PyTorch, ONNX.
 - Future training candidates: MuJoCo, Brax, PufferLib, or custom vectorized simulators once the genome/environment contract stabilizes.
@@ -91,5 +93,7 @@ Longer-term success:
 - `npm run check` completes.
 - The local app loads at the dev server URL and shows a visible canvas plus training viewer.
 - Creature and environment config files load without TypeScript errors.
-- With no ONNX model present, backend status becomes `scripted` with a clear missing-model message.
-- With an ONNX model present, metadata shape validation passes before inference starts.
+- Built-in creature selections render distinct anatomy while the stunt policy keeps its fixed 16-segment action lattice.
+- With the tracked stunt JSON present, backend status becomes `neural-js` and inference uses the 174-float observation.
+- With the stunt JSON absent or invalid, the default request falls back to `scripted` with a clear message.
+- With an explicitly requested ONNX model present, metadata shape validation passes before inference starts.

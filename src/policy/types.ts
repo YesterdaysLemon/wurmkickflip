@@ -1,10 +1,10 @@
 export const SEGMENT_COUNT = 16
 export const MUSCLE_COUNT = SEGMENT_COUNT * 2
-export const OBSERVATION_SIZE = 118
+export const OBSERVATION_SIZE = 174
 export const ACTION_SIZE = MUSCLE_COUNT
 export const POLICY_TIMESTEP = 1 / 60
 
-export type PolicyBackend = 'loading' | 'onnx-webgpu' | 'onnx-wasm' | 'scripted'
+export type PolicyBackend = 'loading' | 'neural-js' | 'onnx-webgpu' | 'onnx-wasm' | 'scripted'
 
 export type PolicyStatus = {
   backend: PolicyBackend
@@ -67,4 +67,13 @@ export type ViewerMetrics = {
   message: string
   running: boolean
   muscleActivity: number[]
+  phase: string
+  flipProgress: number
+  flipsLanded: number
+  airtime: number
+  height: number
+  speed: number
+  landingQuality: number
+  attempt: number
+  stuntName: string
 }

@@ -43,9 +43,9 @@ Important dynamic parameters include gravity, friction, drag, restitution, slope
 
 ## Current Scenario
 
-The current browser simulation is a Rapier-backed inspection sandbox. It creates dynamic rigid bodies for the skateboard and selected creature body parts, keeps creature parts aligned with spring impulses plus hard separation caps, drives the bodies with scripted/ONNX-compatible motor impulses, and exposes state for policy inference and UI metrics.
+The current browser simulation is a deterministic, fixed-step stunt plant in `src/scene/WurmkickflipScene.tsx`. It advances skateboard and 16-segment worm state at 60 Hz, converts that state into the shared 174-float policy observation, and decodes dorsal/ventral outputs into bend, co-contraction, and asymmetric kick signals. Those signals drive cruise, coil, pop, airborne rotation, landing evaluation, recovery, and free-flop behavior.
 
-Terrain is procedurally generated from the selected environment seed and parameters. Visual tiles are lightweight, while the physical world uses a base collider, generated obstacle colliders, terrarium walls, a top collider, and dynamic board/creature bodies. Segment and board velocities are capped each frame to keep unstable controllers inspectable inside the terrarium. Future work should improve Rapier/MuJoCo parity without breaking the policy contract.
+The plant is physically inspired but authored for repeatable, legible exhibition behavior. It is not Rapier rigid-body dynamics, a high-fidelity skateboard simulator, or proof of policy transfer from the Python surrogate. Creature genomes are projected onto the fixed controller lattice: root primitive and dimensions change the 16 rendered nodes' silhouette and proportions, while root-level branches become visible appendages and the source mass/stance are exposed in the UI. This projection intentionally leaves the policy's 16 segment snapshots and 174-float observation unchanged, so switching genome anatomy does not invalidate the learned stunt. Environment configs influence the board and terrarium, while deterministic fixed stepping keeps the showcase reproducible across render frame rates. A future MuJoCo/Rapier training plant should preserve the policy and artifact contracts while replacing these simplified dynamics.
 
 ## Policy Runtime
 
@@ -53,14 +53,14 @@ Terrain is procedurally generated from the selected environment seed and paramet
 
 Load order:
 
-1. Fetch `public/models/wurmkickflip_policy.meta.json`.
-2. Validate metadata shapes against TypeScript constants.
-3. Use scripted control by default so the interactive physics lab starts quickly.
-4. If `?policyBackend=webgpu` or `?policyBackend=wasm` is present, check for `public/models/wurmkickflip_policy.onnx`.
-5. Load ONNX Runtime with the requested provider.
-6. Fall back to scripted muscle waves if metadata/model load or inference setup fails.
+1. Default to `neural` unless a `policyBackend` query parameter requests another backend.
+2. Fetch and strictly parse `public/models/wurmkickflip_stunt_policy.json`.
+3. Run its 174-to-hidden-to-32 tanh network directly in JavaScript as `neural-js`.
+4. If `?policyBackend=webgpu` or `?policyBackend=wasm` is present, validate the legacy ONNX metadata and load a current 174-input ONNX model with that provider.
+5. Use `?policyBackend=scripted` for the deterministic diagnostic wave.
+6. Fall back to scripted control if a requested learned artifact cannot load or produces an invalid action.
 
-For validation, append `?policyBackend=wasm` or `?policyBackend=webgpu` to the local app URL to force a specific ONNX execution provider when the model exists.
+The tracked JSON model is behavior-distilled imitation, not PPO/RL. The optional ignored `ppo-smoke-v1` ONNX artifact in some local workspaces predates the 174-float contract and is stale; retrain and re-export it before using `?policyBackend=wasm` or `?policyBackend=webgpu`.
 
 ## Training Scaffold
 
@@ -73,8 +73,10 @@ Current files:
 - `training/wurmkickflip_rl/train.py` trains a Stable Baselines3 PPO policy.
 - `training/wurmkickflip_rl/export_policy.py` exports the policy to ONNX and writes browser metadata.
 - `training/wurmkickflip_rl/evolve.py` evolves CPG controller parameters plus morphology scales from the browser creature/environment configs and writes generation summary artifacts or browser-loadable generated creatures.
+- `training/wurmkickflip_rl/train_stunt_policy.py` behavior-distills the state-aware stunt teacher into the tracked JSON network.
+- `training/wurmkickflip_rl/validate_stunt_policy.py` validates artifact shape, finite inference, phase signals, traveling waves, and roll feedback on held-out canonical states.
 
-The surrogate environment returns episode metrics in `info`: fall reason, current and average contact ratio, energy use, distance, and survival time. Evolution summaries consume those fields so future replay writers and trainers share metric names.
+The Gymnasium surrogate environment returns episode metrics in `info`: fall reason, current and average contact ratio, energy use, distance, and survival time. Evolution summaries consume those fields so future replay writers and trainers share metric names. This surrogate is separate from both the distilled stunt teacher and the browser stunt plant.
 
 The surrogate models morphology through body size, mass, material friction, body spread, joint stiffness, damping, and motor strength, and it samples terrain/skateboard/randomization fields from the environment config. It is not a Rapier clone; transfer quality should be improved by calibrating Python rollouts against browser behavior.
 
@@ -83,7 +85,7 @@ The surrogate models morphology through body size, mass, material friction, body
 Current policy data flow:
 
 1. Scene state is converted into a `SimulationSnapshot`.
-2. `snapshotToObservation` converts the snapshot into a `Float32Array` of length 118.
+2. `snapshotToObservation` converts the snapshot into a `Float32Array` of length 174.
 3. `PolicyRunner.run` returns a `Float32Array` of length 32.
 4. The action is interpreted as dorsal/ventral activations for 16 segments.
 5. The scene updates board, creature, reward, contact, and activity readouts.
@@ -115,3 +117,7 @@ Generated or local-only artifacts:
 - training run outputs under `training/runs/`
 - evolved population outputs
 - trained ONNX files unless explicitly requested by the user.
+
+Tracked learned artifact:
+
+- `public/models/wurmkickflip_stunt_policy.json`, the reproducible distilled showcase policy.

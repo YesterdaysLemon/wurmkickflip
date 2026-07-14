@@ -29,6 +29,8 @@ Required identity fields:
 - `source.policyBackend`
 - `source.modelVersion`
 
+`source.policyBackend` is a closed enum: `scripted`, `neural-js`, `onnx-webgpu`, `onnx-wasm`, or `training`. The tracked browser policy records `neural-js`; unknown backend names are rejected by both validators.
+
 ## Task Metrics
 
 Each replay summarizes skateboard behavior with:

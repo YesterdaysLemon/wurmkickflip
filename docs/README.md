@@ -15,9 +15,9 @@ This folder is the handoff point for future AI agents working on Wurmkickflip. R
 
 ## Current Project Status
 
-The repository contains a working TypeScript prototype. The browser app renders a procedural terrarium with a dynamic skateboard, a selectable pool of primitive creatures, configurable environment presets, and a compatibility policy path with scripted or ONNX control.
+The repository contains a working TypeScript stunt showcase. The browser renders a procedural terrarium, skateboard, and segmented worm driven at 60 Hz by a tracked 174-input distilled neural policy. A deterministic fixed-step plant turns its bend, co-contraction, and kick signals into repeatable cruise, kickflip, landing, victory-wiggle, and free-flop behavior.
 
-The training scaffold under `training/` is a surrogate Gymnasium + Stable Baselines3 PPO environment. It is designed to produce an ONNX policy compatible with the browser runtime, but the current repo does not include a trained `wurmkickflip_policy.onnx` artifact.
+The default `neural-js` artifact is behavior-distilled imitation from a state-aware stunt teacher; it is not PPO/RL and the browser plant is not high-fidelity transfer physics. The older Gymnasium/PPO, ONNX, and CPG-evolution scaffolds remain experimental paths. ONNX binaries stay untracked, and old local 118-input smoke exports are incompatible with the current 174-float contract.
 
 ## Start Here For Agents
 

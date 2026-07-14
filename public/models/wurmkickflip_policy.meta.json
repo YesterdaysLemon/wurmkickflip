@@ -1,7 +1,7 @@
 {
-  "modelVersion": "ppo-smoke-v1",
+  "modelVersion": "onnx-retrain-required-v2",
   "modelPath": "/models/wurmkickflip_policy.onnx",
-  "observationSize": 118,
+  "observationSize": 174,
   "actionSize": 32,
   "timestep": 0.016666666666666666,
   "trainingReward": null,

@@ -49,7 +49,7 @@ The current Python genetic algorithm mutates CPG controller parameters plus morp
 
 When run with `--export-creature` and `--export-manifest`, the GA writes the best controller and mutated morphology back into a browser-readable creature genome. The browser treats `public/configs/evolved/manifest.json` as optional and appends generated creatures to the exhibit selector when the file exists.
 
-This is still a transfer surrogate, not the browser's Rapier simulation. Keep improving calibration by comparing Python fitness trends against browser behavior before trusting long evolution runs.
+This is still a transfer surrogate, not the browser's authored stunt plant. Keep improving calibration by comparing Python fitness trends against browser behavior before trusting long evolution runs.
 
 ## Frontend Role
 

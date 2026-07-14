@@ -3,7 +3,7 @@
 Current visible assets are intentionally primitive and generated in code/config:
 
 - Creature bodies: colored boxes, spheres, cylinders, and capsules from creature genome JSON.
-- Creature connectors: Rapier spherical/hinge constraints with simple joint markers.
+- Future creature connectors: articulated spherical/hinge constraints with simple joint markers.
 - Skateboard: procedural deck, trucks, and wheels.
 - Terrain: procedural tile field, ramps/slopes, obstacle blocks, and terrarium walls.
 

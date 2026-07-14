@@ -18,6 +18,7 @@ const fixturePath = resolve(root, 'fixtures/scripted-rollout.json')
 const updateFixture = process.argv.includes('update')
 
 verifyActionSanitizer()
+await verifyScenePolicyIntegration()
 
 const summary = runScriptedRollout(180)
 
@@ -47,6 +48,18 @@ function verifyActionSanitizer() {
   const nonFinite = new Float32Array(ACTION_SIZE)
   nonFinite[0] = Number.NaN
   assert(sanitizePolicyAction(nonFinite) === null, 'Expected NaN action data to fail.')
+}
+
+async function verifyScenePolicyIntegration() {
+  const scene = await readFile(resolve(root, 'src/scene/WurmkickflipScene.tsx'), 'utf8')
+  assert(
+    /snapshotToObservation\s*\(/.test(scene),
+    'Scene must construct policy observations with snapshotToObservation.',
+  )
+  assert(
+    /policyRunner\.run\s*\(/.test(scene),
+    'Scene must invoke PolicyRunner.run so a loaded learned policy cannot be silently ignored.',
+  )
 }
 
 function runScriptedRollout(steps: number): RolloutSummary {
@@ -112,7 +125,7 @@ function assertDeepEqual(actual: unknown, expected: unknown, label: string) {
   }
 }
 
-function assert(condition: boolean, message: string) {
+function assert(condition: boolean, message: string): asserts condition {
   if (!condition) {
     console.error(message)
     process.exit(1)
