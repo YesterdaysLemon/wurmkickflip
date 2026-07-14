@@ -20,6 +20,14 @@ type StuntPolicy = {
 
 const policyPath = resolve(import.meta.dirname, '../public/models/wurmkickflip_stunt_policy.json')
 const failures: string[] = []
+const teacherFeatureIndices = [
+  0,
+  8,
+  9,
+  10,
+  11,
+  ...Array.from({ length: 16 }, (_, segment) => [14 + segment * 8 + 6, 14 + segment * 8 + 7]).flat(),
+]
 let policy: StuntPolicy
 
 try {
@@ -42,6 +50,7 @@ check(Number.isInteger(policy.hiddenSize) && policy.hiddenSize > 0, 'hiddenSize 
 check(policy.activation === 'tanh', 'activation must equal tanh.')
 
 checkMatrix(policy.hiddenWeights, policy.hiddenSize, policy.inputSize, 'hiddenWeights')
+checkIgnoredColumns(policy.hiddenWeights)
 checkVector(policy.hiddenBias, policy.hiddenSize, 'hiddenBias')
 checkMatrix(policy.outputWeights, policy.outputSize, policy.hiddenSize, 'outputWeights')
 checkVector(policy.outputBias, policy.outputSize, 'outputBias')
@@ -112,6 +121,29 @@ function checkTraining(value: unknown) {
       value.teacherAgreement <= 1,
     'training.teacherAgreement must be a finite number in [0, 1].',
   )
+  if (!Array.isArray(value.teacherFeatureIndices)) {
+    failures.push('training.teacherFeatureIndices must be an array.')
+  } else {
+    check(
+      value.teacherFeatureIndices.length === teacherFeatureIndices.length &&
+        value.teacherFeatureIndices.every((index, position) => index === teacherFeatureIndices[position]),
+      'training.teacherFeatureIndices must match the documented teacher feature mask.',
+    )
+  }
+}
+
+function checkIgnoredColumns(value: unknown) {
+  if (!Array.isArray(value)) return
+  const used = new Set(teacherFeatureIndices)
+  let maximum = 0
+  for (const row of value) {
+    if (!Array.isArray(row)) continue
+    for (let column = 0; column < Math.min(row.length, OBSERVATION_SIZE); column += 1) {
+      if (used.has(column) || typeof row[column] !== 'number' || !Number.isFinite(row[column])) continue
+      maximum = Math.max(maximum, Math.abs(row[column]))
+    }
+  }
+  check(maximum === 0, `ignored observation columns must be exactly zero; max absolute weight was ${maximum}.`)
 }
 
 function check(condition: boolean, message: string) {

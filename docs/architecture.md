@@ -41,11 +41,15 @@ Environment generation should follow a seed plus parameter-ranges model:
 
 Important dynamic parameters include gravity, friction, drag, restitution, slope, terrain roughness, obstacle density, skateboard spawn, skateboard mass, wheel friction, actuator latency, sensor noise, spawn pose, and reward weights.
 
+The current showcase materializes those terrain inputs through `src/scene/terrainField.ts`. A seeded square heightfield provides a terrain-top height, normalized surface normal, friction, and sand/moss/clay surface label for every horizontal coordinate. The same samples build the vertex-colored render mesh and drive board height, pitch, traction, worm clearance, and crawl speed, so visible hills and friction regions agree with the authored dynamics.
+
 ## Current Scenario
 
-The current browser simulation is a deterministic, fixed-step stunt plant in `src/scene/WurmkickflipScene.tsx`. It advances skateboard and 16-segment worm state at 60 Hz, converts that state into the shared 174-float policy observation, and decodes dorsal/ventral outputs into bend, co-contraction, and asymmetric kick signals. Those signals drive cruise, coil, pop, airborne rotation, landing evaluation, recovery, and free-flop behavior.
+The current browser simulation is a deterministic, fixed-step stunt plant in `src/scene/WurmkickflipScene.tsx`. It advances skateboard and 16-segment worm state at 60 Hz, converts a controller-local canonical snapshot into the shared 174-float policy observation, and decodes dorsal/ventral outputs into bend, co-contraction, and asymmetric kick signals. Those signals drive cruise, coil, pop, airborne rotation, landing evaluation, recovery, and crawl waves. Policy actions, simulation poses, rotations, and rendered segment transforms are damped at fixed rates to keep motion stable across render frame rates.
 
-The plant is physically inspired but authored for repeatable, legible exhibition behavior. It is not Rapier rigid-body dynamics, a high-fidelity skateboard simulator, or proof of policy transfer from the Python surrogate. Creature genomes are projected onto the fixed controller lattice: root primitive and dimensions change the 16 rendered nodes' silhouette and proportions, while root-level branches become visible appendages and the source mass/stance are exposed in the UI. This projection intentionally leaves the policy's 16 segment snapshots and 174-float observation unchanged, so switching genome anatomy does not invalidate the learned stunt. Environment configs influence the board and terrarium, while deterministic fixed stepping keeps the showcase reproducible across render frame rates. A future MuJoCo/Rapier training plant should preserve the policy and artifact contracts while replacing these simplified dynamics.
+The board follows smooth waypoints across both horizontal axes. Arena-margin steering and bounded coordinates replace the earlier one-axis wraparound behavior, so neither the board nor worm teleports at a route boundary. After a successful landing the worm can dismount into an independent root pose, crawl across terrain, seek the board, and blend continuously back into a mounted pose before another stunt. Free crawl keeps the worm detached and independently mobile while the board remains optional.
+
+The plant is physically inspired but authored for repeatable, legible exhibition behavior. It is not Rapier rigid-body dynamics, a high-fidelity skateboard simulator, or proof of policy transfer from the Python surrogate. Creature genomes are projected onto the fixed controller lattice: root primitive and dimensions change the 16 rendered nodes' silhouette and proportions, while root-level branches become visible appendages and the source mass/stance are exposed in the UI. This projection intentionally leaves the policy's 16 segment snapshots and 174-float observation unchanged, so switching genome anatomy does not invalidate the learned stunt. Environment configs influence terrain size, shape, friction, the board, and terrarium, while deterministic fixed stepping keeps the showcase reproducible. A future MuJoCo/Rapier training plant should preserve the policy and artifact contracts while replacing these simplified dynamics.
 
 ## Policy Runtime
 
@@ -60,7 +64,7 @@ Load order:
 5. Use `?policyBackend=scripted` for the deterministic diagnostic wave.
 6. Fall back to scripted control if a requested learned artifact cannot load or produces an invalid action.
 
-The tracked JSON model is behavior-distilled imitation, not PPO/RL. The optional ignored `ppo-smoke-v1` ONNX artifact in some local workspaces predates the 174-float contract and is stale; retrain and re-export it before using `?policyBackend=wasm` or `?policyBackend=webgpu`.
+The tracked `stunt-distilled-v2` JSON model is behavior-distilled imitation, not PPO/RL. Its teacher uses 37 documented features within the 174-float interface, and training forces every unused first-layer column to exactly zero. This makes unsupported absolute position, velocity, and previous-action channels unable to feed high-frequency scene motion back into inference while preserving the full browser/training contract. The optional ignored `ppo-smoke-v1` ONNX artifact in some local workspaces predates the 174-float contract and is stale; retrain and re-export it before using `?policyBackend=wasm` or `?policyBackend=webgpu`.
 
 ## Training Scaffold
 
@@ -74,7 +78,7 @@ Current files:
 - `training/wurmkickflip_rl/export_policy.py` exports the policy to ONNX and writes browser metadata.
 - `training/wurmkickflip_rl/evolve.py` evolves CPG controller parameters plus morphology scales from the browser creature/environment configs and writes generation summary artifacts or browser-loadable generated creatures.
 - `training/wurmkickflip_rl/train_stunt_policy.py` behavior-distills the state-aware stunt teacher into the tracked JSON network.
-- `training/wurmkickflip_rl/validate_stunt_policy.py` validates artifact shape, finite inference, phase signals, traveling waves, and roll feedback on held-out canonical states.
+- `training/wurmkickflip_rl/validate_stunt_policy.py` validates artifact shape, finite inference, phase signals, traveling waves, roll feedback, the exact teacher feature mask, zeroed unused weights, and ignored-feature invariance on held-out canonical states.
 
 The Gymnasium surrogate environment returns episode metrics in `info`: fall reason, current and average contact ratio, energy use, distance, and survival time. Evolution summaries consume those fields so future replay writers and trainers share metric names. This surrogate is separate from both the distilled stunt teacher and the browser stunt plant.
 
@@ -84,11 +88,11 @@ The surrogate models morphology through body size, mass, material friction, body
 
 Current policy data flow:
 
-1. Scene state is converted into a `SimulationSnapshot`.
+1. Scene state is converted into a controller-local canonical `SimulationSnapshot` so arena travel and terrain elevation do not introduce out-of-distribution absolute coordinates.
 2. `snapshotToObservation` converts the snapshot into a `Float32Array` of length 174.
 3. `PolicyRunner.run` returns a `Float32Array` of length 32.
-4. The action is interpreted as dorsal/ventral activations for 16 segments.
-5. The scene updates board, creature, reward, contact, and activity readouts.
+4. The action is smoothed and interpreted as dorsal/ventral activations for 16 segments.
+5. The scene updates board, independent worm root, segment poses, locomotion lifecycle, reward, contact, and activity readouts.
 
 Future evolution data flow:
 

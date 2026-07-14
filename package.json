@@ -14,7 +14,9 @@
     "verify:replay": "tsx scripts/verify-replay-schema.ts",
     "verify:runtime": "tsx scripts/verify-policy-runtime.ts",
     "verify:stunt-policy": "tsx scripts/verify-stunt-policy.ts",
-    "check": "npm run verify:configs && npm run verify:contract && npm run verify:parity && npm run verify:stunt-policy && npm run verify:runtime && npm run verify:env && npm run verify:evolution && npm run verify:replay && npm run build",
+    "verify:terrain": "tsx scripts/verify-terrain-field.ts",
+    "verify:motion": "tsx scripts/verify-stunt-motion.ts",
+    "check": "npm run verify:configs && npm run verify:terrain && npm run verify:contract && npm run verify:parity && npm run verify:stunt-policy && npm run verify:motion && npm run verify:runtime && npm run verify:env && npm run verify:evolution && npm run verify:replay && npm run build",
     "preview": "vite preview"
   },
   "devDependencies": {

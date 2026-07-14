@@ -25,6 +25,8 @@ For app/runtime changes:
 
 - Run `npm run verify:contract` after policy contract changes.
 - Run `npm run verify:parity` after changing observation construction.
+- Run `npm run verify:terrain` after changing the terrain field, environment dimensions, terrain rendering, or terrain-dependent motion.
+- Run `npm run verify:motion` after changing board travel, worm-root locomotion, mount transitions, action smoothing, or segment pose updates.
 - Run `npm run build`.
 - Start or reuse the dev server.
 - Verify the app renders a nonblank canvas.
@@ -47,6 +49,7 @@ For training changes:
 - The browser simulation is a deterministic, physically inspired stunt showcase, not a physically faithful RL environment.
 - The current board/worm plant is authored fixed-step state dynamics, not Rapier rigid-body physics.
 - The tracked JSON policy is behavior-distilled imitation, not PPO/RL.
+- The tracked version 2 JSON policy deliberately masks unsupported observation channels; do not restore nonzero ignored-feature weights without a teacher and verifier that use those features.
 - The Python environment is a separate surrogate and should eventually be replaced or calibrated against a high-fidelity trainable physics environment, not treated as validated transfer from the showcase.
 - The project is no longer worm-only; the existing segmented body is a starter morphology.
 - The optional local ONNX smoke artifact predates the 174-input contract and must be regenerated before WebGPU/WASM claims are renewed.

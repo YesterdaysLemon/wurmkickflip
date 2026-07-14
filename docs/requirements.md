@@ -50,6 +50,8 @@ The first implementation can use a simple segmented creature. Future implementat
 - Make creature selection visibly change anatomy (primitive silhouette, proportions, and configured branching appendages), not only palette.
 - Load an environment JSON and show key environment parameters in the viewer.
 - Keep the existing worm/skateboard policy demo working as the first skateboard scenario.
+- Keep board and creature travel continuous, bounded, and genuinely two-dimensional in the current square terrarium; do not wrap or teleport at arena edges.
+- Let the current worm detach, crawl independently over terrain, seek the skateboard, and remount through a continuous transition.
 - Load the tracked distilled JSON neural policy by default and clearly identify it as imitation learning.
 - Run without a learned artifact by falling back to deterministic scripted control.
 - Load ONNX policy artifacts only when explicitly requested and compatible with the current metadata contract.
@@ -57,13 +59,15 @@ The first implementation can use a simple segmented creature. Future implementat
 
 ## Success Criteria
 
-The next project milestone is:
+The completed browser/config milestone is:
 
 - A typed creature genome and environment config exist in shared browser-readable JSON.
 - The frontend renders a creature and environment from those configs.
 - Environment config includes skateboard task parameters and randomization ranges.
 - The docs describe Python evolution/training as the source of generated artifacts.
 - The existing smoke policy path and verification commands still pass.
+
+The current refinement baseline additionally includes a shared seeded heightfield with surface-dependent friction, bounded two-dimensional travel, smoothed neural and segment motion, and a detached crawl/seek/remount lifecycle. The next training-fidelity milestone is to reproduce those task semantics in a contact-rich trainable physics environment rather than treating the authored showcase as transfer evidence.
 
 Longer-term success:
 
@@ -95,5 +99,7 @@ Longer-term success:
 - Creature and environment config files load without TypeScript errors.
 - Built-in creature selections render distinct anatomy while the stunt policy keeps its fixed 16-segment action lattice.
 - With the tracked stunt JSON present, backend status becomes `neural-js` and inference uses the 174-float observation.
+- `npm run verify:terrain` confirms deterministic height, normal, surface, friction, and waypoint sampling.
+- `npm run verify:motion` confirms deterministic two-axis travel, bounded positions, kickflip landings, detached crawling, board seeking, remounting, and segment/root motion budgets.
 - With the stunt JSON absent or invalid, the default request falls back to `scripted` with a clear message.
 - With an explicitly requested ONNX model present, metadata shape validation passes before inference starts.

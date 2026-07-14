@@ -2,11 +2,11 @@
 
 # Wurmkickflip
 
-A React and Three.js virtual terrarium where a segmented worm uses a tracked neural controller to cruise, kickflip, land, and flop around on a skateboard. ONNX remains available as an experimental policy path; a trainable rigid-body plant is future work rather than an unused browser dependency.
+A React and Three.js virtual terrarium where a segmented worm uses a tracked neural controller to cruise, kickflip, land, dismount, crawl, find its board, and mount again. ONNX remains available as an experimental policy path; a trainable rigid-body plant is future work rather than an unused browser dependency.
 
-The app boots with `public/models/wurmkickflip_stunt_policy.json` through the `neural-js` backend. That model is a 174-input, one-hidden-layer tanh network behavior-distilled from a deterministic state-aware stunt teacher. It is learned imitation behavior, not PPO/RL and not evidence of transfer from a high-fidelity physics trainer.
+The app boots with the `stunt-distilled-v2` artifact in `public/models/wurmkickflip_stunt_policy.json` through the `neural-js` backend. It is a 174-input, one-hidden-layer tanh network behavior-distilled from a deterministic state-aware stunt teacher. Its explicit 37-feature teacher mask and zeroed unused input weights prevent unsupported position and velocity channels from creating feedback jitter. It is learned imitation behavior, not PPO/RL and not evidence of transfer from a high-fidelity physics trainer.
 
-The viewer includes creature and terrain presets, a repeatable kickflip exhibition, free-flop mode, live neural activity, phase telemetry, landing quality, and terrarium camera controls. The browser uses a fixed-step, physically inspired stunt plant that decodes dorsal/ventral actions into bend, co-contraction, and kick signals. It is intentionally a responsive showcase rather than rigid-body transfer physics.
+The viewer includes creature and terrain presets, a repeatable kickflip exhibition, Free crawl mode, live neural activity, phase telemetry, landing quality, and terrarium camera controls. The browser plant moves the board along smooth, bounded two-dimensional routes across a larger square seeded terrain with hills, mounds, microrelief, and sand/moss/clay friction regions; it steers back from the walls instead of wrapping or teleporting. Fixed-step action, pose, rotation, and render smoothing keep the learned muscle waves legible while the worm transitions through riding, dismounting, crawling, seeking, and mounting. It is intentionally a responsive showcase rather than rigid-body transfer physics.
 
 ## Web App
 
@@ -27,6 +27,8 @@ Full verification:
 npm run check
 ```
 
+The full check includes deterministic terrain sampling (`verify:terrain`) and motion/lifecycle regression coverage (`verify:motion`) in addition to policy, runtime, training, replay, and build verification.
+
 ## Training Scaffold
 
 The Python workspace is under `training/` and is intended to be run with Python 3.11 through `uv`.
@@ -40,7 +42,7 @@ uv run python -m wurmkickflip_rl.train_stunt_policy
 uv run python -m wurmkickflip_rl.validate_stunt_policy
 ```
 
-The generated `public/models/wurmkickflip_stunt_policy.json` is intentionally tracked and is the default browser brain. Training folds input normalization into the exported weights. `npm run verify:stunt-policy` checks its schema, exact 174-to-hidden-to-32 matrix dimensions, finite parameters, and held-out stunt signals. See [`training/STUNT_POLICY.md`](training/STUNT_POLICY.md) for the imitation-learning and physics limitations.
+The generated `public/models/wurmkickflip_stunt_policy.json` is intentionally tracked and is the default browser brain. Training folds input normalization into the exported weights and records the teacher feature mask in the artifact. `npm run verify:stunt-policy` checks its schema, exact 174-to-hidden-to-32 matrix dimensions, finite parameters, held-out stunt signals, zeroed ignored-feature columns, and invariance to large ignored-feature perturbations. See [`training/STUNT_POLICY.md`](training/STUNT_POLICY.md) for the imitation-learning and physics limitations.
 
 The older PPO surrogate, ONNX export, and CPG evolution experiments remain available:
 
@@ -93,7 +95,7 @@ Runtime modes:
 
 ## Architecture
 
-- Browser scene: procedural terrarium plus a deterministic fixed-step stunt plant and worm/skateboard visual rig.
+- Browser scene: seeded square heightfield terrarium plus a deterministic fixed-step, two-dimensional stunt/crawl plant and worm/skateboard visual rig.
 - Policy contract: 174 float observations to 32 dorsal/ventral muscle activations at 60 Hz.
 - Runtime: tracked JSON neural policy by default, scripted diagnostic fallback, and explicit optional ONNX providers.
 - Training: behavior-distilled JSON showcase policy plus separate Gymnasium/PPO and CPG-evolution surrogate experiments. None is currently a high-fidelity transfer-physics trainer.

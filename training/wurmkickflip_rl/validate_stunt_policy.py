@@ -8,14 +8,20 @@ from typing import Any
 
 import numpy as np
 
-from .contracts import ACTION_SIZE, OBSERVATION_SIZE, SEGMENT_COUNT
+from .contracts import (
+    ACTION_SIZE,
+    IGNORED_OBSERVATION_INDICES,
+    OBSERVATION_HEADER_SIZE,
+    OBSERVATION_SIZE,
+    SEGMENT_COUNT,
+    SEGMENT_OBSERVATION_SIZE,
+    TEACHER_FEATURE_INDICES,
+)
 
 
 ROOT = Path(__file__).resolve().parents[2]
 DEFAULT_MODEL = ROOT / "public/models/wurmkickflip_stunt_policy.json"
 EXPECTED_KIND = "wurmkickflip.stuntPolicy"
-HEADER_SIZE = 14
-SEGMENT_STATE_SIZE = 8
 
 
 def main() -> None:
@@ -55,6 +61,20 @@ def validate_artifact(artifact: Any) -> tuple[np.ndarray, np.ndarray, np.ndarray
     finite_number(training.get("validationMse"), "training.validationMse", lower=0.0)
     agreement = finite_number(training.get("teacherAgreement"), "training.teacherAgreement", lower=0.0)
     expect(agreement <= 1.0, "training.teacherAgreement must be at most 1")
+    feature_indices = training.get("teacherFeatureIndices")
+    expect(isinstance(feature_indices, list), "training.teacherFeatureIndices must be an array")
+    expect(
+        all(type(index) is int for index in feature_indices),
+        "training.teacherFeatureIndices must contain only integers",
+    )
+    expect(
+        tuple(feature_indices) == TEACHER_FEATURE_INDICES,
+        "training.teacherFeatureIndices does not match the documented teacher mask",
+    )
+
+    ignored_weight = hidden_weight[:, IGNORED_OBSERVATION_INDICES]
+    ignored_nonzero = int(np.count_nonzero(ignored_weight))
+    expect(ignored_nonzero == 0, f"ignored observation columns contain {ignored_nonzero} nonzero weights")
     return hidden_weight, hidden_bias, output_weight, output_bias
 
 
@@ -77,6 +97,12 @@ def validate_inference(
     expect(actions.shape == (len(times), ACTION_SIZE), f"inference shape must be ({len(times)}, {ACTION_SIZE})")
     expect(bool(np.isfinite(actions).all()), "inference produced a non-finite action")
     expect(float(np.max(np.abs(actions))) <= 1.000001, "tanh inference escaped [-1, 1]")
+    ignored_feature_delta = validate_ignored_feature_invariance(
+        hidden_weight,
+        hidden_bias,
+        output_weight,
+        output_bias,
+    )
 
     bend = (actions[:, 0::2] - actions[:, 1::2]) * 0.5
     co_contraction = (actions[:, 0::2] + actions[:, 1::2]) * 0.5
@@ -111,6 +137,7 @@ def validate_inference(
     return {
         "airCoContraction": round(air_co, 6),
         "coilCoContraction": round(coil_co, 6),
+        "ignoredFeatureMaxDelta": ignored_feature_delta,
         "maxAbsAction": round(float(np.max(np.abs(actions))), 6),
         "releaseCoContraction": round(release_co, 6),
         "releaseKickSignal": round(release_kick, 6),
@@ -133,10 +160,31 @@ def canonical_observations(times: np.ndarray) -> np.ndarray:
     )
     observations[:, 11] = 1.0
     for segment, x in enumerate(np.linspace(-0.76, 0.76, SEGMENT_COUNT)):
-        start = HEADER_SIZE + segment * SEGMENT_STATE_SIZE
+        start = OBSERVATION_HEADER_SIZE + segment * SEGMENT_OBSERVATION_SIZE
         observations[:, start] = x
         observations[:, start + 1] = 0.19
     return observations
+
+
+def validate_ignored_feature_invariance(
+    hidden_weight: np.ndarray,
+    hidden_bias: np.ndarray,
+    output_weight: np.ndarray,
+    output_bias: np.ndarray,
+) -> float:
+    baseline = canonical_observations(np.array([0.8, 2.43, 2.75, 3.18, 4.02, 6.1]))
+    perturbed = baseline.copy()
+    rows = np.arange(len(baseline), dtype=np.float64)[:, None] + 1.0
+    columns = np.asarray(IGNORED_OBSERVATION_INDICES, dtype=np.float64)[None, :] + 1.0
+    # Exercise ignored channels well beyond the browser's normal position and
+    # velocity envelope. An exact zero-column export must be bit-stable here.
+    perturbed[:, IGNORED_OBSERVATION_INDICES] = np.sin(rows * columns * 0.731) * 500.0
+
+    expected = infer(baseline, hidden_weight, hidden_bias, output_weight, output_bias)
+    actual = infer(perturbed, hidden_weight, hidden_bias, output_weight, output_bias)
+    maximum = float(np.max(np.abs(actual - expected)))
+    expect(maximum <= 1e-12, f"ignored-feature perturbations changed actions by {maximum}")
+    return round(maximum, 12)
 
 
 def infer(

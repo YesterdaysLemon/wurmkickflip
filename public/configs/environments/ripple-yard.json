@@ -5,7 +5,7 @@
   "description": "A rougher terrarium with offset tile heights and a slightly heavier board.",
   "seed": 2468,
   "world": {
-    "size": [9.2, 2.4, 4.3],
+    "size": [12, 3, 12],
     "gravity": [0, -9.81, 0],
     "airDrag": 0.04,
     "solverIterations": 10

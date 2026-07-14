@@ -38,7 +38,7 @@ No open P0 tasks. Keep contract and runtime verification green before longer tra
 - Add branching morphology rendering for non-worm creatures. Done for first primitive creature pool.
 - Add skateboard discovery visual markers and contact/rolling overlays.
 - Add optional neuron/muscle activity overlays. Done for the default neural showcase.
-- Add terrarium visual details such as substrate variation, scale references, and better glass edge highlights.
+- Add terrarium visual details such as scale references and better glass edge highlights. Seeded height variation and friction-colored substrate regions are done.
 - Code-split ONNX Runtime so initial browser bundle size is smaller before a model is loaded.
 - Add WebGPU capability diagnostics to the policy status panel.
 - Add mobile layout verification for the training viewer.
@@ -52,7 +52,12 @@ No open P0 tasks. Keep contract and runtime verification green before longer tra
 - First creature genome and adaptive skateboard environment JSON configs.
 - Scripted muscle-wave fallback controller.
 - Tracked behavior-distilled `neural-js` stunt policy with reproducible training and behavioral validation.
-- Deterministic 60 Hz browser stunt plant with kickflip, landing, recovery, and free-flop modes.
+- Deterministic 60 Hz browser stunt plant with smoothed kickflip, landing, recovery, and Free crawl modes.
+- Larger seeded square terrain shared by rendering and dynamics, with hills, mounds, microrelief, surface normals, and sand/moss/clay friction regions.
+- Smooth two-dimensional board routes and bounded arena steering without wraparound teleporting.
+- Independent worm-root lifecycle for riding, dismounting, crawling, seeking the board, and continuous remounting.
+- Masked `stunt-distilled-v2` controller with zero ignored-feature weights and perturbation-invariance validation.
+- Deterministic terrain and motion regression verifiers in `npm run verify:terrain` and `npm run verify:motion`.
 - ONNX Runtime WebGPU/WASM policy loader path.
 - Python 3.11 `uv` training scaffold with Gymnasium + Stable Baselines3.
 - Initial local Git commit.

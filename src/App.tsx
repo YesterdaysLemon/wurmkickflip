@@ -58,7 +58,12 @@ const initialMetrics: StuntMetrics = {
   speed: 0,
   landingQuality: 0,
   attempt: 1,
-  stuntName: 'Kickflip',
+  stuntName: 'Neural kickflip',
+  bodySpeed: 0,
+  mounted: true,
+  distanceToBoard: 0,
+  terrainFriction: 0.9,
+  crawlDistance: 0,
 }
 
 export function App() {
@@ -99,7 +104,7 @@ export function App() {
   const landingPercent = toPercent(displayedMetrics.landingQuality)
   const attempt = Math.max(1, Math.floor(finite(displayedMetrics.attempt, 1)))
   const phase = displayedMetrics.phase || 'ready'
-  const stuntName = displayedMetrics.stuntName || (showcaseMode === 'kickflip' ? 'Kickflip' : 'Free flop')
+  const stuntName = displayedMetrics.stuntName || (showcaseMode === 'kickflip' ? 'Kickflip' : 'Free terrarium crawl')
   const neural = getNeuralStatus(policyStatus.backend)
   const sceneInteractionProps = { interactionNonce, showcaseMode }
 
@@ -109,7 +114,7 @@ export function App() {
       ...initialMetrics,
       backend: policyStatus.backend,
       message: policyStatus.message,
-      stuntName: mode === 'kickflip' ? 'Neural kickflip' : 'Free flop',
+      stuntName: mode === 'kickflip' ? 'Neural kickflip' : 'Free terrarium crawl',
     })
     policyRunner.reset()
     setResetNonce((value) => value + 1)
@@ -188,7 +193,7 @@ export function App() {
               onClick={() => chooseMode('freestyle')}
             >
               <Activity size={20} aria-hidden="true" />
-              <span><strong>Free flop</strong><small>No agenda. Just wurm.</small></span>
+              <span><strong>Free crawl</strong><small>Board optional. Wurm mobile.</small></span>
             </button>
           </div>
         </section>
@@ -283,7 +288,7 @@ export function App() {
             <dl className="environment-facts" aria-label="Selected environment parameters">
               <div><dt>Terrain</dt><dd>{selectedEnvironment.terrain.kind} / seed {selectedEnvironment.seed}</dd></div>
               <div><dt>Gravity</dt><dd>{Math.abs(selectedEnvironment.world.gravity[1]).toFixed(1)} m/s²</dd></div>
-              <div><dt>Deck</dt><dd>{selectedEnvironment.skateboard.deckSize[0].toFixed(2)} × {selectedEnvironment.skateboard.deckSize[2].toFixed(2)} m</dd></div>
+              <div><dt>Arena</dt><dd>{selectedEnvironment.world.size[0].toFixed(1)} × {selectedEnvironment.world.size[2].toFixed(1)} m</dd></div>
               <div><dt>Grip</dt><dd>{selectedEnvironment.terrain.baseFriction.toFixed(2)} ground / {selectedEnvironment.skateboard.wheelFriction.toFixed(2)} wheel</dd></div>
             </dl>
           ) : null}
@@ -345,6 +350,7 @@ export function App() {
           <span>RWD <b>{fixed(displayedMetrics.reward, 1)}</b></span>
           <span>RUN <b>{fixed(displayedMetrics.distance, 1)}m</b></span>
           <span>GRIP <b>{toPercent(displayedMetrics.contactRatio)}%</b></span>
+          <span>BODY <b>{fixed(displayedMetrics.bodySpeed, 1)}</b></span>
           <span>T <b>{fixed(displayedMetrics.time, 1)}s</b></span>
         </div>
 
@@ -399,6 +405,10 @@ function formatPhase(phase: string) {
 
 function phaseMessage(phase: string, mode: ShowcaseMode) {
   const normalized = slugify(phase)
+  if (normalized.includes('dismount')) return 'Board break. Tiny feet on terrain.'
+  if (normalized.includes('finding-board')) return 'Sniffing out the ride.'
+  if (normalized.includes('mounting')) return 'Climb aboard, long athlete.'
+  if (normalized.includes('crawl')) return 'Independent worm transportation.'
   if (normalized.includes('landed')) return 'Four wheels down. Maximum glory.'
   if (normalized.includes('landing')) return 'Find the bolts, tiny champion.'
   if (normalized.includes('flip') || normalized.includes('air')) return 'No ground. Only courage.'

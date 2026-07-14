@@ -12,7 +12,16 @@ import numpy as np
 import torch
 from torch import nn
 
-from .contracts import ACTION_SIZE, OBSERVATION_SIZE, SEGMENT_COUNT
+from .contracts import (
+    ACTION_SIZE,
+    IGNORED_OBSERVATION_INDICES,
+    OBSERVATION_HEADER_SIZE,
+    OBSERVATION_SIZE,
+    PREVIOUS_ACTION_OFFSET,
+    SEGMENT_COUNT,
+    SEGMENT_OBSERVATION_SIZE,
+    TEACHER_FEATURE_INDICES,
+)
 
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -20,10 +29,6 @@ DEFAULT_OUTPUT = ROOT / "public/models/wurmkickflip_stunt_policy.json"
 MODEL_KIND = "wurmkickflip.stuntPolicy"
 CYCLE_SECONDS = 7.2
 TRAVEL_WAVE_HZ = 2.0 / CYCLE_SECONDS
-OBSERVATION_HEADER_SIZE = 14
-SEGMENT_OBSERVATION_SIZE = 8
-PREVIOUS_ACTION_OFFSET = OBSERVATION_HEADER_SIZE + SEGMENT_COUNT * SEGMENT_OBSERVATION_SIZE
-
 PHASE_TRAVEL = 0
 PHASE_COIL = 1
 PHASE_RELEASE = 2
@@ -46,13 +51,16 @@ class NormalizedStuntPolicy(nn.Module):
         super().__init__()
         self.register_buffer("input_mean", torch.from_numpy(mean.astype(np.float32)))
         self.register_buffer("input_scale", torch.from_numpy(scale.astype(np.float32)))
+        feature_mask = torch.zeros(OBSERVATION_SIZE, dtype=torch.float32)
+        feature_mask[list(TEACHER_FEATURE_INDICES)] = 1.0
+        self.register_buffer("input_mask", feature_mask)
         self.hidden = nn.Linear(OBSERVATION_SIZE, hidden_size)
         self.output = nn.Linear(hidden_size, ACTION_SIZE)
         with torch.no_grad():
-            self.hidden.weight[:, PREVIOUS_ACTION_OFFSET:] = 0.0
+            self.hidden.weight[:, self.input_mask == 0] = 0.0
 
     def forward(self, observation: torch.Tensor) -> torch.Tensor:
-        normalized = (observation - self.input_mean) / self.input_scale
+        normalized = ((observation - self.input_mean) / self.input_scale) * self.input_mask
         return torch.tanh(self.output(torch.tanh(self.hidden(normalized))))
 
     def raw_input_parameters(self) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
@@ -60,8 +68,9 @@ class NormalizedStuntPolicy(nn.Module):
         with torch.no_grad():
             scale = self.input_scale
             mean = self.input_mean
-            hidden_weight = self.hidden.weight / scale.unsqueeze(0)
-            hidden_bias = self.hidden.bias - torch.sum(self.hidden.weight * (mean / scale).unsqueeze(0), dim=1)
+            masked_weight = self.hidden.weight * self.input_mask.unsqueeze(0)
+            hidden_weight = masked_weight / scale.unsqueeze(0)
+            hidden_bias = self.hidden.bias - torch.sum(masked_weight * (mean / scale).unsqueeze(0), dim=1)
             return (
                 hidden_weight.cpu().numpy(),
                 hidden_bias.cpu().numpy(),
@@ -75,7 +84,7 @@ def main() -> None:
         description="Distill a deterministic kickflip/flop expert into a compact browser JSON MLP."
     )
     parser.add_argument("--out", type=Path, default=DEFAULT_OUTPUT)
-    parser.add_argument("--model-version", default="stunt-distilled-v1")
+    parser.add_argument("--model-version", default="stunt-distilled-v2")
     parser.add_argument("--seed", type=int, default=20260714)
     parser.add_argument("--samples", type=int, default=16_000)
     parser.add_argument("--validation-samples", type=int, default=4_000)
@@ -107,6 +116,7 @@ def main() -> None:
 
     metrics = validation_metrics(model, validation)
     raw_parameters = model.raw_input_parameters()
+    assert_ignored_features_are_zero(raw_parameters[0])
     assert_folded_inference_matches(model, validation.observations[:128], raw_parameters)
     artifact = make_artifact(args, metrics, raw_parameters)
 
@@ -147,6 +157,12 @@ def assert_contract() -> None:
         raise RuntimeError(f"stunt policy requires the complete {expected}-value observation, found {OBSERVATION_SIZE}")
     if PREVIOUS_ACTION_OFFSET != 142:
         raise RuntimeError(f"unexpected previous-action offset {PREVIOUS_ACTION_OFFSET}")
+    if len(TEACHER_FEATURE_INDICES) != 37 or len(set(TEACHER_FEATURE_INDICES)) != 37:
+        raise RuntimeError("teacher feature mask must contain 37 unique inputs")
+    if set(TEACHER_FEATURE_INDICES) & set(IGNORED_OBSERVATION_INDICES):
+        raise RuntimeError("teacher and ignored feature masks must not overlap")
+    if len(TEACHER_FEATURE_INDICES) + len(IGNORED_OBSERVATION_INDICES) != OBSERVATION_SIZE:
+        raise RuntimeError("teacher and ignored feature masks must cover the observation contract")
 
 
 def seed_everything(seed: int) -> None:
@@ -463,6 +479,14 @@ def assert_folded_inference_matches(
         raise RuntimeError(f"folded raw-input network mismatch: max abs difference {difference}")
 
 
+def assert_ignored_features_are_zero(hidden_weight: np.ndarray) -> None:
+    ignored_weight = hidden_weight[:, IGNORED_OBSERVATION_INDICES]
+    nonzero = int(np.count_nonzero(ignored_weight))
+    if nonzero:
+        maximum = float(np.max(np.abs(ignored_weight)))
+        raise RuntimeError(f"ignored observation columns contain {nonzero} nonzero weights (max {maximum})")
+
+
 def make_artifact(
     args: argparse.Namespace,
     metrics: dict[str, Any],
@@ -487,6 +511,7 @@ def make_artifact(
             "epochs": args.epochs,
             "validationMse": metrics["validationMse"],
             "teacherAgreement": metrics["teacherAgreement"],
+            "teacherFeatureIndices": list(TEACHER_FEATURE_INDICES),
         },
     }
 

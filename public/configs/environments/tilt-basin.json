@@ -5,7 +5,7 @@
   "description": "A sloped skate basin with sparse blockers and a fast, light board.",
   "seed": 97531,
   "world": {
-    "size": [9.2, 2.4, 4.3],
+    "size": [11, 3, 11],
     "gravity": [0, -9.81, 0],
     "airDrag": 0.018,
     "solverIterations": 8

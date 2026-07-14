@@ -5,7 +5,7 @@
   "description": "A dynamic locomotion scenario with randomized physics constants, terrain, and skateboard balance parameters.",
   "seed": 1337,
   "world": {
-    "size": [9.2, 2.4, 4.3],
+    "size": [11.5, 2.8, 11.5],
     "gravity": [0, -9.81, 0],
     "airDrag": 0.025,
     "solverIterations": 8

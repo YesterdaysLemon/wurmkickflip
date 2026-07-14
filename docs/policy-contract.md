@@ -58,6 +58,12 @@ The size is exact: 14 board/task values + (16 segments x 8 values) + 32 previous
 
 The Python environment must emit the same semantic layout before any trained policy is considered browser-compatible.
 
+### Distilled Teacher Feature Mask
+
+The 174-float observation remains the public runtime and training interface. The tracked `stunt-distilled-v2` showcase policy intentionally learns from only 37 teacher-supported entries inside that interface: cycle time; board roll, yaw, and contact ratio; target `x`; and pitch/yaw for each of the 16 segments. Its artifact records the exact observation indices in `training.teacherFeatureIndices`.
+
+Training must force every first-layer weight outside that mask to exactly zero. This prevents unsupported absolute position, velocity, and previous-action values from producing feedback jitter while leaving the complete observation contract available to future policies. `npm run verify:stunt-policy` perturbs ignored features by large values and requires the output to remain unchanged.
+
 ## Action Semantics
 
 The policy outputs a 32-float `Float32Array`.
@@ -85,9 +91,9 @@ Future physics may convert these activations into Rapier joint motors, soft-body
 - `activation = "tanh"`
 - finite `hiddenWeights[hiddenSize][174]` and `hiddenBias[hiddenSize]`
 - finite `outputWeights[32][hiddenSize]` and `outputBias[32]`
-- training provenance: `seed`, `samples`, `epochs`, `validationMse`, and `teacherAgreement`
+- training provenance: `seed`, `samples`, `epochs`, `validationMse`, `teacherAgreement`, and the exact `teacherFeatureIndices` mask
 
-The JavaScript runtime validates this shape before inference. `npm run verify:stunt-policy` also runs held-out canonical behavior checks for coil, release, kick, airborne tuck, traveling waves, and roll feedback. The model is behavior-distilled imitation from a deterministic state-aware teacher; it is not PPO/RL and its passing signals are not proof of transfer in a high-fidelity physics simulator.
+The JavaScript runtime validates this shape before inference. `npm run verify:stunt-policy` also runs held-out canonical behavior checks for coil, release, kick, airborne tuck, traveling waves, roll feedback, exact-zero ignored input columns, and ignored-feature perturbation invariance. The model is behavior-distilled imitation from a deterministic state-aware teacher; it is not PPO/RL and its passing signals are not proof of transfer in a high-fidelity physics simulator.
 
 ## Optional ONNX Metadata Contract
 
@@ -109,6 +115,7 @@ The runtime validates `observationSize` and `actionSize` before loading ONNX. ON
 - Do not silently change observation order.
 - Do not train against a Python layout that differs from the browser layout.
 - Do not accept a learned JSON artifact whose matrix dimensions or behavior checks fail.
+- Keep the distilled teacher mask, exported `teacherFeatureIndices`, zeroed unused weights, and validators aligned when retraining the tracked JSON artifact.
 - Do not export ONNX with input/output names that future browser code cannot discover or map.
 - Keep scripted fallback working when a requested learned JSON or ONNX artifact is absent or invalid.
 - Add parity tests before any contract expansion.

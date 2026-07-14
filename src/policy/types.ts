@@ -76,4 +76,9 @@ export type ViewerMetrics = {
   landingQuality: number
   attempt: number
   stuntName: string
+  bodySpeed: number
+  mounted: boolean
+  distanceToBoard: number
+  terrainFriction: number
+  crawlDistance: number
 }
