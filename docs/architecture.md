@@ -1,152 +1,92 @@
 # Architecture
 
-## Direction
+## System Boundary
 
-The project is pivoting from a worm-specific skateboard demo into an evolutionary creature lab for skateboarding. The current worm/skateboard scene is the first scenario and should remain useful, but new code should favor generic creature, environment, controller, skateboard-task, and replay concepts.
+Wurmkickflip is a Vite/React/TypeScript inspection app backed by deterministic browser simulation and an offline Python evolution workspace. The browser is responsible for interactive visualization, fixed-step playback, config inspection, and small diagnostic rollouts. Python owns population search and generated artifacts.
 
-## Browser App
+The present creature is a fixed 16-segment worm, but configs and UI use creature/environment concepts so future bodies need not be worm-shaped. Skateboard discovery, mounting/contact, and rolling remain the task family.
 
-The browser app is a Vite + React + TypeScript application.
+## Browser Layers
 
-Primary responsibilities:
+### App and configuration
 
-- Mount the React UI in `src/main.tsx`.
-- Own application-level state and controls in `src/App.tsx`.
-- Render the current scenario in `src/scene/WurmkickflipScene.tsx`.
-- Load creature/environment config artifacts from `public/configs/`.
-- Display policy status, rollout metrics, environment parameters, and creature/genome metadata in the viewer.
-- Let the user switch between the current creature pool and procedural environment presets.
+`src/App.tsx` owns controls, selected creature/environment, policy status, reduced-motion behavior, replay controls, and viewer telemetry.
 
-The frontend is not intended to be the high-throughput trainer. It is the inspection surface for current best genomes, replay artifacts, and policy/model state.
+`src/creature/` provides strict config validation and resource-granular loading. Every built-in creature, environment, optional manifest, and generated creature reports `loaded`, `error`, or `optional-missing`; one bad sibling does not discard valid resources. The UI exposes failing paths and retry.
 
-## Creature And Environment Configs
+The current exhibit validates `fixed-wurm-articulated-v1`, which binds:
 
-The new config layer separates generated artifacts from hard-coded visuals:
+- plant `articulated-contact-v2`;
+- 16 segments and 16 antagonistic actuator pairs;
+- 32 scalar dorsal/ventral channels;
+- the tracked recurrent JSON artifact.
 
-- Creature genome JSON describes body parts, joints, controller hints, mutation ranges, and visual defaults.
-- Environment JSON describes scenario type, world dimensions, physics constants, terrain generation, obstacles, reward weights, and randomization ranges.
-- Skateboard parameters are part of the environment/task config, including spawn distribution, deck size, mass, wheel friction, discovery radius, and reward weights.
-- The frontend can render a config-derived creature even before training uses the full schema.
-- Python evolution/training code should emit artifacts that conform to the same config shape.
+Creature genomes project appearance only onto this fixed lattice. Their declared legacy `cpg`, `onnx_policy`, or `hybrid` controller metadata is displayed as provenance and is not executed.
 
-## Dynamic Environment Generation
+### Pure simulation and rendering
 
-Environment generation should follow a seed plus parameter-ranges model:
+`src/scene/terrariumSimulation.ts` owns deterministic state creation and advancement, homeostasis/lifecycle orchestration, board routing, policy sensors, snapshot conversion, decor/collider construction, and fixed-step helper math. It has no React, Fiber, or JSX dependency.
 
-1. Scenario config defines physics constants and randomization ranges.
-2. Training samples seeds and environment parameters for each rollout.
-3. Training tasks ask creatures to locomote, find the skateboard, make useful contact, and roll in a target direction.
-4. Evaluation uses held-out seeds to measure generalization.
-5. Frontend displays the concrete environment parameters used for a replay.
+`src/scene/WurmkickflipScene.tsx` owns React Three Fiber integration, meshes/materials/lights, live frame accumulation, policy calls, replay instrumentation, and metric delivery. Keeping the state machine outside the view lets headless verifiers execute the same simulation without mounting React.
 
-Important dynamic parameters include gravity, friction, drag, restitution, slope, terrain roughness, obstacle density, skateboard spawn, skateboard mass, wheel friction, actuator latency, sensor noise, spawn pose, and reward weights.
+`src/scene/terrainField.ts` precomputes a seeded grid. Rendering and physics sample the exact same piecewise triangles, so visible surface height, normals, board pitch, segment ground height, and friction cannot drift apart.
 
-The current showcase materializes those terrain inputs through `src/scene/terrainField.ts`. A seeded square heightfield provides a terrain-top height, normalized surface normal, friction, and sand/moss/clay surface label for every horizontal coordinate. The same samples build the vertex-colored render mesh and drive board height, pitch, traction, worm clearance, and crawl speed, so visible hills and friction regions agree with the authored dynamics.
+### Detached locomotion
 
-## Current Scenario
+`src/policy/locomotionPolicy.ts` runs a clock-free 16-neuron recurrent network. Every neuron owns one anatomical segment and produces its dorsal/ventral pair. The 45 evolved values comprise 16 initial states, 17 input weights, three neighbor-recurrent weights, and nine output weights. Global goal/body sensors are combined with local bend, prior command, support, slip, and obstacle feedback. There is no time, gait phase, trigonometric teacher, or direct root-motion output.
 
-The current browser simulation composes two deliberately separate 60 Hz controllers plus an authored interaction layer in `src/scene/WurmkickflipScene.tsx`:
+`src/scene/wormLocomotion.ts` advances only damped antagonistic joint servos. `src/scene/wormDynamics.ts` maps those joints into mean-free internal shape forces on a free 16-particle chain, applies equal-and-opposite spacing constraints, per-segment anisotropic friction, and swept obstacle projection, then measures root position/velocity/heading from the resulting body. With no friction or obstacles, active muscles conserve horizontal center of mass to numerical precision.
 
-- Detached locomotion uses `locomotion-segmental-es-quality-robust-v1`, a tracked 39-parameter recurrent neural controller. Sixteen locally coupled `tanh` neurons each own one anatomical segment and emit its dorsal/ventral actuator pair. Sensors describe target direction/distance, root speed, angular speed, terrain friction, need urgency, and local joint feedback. There is no time, clock, cycle, gait phase, or trigonometric gait teacher.
-- Mounted exhibition uses the existing distilled stunt action prior for segment pose. The browser scripts the pop, aerial board rotation, landing window, and ride lifecycle. A successful kickflip is therefore not claimed as learned physics.
+`src/scene/terrariumCollisions.ts` prepares deterministic height-aware collision worlds. It handles glass planes and sorted circular footprints for tree/rock trunks, annular bowl rims, board deck probes, and every tapered body segment. Continuous sweeps, overlap recovery, tangent projection, and contact normals prevent tunneling while preserving useful sliding.
 
-`src/scene/wormLocomotion.ts` is the causal crawl plant. Antagonistic activations drive damped joint angles and velocities; forward acceleration is derived from non-reciprocal work across adjacent joints and scaled by terrain traction. Steering torque comes from the front-weighted joint shape. The target never enters the plant and cannot directly translate or rotate the root. Zero actions stay stationary, frozen-pose and segment-shuffle ablations lose progress, and zero friction produces zero displacement from rest. Segment and render transforms are damped at fixed rates to keep the resulting neural articulation stable across render frame rates.
+### Homeostasis and interactions
 
-Two downstream modules make that compact plant interact legibly with the terrarium without changing what the network learned:
+`src/scene/terrariumNeeds.ts` owns hunger, thirst, well-being, target hysteresis, finite inventories, deterministic refill, and 3D mouth-to-contents tests. The selector supplies a goal but never a gait. Food/water restore only during continued live-mouth contact with nonempty visible contents; well-being restores only while mounted.
 
-- `src/scene/terrariumCollisions.ts` performs deterministic continuous planar sweeps against glass bounds and sorted circle obstacles. It resolves the earliest contact, projects overlaps clear, preserves friction/restitution-limited tangent motion, and reports ground, obstacle, sliding, and blocked-support telemetry. The scene sweeps board deck probes, the worm root, and each rendered segment, so fast steps and a long body's leading segments cannot pass through tree/rock trunks or solid resources. Target-aware tangent reorientation after a stopped collision is authored scene steering, not a policy output.
-- Per-segment ground contacts store temporary anchors. Quiet joints on grippy terrain stick; active or over-strained segments release and re-anchor, producing a derived stick-slip gait response instead of an invisible spring or time-authored body wave. The learned joint targets remain the cause of which segments move.
-- `src/scene/wormInteractionAnimation.ts` samples deterministic additive mount, dismount, eat, and drink poses. Mount contact advances head to midbody to tail; dismount releases the head onto terrain first; bowl contact lowers the face while posterior segments remain grounded. These contact cues, mouth/swallow effects, and locomotion handoffs are scripted choreography.
+`src/scene/wormInteractionAnimation.ts` provides additive head-to-tail mounting, head-first dismounting, and face-focused eating/drinking poses. A narrow approach-aligned aperture opens only in the active nearby bowl rim; all other rim samples and props stay solid. Feeding, mounting, dismounting, target recovery, board routing, pop, aerial rotation, landing, and lifecycle timing are authored behavior, not neural outputs.
 
-The board follows smooth waypoints across both horizontal axes. Arena-margin steering, swept wall contact, and bounded coordinates replace the earlier one-axis wraparound behavior, so neither the board nor worm teleports at a route boundary. Food and water bowls occupy deterministic terrain positions; the moving skateboard is the well-being resource. Hunger, thirst, and well-being urgencies accumulate over time. `src/scene/terrariumNeeds.ts` selects the most urgent resource with mild hysteresis, restores food/water by proximity, and restores well-being only while mounted. Selection produces a target for the recurrent controller; it does not author a gait or move the root. A substantial food/water restoration event commits the lifecycle to a timed feeding state. During that state the active bowl is omitted only where anterior contact is intended; a release resource ID plus cooldown keeps it omitted until the body clears, preventing collision ejection or immediate retriggering. After a scripted stunt the worm can dismount, neurally crawl to the selected resource, eat or drink, seek the skateboard when well-being becomes urgent, and blend continuously back into a mounted pose. Free crawl excludes the skateboard target but retains food and water.
+### Mounted stunt
 
-The plant is physically inspired but authored for repeatable, legible exhibition behavior. It is not Rapier rigid-body dynamics, a high-fidelity skateboard simulator, or proof of policy transfer from the Python surrogate. Creature genomes are projected onto the fixed controller lattice: root primitive and dimensions change the 16 rendered nodes' silhouette and proportions, while root-level branches become visible appendages and the source mass/stance are exposed in the UI. This projection intentionally leaves the policy's 16 segment snapshots and 174-float observation unchanged, so switching genome anatomy does not invalidate the learned stunt. Environment configs influence terrain size, shape, friction, the board, and terrarium, while deterministic fixed stepping keeps the showcase reproducible. A future MuJoCo/Rapier training plant should preserve the policy and artifact contracts while replacing these simplified dynamics.
+Mounted pose inference uses the tracked `stunt-distilled-v2` JSON with the stable 174-float observation and 32-channel action. Its teacher-supported input mask is enforced by zero weights and perturbation tests. The browser still scripts the kickflip launch and board trajectory, so the artifact is correctly described as an imitation-learned pose prior rather than learned physics.
 
-## Policy Runtime
+`src/policy/policyRunner.ts` loads tracked JSON or the explicit `?policyBackend=scripted` mounted diagnostic. A missing stunt JSON falls back safely; a missing crawl JSON holds detached muscle channels at zero and reports unavailable. Browser ONNX Runtime and its WASM assets are retired. Historical replay backend labels and offline Python ONNX exporters remain for provenance only.
 
-`src/policy/policyRunner.ts` owns runtime selection.
+### Replay
 
-Load order:
+`src/replay/` contains a versioned recorder/player independent of React. Recorder-core artifacts use strict 60 Hz frame timing, all 32 muscle channels, deterministic interpolation, defensive copies, semantic metric validation, and a canonical FNV-1a integrity digest. The digest detects ordinary corruption, not malicious forgery. App controls can finalize/export a live capture, validate/import JSON, play/pause/seek it, and return cleanly to live simulation.
 
-1. Load and strictly parse `public/models/wurmkickflip_locomotion_policy.json` through `src/policy/locomotionRunner.ts` for every detached crawl.
-2. Run its dependency-free segmental recurrent network directly in JavaScript and report `locomotion-segmental-es-quality-robust-v1` as the autonomous brain.
-3. Separately default the mounted stunt action path to `neural` unless a `policyBackend` query parameter requests another backend.
-4. Fetch and strictly parse `public/models/wurmkickflip_stunt_policy.json` for mounted exhibition poses.
-5. If `?policyBackend=webgpu` or `?policyBackend=wasm` is present, validate the legacy ONNX metadata and load a current 174-input ONNX model with that provider.
-6. Use `?policyBackend=scripted` for the deterministic diagnostic action wave.
-7. Fall back to the scripted mounted action wave if the stunt artifact fails; if the locomotion artifact fails, emit zero detached actuator commands and report it unavailable rather than inventing a gait.
+## Offline Evolution
 
-The tracked locomotion model has a separate compact contract documented in `training/LOCOMOTION_POLICY.md`; it is not a second consumer of the 174-float stunt observation. The tracked `stunt-distilled-v2` JSON model is behavior-distilled imitation, not PPO/RL. Its teacher uses 37 documented features within the 174-float interface, and training forces every unused first-layer column to exactly zero. This makes unsupported absolute position, velocity, and previous-action channels unable to feed high-frequency scene motion back into inference while preserving the mounted browser/training contract. The optional ignored `ppo-smoke-v1` ONNX artifact in some local workspaces predates the 174-float contract and is stale; retrain and re-export it before using `?policyBackend=wasm` or `?policyBackend=webgpu`.
+`contracts/locomotion-v2.json` is the canonical TypeScript/Python plant and sensor contract. `training/wurmkickflip_rl/articulated_locomotion.py` vectorizes the causal body model; `evolve_locomotion_policy.py` evaluates populations across 12 obstacle/friction/body/target/contact scenarios. The public controller is reproduced by a deterministic 40-generation base stage and 10-generation refinement. Warm starts are identified by SHA-256 and model version rather than filesystem path.
 
-## Training Scaffold
-
-The offline training workspace lives under `training/`.
-
-Current files:
-
-- `training/wurmkickflip_rl/contracts.py` mirrors browser policy constants.
-- `training/wurmkickflip_rl/env.py` defines the current Gymnasium surrogate environment and derives dynamics from browser-readable creature/environment JSON.
-- `training/wurmkickflip_rl/train.py` trains a Stable Baselines3 PPO policy.
-- `training/wurmkickflip_rl/export_policy.py` exports the policy to ONNX and writes browser metadata.
-- `training/wurmkickflip_rl/evolve_locomotion_policy.py` evolves the 39-parameter clock-free segmental recurrent controller used by the browser crawl plant. The published refinement uses seed `20260719`, 80 generations, population 128, 18 elites, 420-step episodes, a risk-sensitive objective, and eight approach/friction scenarios. It warm-starts from the preserved 110-generation base artifact under `training/seeds/`.
-- `training/wurmkickflip_rl/evolve.py` is the older experimental path that evolves sinusoidal CPG parameters plus morphology scales. It can still write generated creature configs, but its CPG is not the browser's tracked crawl brain.
-- `training/wurmkickflip_rl/train_stunt_policy.py` behavior-distills the state-aware stunt teacher into the tracked JSON network.
-- `training/wurmkickflip_rl/validate_stunt_policy.py` validates artifact shape, finite inference, phase signals, traveling waves, roll feedback, the exact teacher feature mask, zeroed unused weights, and ignored-feature invariance on held-out canonical states.
-
-The locomotion evolution uses the same joint-work equations and controller update order as the browser crawl plant. `npm run verify:locomotion` checks byte-identical same-seed smoke exports, a Python-versus-browser trace across controller/plant checkpoints, target steering, visible body articulation, and zero/frozen/shuffled/no-friction causal ablations. Evolution did not train against the later browser collision, stick-slip, feeding, or mount layers. Those deterministic kinematic layers improve the exhibit but are still not contact-rich articulated physics.
-
-The legacy Gymnasium surrogate environment returns episode metrics in `info`: fall reason, current and average contact ratio, energy use, distance, and survival time. Legacy CPG evolution summaries consume those fields so future replay writers and trainers share metric names. This surrogate is separate from the evolved browser crawl plant, the distilled stunt teacher, and the browser stunt plant.
-
-The surrogate models morphology through body size, mass, material friction, body spread, joint stiffness, damping, and motor strength, and it samples terrain/skateboard/randomization fields from the environment config. It is not a Rapier clone; transfer quality should be improved by calibrating Python rollouts against browser behavior.
+The older Gymnasium/PPO/ONNX and morphology-plus-sinusoidal-CPG paths remain offline experiments. They are not browser runtime dependencies or provenance for the tracked recurrent model.
 
 ## Data Flow
 
-Current detached-locomotion data flow:
+Detached tick:
 
-1. The homeostasis layer updates hunger, thirst, and well-being and selects a food, water, or skateboard resource by urgency.
-2. Resource direction, distance, urgency, terrain friction, root motion, joint state, and neighbor recurrent state feed the 16-neuron locomotion policy.
-3. Each neuron produces one segment command, expanded into a dorsal/ventral antagonistic pair.
-4. The joint-work plant advances segment angles and velocities, derives traction-scaled propulsion and shape-based steering, and updates the independent worm root.
-5. Derived per-segment grip and swept root/segment collision handling constrain that proposed motion; any target-aware tangent reorientation is authored after contact.
-6. Substantial bowl contact enters scripted eating/drinking choreography, while a completed mount enters the scripted riding lifecycle. Resource contact restores the associated need, and the selector chooses the next goal from the updated urgencies.
+1. Needs update finite resources and select the most urgent available goal.
+2. Goal/body sensors plus segment-local proprioception/contact feed the recurrent policy.
+3. Sixteen neurons emit 32 antagonistic muscle channels.
+4. Joint servos and the free articulated solver reshape the body and resolve terrain/obstacle contacts.
+5. The body center and local contact signals become the next observation.
+6. Real mouth/deck contact may hand control to an authored feed or mount lifecycle.
 
-Mounted stunt data flow:
+Mounted tick:
 
-1. Scene state is converted into a controller-local canonical `SimulationSnapshot` so arena travel and terrain elevation do not introduce out-of-distribution absolute coordinates.
-2. `snapshotToObservation` converts the snapshot into a `Float32Array` of length 174.
-3. `PolicyRunner.run` returns a `Float32Array` of length 32.
-4. The action is smoothed and interpreted as dorsal/ventral activations for 16 mounted segments.
-5. The scene scripts board routing, pop, aerial board rotation, landing, head-to-tail mounting, head-first dismounting, and the transition back into the autonomous needs loop.
+1. Simulation state becomes a canonical 174-float stunt observation.
+2. The mounted JSON prior or scripted diagnostic returns 32 pose channels.
+3. The authored board/stunt plant advances route, pop, rotation, landing, and riding state.
+4. The same state can be rendered, recorded, or sampled headlessly.
 
-Future evolution data flow:
+## Verification Shape
 
-1. Python generates creature genome candidates and sampled environments.
-2. Python evaluates each candidate on locomotion, skateboard discovery, skateboard contact, and rolling distance.
-3. Python or the browser writes replay artifacts using the schema in `docs/replay-artifacts.md`.
-4. Browser loads selected genome/environment/replay artifacts.
-5. Browser visualizes behavior and allows parameter inspection.
+Static checks cover TypeScript, ESLint/Prettier, Ruff, Pyright, dependency audit, and bundle budgets. Focused verifiers cover configs, contracts, parity, shared terrain, collision properties, articulated invariants, finite resources, interaction continuity, replay integrity, policy evolution, and performance. The integrated motion rollout exercises repeated food/water/board cycles, collisions, remounting, scripted kickflips, and neural interventions. Playwright covers recovery/error UI, reduced motion, and replay flows; the long reproduction lane reruns both published evolution stages in an isolated workspace.
 
-## Artifact Boundaries
+## Honest Limits
 
-Tracked source:
-
-- TypeScript app and policy runtime.
-- Config schemas and sample configs.
-- Python training/evolution scaffold.
-- `policy.meta.json` bootstrap metadata.
-- Markdown docs.
-
-Generated or local-only artifacts:
-
-- `node_modules/`
-- `dist/`
-- Python `__pycache__/`
-- Python `.venv/`
-- training run outputs under `training/runs/`
-- evolved population outputs
-- trained ONNX files unless explicitly requested by the user.
-
-Tracked learned artifact:
-
-- `public/models/wurmkickflip_locomotion_policy.json`, the evolved recurrent crawl controller.
-- `public/models/wurmkickflip_stunt_policy.json`, the reproducible distilled showcase policy.
+- This is a deterministic exhibition plant, not biological worm or real skateboard transfer physics.
+- Full resource planning, contact manipulation, mounting, and stunts are not yet inside the evolution objective.
+- Genome morphology is currently appearance-only on a fixed control lattice.
+- The integrity checksum is not an authenticated signature.
+- A future MuJoCo, Brax, or custom contact-rich trainer should preserve explicit versioned contracts while replacing simplified plant dynamics.

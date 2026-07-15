@@ -1,32 +1,30 @@
 # Wurmkickflip Docs
 
-This folder is the handoff point for future AI agents working on Wurmkickflip. Read these files before changing code, training policies, or altering the browser/runtime contract.
+This folder is the technical handoff for the virtual terrarium, its evolved locomotion controller, and the deliberately scripted stunt layer.
 
 ## Reading Order
 
-1. [`requirements.md`](requirements.md) - product goal, MVP behavior, acceptance criteria, and non-goals.
-2. [`architecture.md`](architecture.md) - current app, scene, policy runtime, and training scaffold.
-3. [`evolution-lab.md`](evolution-lab.md) - creature evolution, dynamic environments, and skateboarding objective.
-4. [`policy-contract.md`](policy-contract.md) - source-of-truth observation/action contract that must stay aligned across TypeScript, Python, and exported metadata.
-5. [`replay-artifacts.md`](replay-artifacts.md) - source-of-truth replay artifact shape for skateboard task inspection.
-6. [`asset-roadmap.md`](asset-roadmap.md) - current primitive assets and future authored asset needs.
-7. [`agent-handoff.md`](agent-handoff.md) - rules and verification checklist for future agents.
-8. [`backlog.md`](backlog.md) - prioritized task board for next implementation passes.
+1. [`requirements.md`](requirements.md) — product goal, acceptance criteria, and non-goals.
+2. [`architecture.md`](architecture.md) — browser, simulator, runtime, and training boundaries.
+3. [`evolution-lab.md`](evolution-lab.md) — current evolution strategy and future contact-rich research.
+4. [`policy-contract.md`](policy-contract.md) — canonical mounted-stunt and detached-locomotion contracts.
+5. [`replay-artifacts.md`](replay-artifacts.md) — checksummed replay schema and playback rules.
+6. [`asset-roadmap.md`](asset-roadmap.md) — primitive assets and future art needs.
+7. [`agent-handoff.md`](agent-handoff.md) — change rules and verification checklist.
+8. [`backlog.md`](backlog.md) — remaining work and completed milestones.
 
-## Current Project Status
+## Current Status
 
-The repository contains a working TypeScript autonomous terrarium and scripted stunt showcase. The browser renders a large square seeded terrain, food and water bowls, a skateboard, and a 16-segment worm. Glass bounds, tree and rock decor, inactive resources, the worm root and segments, and board deck probes participate in deterministic swept planar collision handling. Hunger, thirst, and well-being accumulate over time; an urgency selector targets food, water, or the board, and the viewer reports resource interactions. Board and worm travel is bounded in both horizontal axes with no wraparound teleport.
+The app renders a seeded square heightfield, a skateboard, finite food and water bowls, solid decor, and a 16-segment worm. A clock-free recurrent network owns all 32 dorsal/ventral crawl channels. Muscle forces reshape a free segment chain; anisotropic terrain friction and obstacle impulses produce motion, while the root is measured from the body rather than translated by a hidden propulsion scalar.
 
-Detached movement uses the tracked `locomotion-segmental-es-quality-robust-v1` controller: 16 locally coupled recurrent neurons, one per segment, with 39 parameters refined for 80 risk-sensitive generations at population 128 from a preserved 110-generation base model. It has no clock, gait phase, or trigonometric gait teacher. Its activations drive damped joints, and only traveling inter-segment work creates traction-scaled root propulsion. Per-segment ground anchors add derived stick-slip contact, and the swept solver adds derived collision response; neither is a neural output. Zero, frozen, shuffled, and no-friction ablations protect the causal boundary.
+Hunger, thirst, and well-being select food, water, or the skateboard as the current goal. Food and water restoration requires continued 3D contact between the live mouth point and visible finite contents; well-being restores only while mounted. Mounting, dismounting, feeding poses, board routing, and the kickflip are scripted and kept outside the evolved-controller claim.
 
-Food/water approach is neural, but the contact cycle is authored: a substantial bowl contact enters a timed eating/drinking state, pauses learned translation, lowers only the anterior body, and releases the active bowl collision until the worm has cleared it. Mounting progresses head to midbody to tail; dismounting releases the head first and braces it on terrain before returning control to crawling. The kickflip also remains scripted. The separate `stunt-distilled-v2` artifact is behavior-distilled imitation used for mounted exhibition poses, not the autonomous crawl brain or proof of learned stunt physics. The older Gymnasium/PPO, ONNX, and sinusoidal CPG/morphology scaffolds remain legacy experiments. ONNX binaries stay untracked, and old local 118-input smoke exports are incompatible with the current 174-float stunt contract.
+The browser runtime uses tracked JSON policies only. Browser ONNX Runtime and its WASM payloads have been retired; older PPO/ONNX and sinusoidal CPG tooling remains offline legacy research. Deterministic replay capture/playback, granular config loading, reduced-motion behavior, collision properties, performance budgets, and browser flows are covered by automated checks.
 
-## Start Here For Agents
+## Rules For Changes
 
-- Preserve the current policy contract unless you update every aligned source of truth in one change.
-- Preserve skateboarding as the central task family while making creature morphology more general.
-- Keep generated training outputs out of Git unless the user explicitly asks to version a model artifact.
-- Run `npm run build` after code or docs that touch referenced source paths.
-- Run `npm run verify:needs` after changing resources/homeostasis, `npm run verify:collisions` after changing solid props, arena bounds, sweeps, friction, or contact telemetry, and `npm run verify:interactions` after changing mount/dismount/feed choreography or segment ordering.
-- Run `npm run verify:locomotion` after changing the evolved controller or joint-work plant, and `npm run verify:motion` after changing integrated collision, grip, resource, board, or worm lifecycle behavior.
-- Use local Git commits for completed checkpoints. GitHub CLI was not installed when this project was initialized.
+- Treat [`contracts/locomotion-v2.json`](../contracts/locomotion-v2.json) as the canonical articulated locomotion contract and update every TypeScript/Python consumer in the same change.
+- Keep ownership claims precise: recurrent segment commands are evolved; constraints, friction, collisions, homeostasis, contact choreography, board routing, and the kickflip are deterministic plant or authored behavior.
+- Never add a clock, phase, sine/cosine gait recipe, or direct root-motion channel to the evolved crawl path without an explicit redesign.
+- Keep generated checkpoints local unless intentionally promoting a reproducible model artifact.
+- Run `npm run check` for implementation changes, `npm run check:browser` for UI changes, and `npm run check:repro` when changing the published locomotion recipe or artifact.

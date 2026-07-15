@@ -1,81 +1,68 @@
-# Evolution Lab Concept
+# Evolution Lab
 
 ## Mental Model
 
-The project should behave like a robotics/drone simulation lab with a skateboarding objective:
+Wurmkickflip is a small evolutionary robotics lab with an intentionally silly skateboard objective:
 
-- Define a task family.
-- Randomize simulation constants and environment parameters.
-- Generate or mutate candidate bodies/controllers.
-- Evaluate them in Python.
-- Save best genomes and replays.
-- Inspect the results in a rich 3D browser viewer.
+1. Define a seeded task family.
+2. Randomize terrain, friction, obstacles, bodies, targets, and contact loss.
+3. Evaluate a population of compact controllers.
+4. Select and mutate the best candidates.
+5. Save a reproducible artifact and replay its behavior in the browser.
 
-The task family must keep skateboarding central. Creatures may change shape, but they should learn to move through the world, find a skateboard, interact with it, and roll around.
+The browser is the inspection surface, not the high-throughput trainer.
 
-## Why Dynamic Environments Matter
+## Current Crawl Evolution
 
-Static environments produce brittle creatures. The training loop should vary environment parameters so creatures learn robust movement rather than memorizing one terrain or physics setup.
+`training/wurmkickflip_rl/evolve_locomotion_policy.py` evolves the tracked detached-crawl policy. The dependency-free TypeScript runtime consumes the same canonical contract and recurrence.
 
-Useful randomization dimensions:
+The controller has 16 locally coupled recurrent `tanh` neurons, one per segment. Its 45-value genome contains:
 
-- gravity magnitude and direction
-- terrain slope and roughness
-- friction and restitution
-- drag and damping
-- obstacle layout
-- skateboard spawn position, deck mass, and wheel friction
-- spawn pose and velocity
-- target location or heading
-- actuator strength, delay, and noise
-- sensor noise and dropped readings
+- 16 initial hidden states;
+- 17 shared input weights;
+- three shared recurrent weights (`self`, anterior neighbor, posterior neighbor);
+- nine shared output weights.
 
-## Evolution Strategy
+Each neuron emits one dorsal/ventral actuator pair. Inputs include target direction/distance, measured root motion, terrain friction, urgency, bend and bend velocity, prior command, and segment-local support, slip, and obstacle-normal feedback. There is no time, gait phase, trigonometric teacher, demonstration trajectory, or direct root-motion action.
 
-Start with a simple genetic algorithm before adding complex RL:
+The published model is a deterministic two-stage run:
 
-1. Generate a population of genomes.
-2. Evaluate each genome across multiple environment seeds.
-3. Score locomotion distance, skateboard discovery, useful skateboard contact, rolling velocity, stability, energy use, survival, and task completion.
-4. Select top genomes.
-5. Mutate dimensions, joints, masses, and controller parameters.
-6. Repeat and save generation summaries.
+1. seed `20260720`: 40 generations, population 96, 20 elites, 360-step episodes, warm-started from the preserved schema-v1 legacy seed;
+2. seed `20260721`: 10 generations, population 64, 12 elites, 480-step episodes, warm-started from stage one.
 
-The live browser crawl controller has moved beyond the original CPG proposal. It is a clock-free, segmental recurrent neural controller evolved directly against a causal joint-work locomotion plant. Its 16 neurons own the 16 body segments; a shared 39-parameter genome covers initial recurrent state plus sensor, neighbor, and output weights. No gait clock, authored phase, sine/cosine teacher, or demonstration trajectory is available to evolution.
+Both stages evaluate 12 scenarios with obstacles, spatial friction, body-scale variation, target changes, and intermittent contact loss. Artifact identity records warm-start SHA-256 and model version, never a machine-specific path. `npm run check:repro` repeats both stages in a fresh temporary directory and requires canonical equality with the published JSON.
 
-The published `locomotion-segmental-es-quality-robust-v1` refinement uses seed `20260719`, 80 generations, population 128, 18 elites, 420-step episodes, and eight approach/friction scenarios spanning traction values from 0.33 to 1.12. It warm-starts from the preserved 110-generation base artifact. Its risk-sensitive objective emphasizes the bottom two scenarios plus approach, close, and reached thresholds, and plant-bound actions are quantized like the browser. Verification compares the full controller with zero-action, frozen-pose, deterministic segment-shuffle, and zero-friction ablations. These tests show causal actuator work in the compact plant; they do not establish transfer to real soft-body physics.
+## Articulated Plant
 
-## Current Recurrent Locomotion Path
+Evolution and the browser share the `articulated-contact-v2` model from [`../contracts/locomotion-v2.json`](../contracts/locomotion-v2.json). Antagonistic commands drive damped joints; joint states create mean-free internal forces on a 16-particle chain; equal-and-opposite constraints preserve spacing. Ground motion comes from per-segment anisotropic friction, and obstacles contribute resolved contact impulses. The reported root is the measured segment center of mass.
 
-`training/wurmkickflip_rl/evolve_locomotion_policy.py` writes `public/models/wurmkickflip_locomotion_policy.json`. The dependency-free browser runtime consumes the same update equations and plant constants. Food, water, and skateboard well-being are not gait teachers: the urgency selector chooses a resource, and its local direction/distance plus current urgency become sensors. The evolved network must turn those sensors and body feedback into segment work that moves and steers the worm.
+This gives useful causal tests:
 
-The live exhibit composes that evolved output with deterministic browser-only layers that were not part of evolution. Joint integration and traveling-work propulsion are derived plant physics; per-segment stick-slip anchors and swept wall/tree/rock/resource contacts are derived contact handling. Target-aware collision reorientation, timed eating/drinking after bowl contact, staged mounting/dismounting, board routing, and bowl/mouth effects are scripted. These layers make the terrarium lifecycle coherent, but they are not evidence that the 39-parameter genome learned collision physics, resource manipulation, or board contact.
+- zero commands do not travel;
+- frozen commands cannot substitute for recurrent changing actions;
+- assigning commands to the wrong segments damages progress;
+- active muscles conserve horizontal center of mass in an obstacle-free zero-friction world;
+- local contact/surface observations change only the owning neuron's response before recurrence propagates them.
 
-The kickflip is a separate authored exhibition. Pop, aerial rotation, landing timing, and the ride lifecycle are scripted; the older distilled stunt model may shape mounted segments but does not control detached locomotion. A future contact-rich training backend should move collision, grip, resource contact, and mounting outcomes into the evaluated plant before any of those behaviors are claimed as evolved.
+These checks establish causality inside this compact model. They do not establish transfer to biological worms or real skateboards.
 
-## Legacy CPG Export Path
+## Terrarium Composition
 
-The older `wurmkickflip_rl.evolve` genetic algorithm mutates sinusoidal CPG controller parameters plus morphology scales for part size, mass, material friction, body spread, joint stiffness, joint damping, and motor strength. The surrogate environment derives rollout dynamics from browser creature and environment JSON fields, so morphology is part of that experiment's fitness rather than only display metadata.
+The trained model owns segment commands only during `crawling` and `seeking`. The live exhibit adds deterministic systems that were not learned:
 
-When run with `--export-creature` and `--export-manifest`, the GA writes the best controller and mutated morphology back into a browser-readable creature genome. The browser treats `public/configs/evolved/manifest.json` as optional and appends generated creatures to the exhibit selector when the file exists.
+- homeostasis chooses food, water, or skateboard well-being as a goal;
+- swept scene contacts handle glass, props, annular bowl rims, and the deck;
+- finite bowl inventories restore only during 3D live-mouth contact and refill deterministically;
+- feeding poses, mounting, dismounting, route planning, pop, aerial rotation, and landing are scripted.
 
-This legacy CPG/morphology path remains useful experimentation, but it is not the new browser crawl brain. Its generated creature configs and fitness summaries must not be presented as provenance for `locomotion-segmental-es-quality-robust-v1`.
+The kickflip is therefore an authored exhibition. The mounted `stunt-distilled-v2` network is an imitation-learned pose prior, not learned contact physics.
 
-## Frontend Role
+## Future Training Work
 
-The frontend should not run massive training loops. It should:
+The most valuable next research step is to bring more of the lifecycle inside the evaluated plant: finite resources, mouth contacts, skateboard discovery, useful deck contact, stable mounting, and rolling. Domain randomization should include gravity, roughness, friction, restitution, body scale, actuator delay/noise, sensor loss, obstacle layout, board mass, and wheel friction. Held-out seeds should measure generalization rather than one memorized terrarium.
 
-- show the current best creature
-- replay saved trajectories
-- display environment parameters used for a run
-- display skateboard task parameters and contact/rolling metrics
-- compare generation fitness
-- expose manual debug controls
-- optionally run lightweight interactive simulations for inspection
+MuJoCo, Brax, or a custom vectorized contact model are plausible future backends. Any replacement must preserve explicit observation/action/artifact versions and continue separating learned behavior from authored presentation.
 
-## Future Backend Candidates
+## Legacy Paths
 
-- Gymnasium + Stable Baselines3: good for current simple RL and ONNX export.
-- MuJoCo: good for articulated 3D body training and contact-rich simulation.
-- Brax: good for accelerated differentiable/vectorized simulation.
-- PufferLib: interesting later for high-throughput training once the environment is stable, especially if we write a C environment.
+`wurmkickflip_rl.evolve` still explores sinusoidal CPG parameters and morphology, while the Gymnasium/PPO/ONNX tools remain offline experiments. Generated creature configs can be loaded as appearance projections, but these legacy paths are not provenance for the tracked recurrent crawl controller and the browser no longer ships an ONNX runtime.

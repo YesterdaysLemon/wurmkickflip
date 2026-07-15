@@ -28,7 +28,10 @@ const browserSnapshot: SimulationSnapshot = {
 }
 const browserObservation = Array.from(snapshotToObservation(browserSnapshot))
 
-assert(fixture.observationSize === OBSERVATION_SIZE, `Fixture observationSize must equal ${OBSERVATION_SIZE}.`)
+assert(
+  fixture.observationSize === OBSERVATION_SIZE,
+  `Fixture observationSize must equal ${OBSERVATION_SIZE}.`,
+)
 assert(
   PREVIOUS_ACTION_START + ACTION_SIZE === OBSERVATION_SIZE,
   `Observation layout arithmetic must fill exactly ${OBSERVATION_SIZE} values.`,
@@ -68,9 +71,7 @@ for (let index = 0; index < OBSERVATION_SIZE; index += 1) {
   const browserValue = browserObservation[index]
   const pythonValue = pythonObservation[index]
   if (Math.abs(browserValue - pythonValue) > TOLERANCE) {
-    mismatches.push(
-      `${index}: browser=${browserValue.toFixed(8)} python=${pythonValue.toFixed(8)}`,
-    )
+    mismatches.push(`${index}: browser=${browserValue.toFixed(8)} python=${pythonValue.toFixed(8)}`)
   }
 }
 

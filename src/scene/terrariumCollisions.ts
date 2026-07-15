@@ -10,12 +10,23 @@ export type ArenaBounds = {
   maxZ: number
 }
 
+/**
+ * Optional world-space height occupied by a planar collision sample.
+ * Omit the interval to retain the historical infinite-height cylinder.
+ */
+export type VerticalInterval = {
+  minY: number
+  maxY: number
+}
+
 /** A vertical prop footprint in the terrarium's X/Z plane. */
 export type TerrariumCircleObstacle = {
   id: string
   kind: 'tree' | 'rock' | 'bowl' | 'skateboard' | 'prop'
   center: PlanarPoint
   radius: number
+  /** World-space height occupied by this obstacle. Omitted means unbounded. */
+  vertical?: VerticalInterval
   /** Coulomb friction coefficient used when motion is projected onto the tangent. */
   friction?: number
   restitution?: number
@@ -31,6 +42,8 @@ export type TerrariumBodyCircle = {
   id: string
   offset: PlanarPoint
   radius: number
+  /** World-space height occupied by this body sample for this sweep. */
+  vertical?: VerticalInterval
 }
 
 export type TerrariumCollisionWorld = {
@@ -38,6 +51,15 @@ export type TerrariumCollisionWorld = {
   obstacles: readonly TerrariumCircleObstacle[]
   boundaryFriction?: number
   boundaryRestitution?: number
+}
+
+/**
+ * An immutable collision-world snapshot whose obstacles have already been
+ * validated, filtered and deterministically sorted. Reuse it across sweeps to
+ * keep world preparation out of the fixed-step hot path.
+ */
+export type PreparedTerrariumCollisionWorld = TerrariumCollisionWorld & {
+  readonly prepared: true
 }
 
 export type GroundContactInput = {
@@ -129,6 +151,39 @@ const DEFAULT_OBSTACLE_FRICTION = 0.38
 const DEFAULT_BOUNDARY_FRICTION = 0.3
 const EPSILON = 1e-9
 const HIT_EPSILON = 1e-8
+const preparedCollisionWorlds = new WeakSet<object>()
+
+/**
+ * Prepare a reusable immutable snapshot. Source arrays and objects may be
+ * safely changed afterwards without changing the prepared collision world.
+ */
+export function prepareTerrariumCollisionWorld(
+  world: TerrariumCollisionWorld,
+): PreparedTerrariumCollisionWorld {
+  if (isPreparedTerrariumCollisionWorld(world)) return world
+  validateWorld(world)
+  const bounds = Object.freeze({ ...world.bounds })
+  const obstacles = world.obstacles
+    .filter(obstacle => obstacle.enabled !== false)
+    .map(obstacle =>
+      Object.freeze({
+        ...obstacle,
+        center: Object.freeze({ ...obstacle.center }),
+        vertical: obstacle.vertical ? Object.freeze({ ...obstacle.vertical }) : undefined,
+      }),
+    )
+    .sort((left, right) => compareText(left.id, right.id))
+  Object.freeze(obstacles)
+  const prepared: PreparedTerrariumCollisionWorld = Object.freeze({
+    prepared: true as const,
+    bounds,
+    obstacles,
+    boundaryFriction: coefficient(world.boundaryFriction, DEFAULT_BOUNDARY_FRICTION),
+    boundaryRestitution: unitCoefficient(world.boundaryRestitution, 0),
+  })
+  preparedCollisionWorlds.add(prepared)
+  return prepared
+}
 
 /** Build centered glass-wall bounds with a configurable visual inset. */
 export function createTerrariumArenaBounds(width: number, depth: number, inset = 0): ArenaBounds {
@@ -169,7 +224,9 @@ export function resolveSweptTerrariumMotion(
   world: TerrariumCollisionWorld,
   motion: SweptBodyMotion,
 ): SweptBodyMotionResult {
-  validateWorld(world)
+  const collisionWorld = isPreparedTerrariumCollisionWorld(world)
+    ? world
+    : prepareTerrariumCollisionWorld(world)
   validateMotion(motion)
   const skin = motion.skin ?? DEFAULT_SKIN
   requireNonNegative(skin, 'collision skin')
@@ -177,11 +234,8 @@ export function resolveSweptTerrariumMotion(
   requirePositive(requestedIterations, 'collision iteration count')
   const maxIterations = Math.max(1, Math.floor(requestedIterations))
   const body = [...motion.body].sort((left, right) => compareText(left.id, right.id))
-  validateBodyFitsBounds(body, world.bounds, skin)
-  const obstacles = world.obstacles
-    .filter((obstacle) => obstacle.enabled !== false)
-    .slice()
-    .sort((left, right) => compareText(left.id, right.id))
+  validateBodyFitsBounds(body, collisionWorld.bounds, skin)
+  const obstacles = collisionWorld.obstacles
   const contactMap = new Map<string, TerrariumPlanarContact>()
   const start = copyPoint(motion.position)
   let position = copyPoint(motion.position)
@@ -193,7 +247,7 @@ export function resolveSweptTerrariumMotion(
     velocity,
     body,
     obstacles,
-    world,
+    collisionWorld,
     skin,
     maxIterations * 2,
     contactMap,
@@ -208,7 +262,7 @@ export function resolveSweptTerrariumMotion(
   let iterations = 0
 
   while (lengthSquared(remaining) > EPSILON * EPSILON && iterations < maxIterations) {
-    const hits = findEarliestSweepHits(position, remaining, body, obstacles, world, skin)
+    const hits = findEarliestSweepHits(position, remaining, body, obstacles, collisionWorld, skin)
     if (hits.length === 0) {
       position = add(position, remaining)
       traveledDistance += length(remaining)
@@ -242,7 +296,7 @@ export function resolveSweptTerrariumMotion(
     velocity,
     body,
     obstacles,
-    world,
+    collisionWorld,
     skin,
     maxIterations * 2,
     contactMap,
@@ -254,15 +308,19 @@ export function resolveSweptTerrariumMotion(
   const contacts = [...contactMap.values()].sort(compareContacts)
   const requestedDistance = length(motion.displacement)
   const actualDisplacement = subtract(position, start)
-  const requestDirection = requestedDistance > EPSILON
-    ? scale(motion.displacement, 1 / requestedDistance)
-    : { x: 0, z: 0 }
+  const requestDirection =
+    requestedDistance > EPSILON ? scale(motion.displacement, 1 / requestedDistance) : { x: 0, z: 0 }
   const forwardProgress = Math.max(0, dot(actualDisplacement, requestDirection))
   const obstacleBodyIds = new Set(
-    contacts.filter((contact) => contact.type === 'obstacle').map((contact) => contact.bodyId),
+    contacts.filter(contact => contact.type === 'obstacle').map(contact => contact.bodyId),
   )
-  const obstacleContacts = contacts.filter((contact) => contact.type === 'obstacle')
-  const ground = supportContactFor(motion.ground, obstacleContacts, obstacleBodyIds.size / body.length, velocity)
+  const obstacleContacts = contacts.filter(contact => contact.type === 'obstacle')
+  const ground = supportContactFor(
+    motion.ground,
+    obstacleContacts,
+    obstacleBodyIds.size / body.length,
+    velocity,
+  )
   const inputSpeed = length(motion.velocity)
   const outputSpeed = length(velocity)
 
@@ -272,12 +330,10 @@ export function resolveSweptTerrariumMotion(
     actualDisplacement,
     requestedDistance,
     traveledDistance,
-    forwardProgressRatio: requestedDistance > EPSILON
-      ? clamp(forwardProgress / requestedDistance, 0, 1)
-      : 1,
+    forwardProgressRatio: requestedDistance > EPSILON ? clamp(forwardProgress / requestedDistance, 0, 1) : 1,
     contacts,
     hitObstacle: obstacleContacts.length > 0,
-    hitBoundary: contacts.some((contact) => contact.type === 'boundary'),
+    hitBoundary: contacts.some(contact => contact.type === 'boundary'),
     iterations,
     support: {
       ...ground,
@@ -341,6 +397,7 @@ function nearestClearConfiguration(
   const circles: ConfigurationCircle[] = []
   for (const sample of body) {
     for (const obstacle of obstacles) {
+      if (!verticalIntervalsOverlap(sample.vertical, obstacle.vertical)) continue
       circles.push({
         center: subtract(obstacle.center, sample.offset),
         radius: obstacle.radius + sample.radius + skin,
@@ -360,11 +417,10 @@ function nearestClearConfiguration(
     const candidateDistanceSquared = lengthSquared(subtract(candidate, origin))
     if (
       candidateDistanceSquared < bestDistanceSquared - HIT_EPSILON ||
-      (
-        Math.abs(candidateDistanceSquared - bestDistanceSquared) <= HIT_EPSILON &&
-        (!best || candidate.x < best.x - HIT_EPSILON ||
-          (Math.abs(candidate.x - best.x) <= HIT_EPSILON && candidate.z < best.z))
-      )
+      (Math.abs(candidateDistanceSquared - bestDistanceSquared) <= HIT_EPSILON &&
+        (!best ||
+          candidate.x < best.x - HIT_EPSILON ||
+          (Math.abs(candidate.x - best.x) <= HIT_EPSILON && candidate.z < best.z)))
     ) {
       best = candidate
       bestDistanceSquared = candidateDistanceSquared
@@ -381,8 +437,10 @@ function nearestClearConfiguration(
       consider(add(circle.center, scale(normalizeOr(direction, { x: 1, z: 0 }), circle.radius)))
     } else {
       for (let index = 0; index < 32; index += 1) {
-        const angle = index / 32 * Math.PI * 2
-        consider(add(circle.center, { x: Math.cos(angle) * circle.radius, z: Math.sin(angle) * circle.radius }))
+        const angle = (index / 32) * Math.PI * 2
+        consider(
+          add(circle.center, { x: Math.cos(angle) * circle.radius, z: Math.sin(angle) * circle.radius }),
+        )
       }
     }
     considerCircleBoundsIntersections(circle, rootBounds, consider)
@@ -425,13 +483,19 @@ function overlappingCircleComponent(origin: PlanarPoint, circles: readonly Confi
     circles.forEach((candidate, candidateIndex) => {
       if (included.has(candidateIndex)) return
       const combinedRadius = current.radius + candidate.radius
-      if (lengthSquared(subtract(current.center, candidate.center)) <= combinedRadius * combinedRadius + HIT_EPSILON) {
+      if (
+        lengthSquared(subtract(current.center, candidate.center)) <=
+        combinedRadius * combinedRadius + HIT_EPSILON
+      ) {
         included.add(candidateIndex)
         queue.push(candidateIndex)
       }
     })
   }
-  return [...included].sort((left, right) => left - right).map((index) => circles[index]).filter((circle) => circle !== undefined)
+  return [...included]
+    .sort((left, right) => left - right)
+    .map(index => circles[index])
+    .filter(circle => circle !== undefined)
 }
 
 function configurationPointIsClear(
@@ -440,19 +504,19 @@ function configurationPointIsClear(
   circles: readonly ConfigurationCircle[],
 ) {
   if (
-    point.x < bounds.minX - HIT_EPSILON || point.x > bounds.maxX + HIT_EPSILON ||
-    point.z < bounds.minZ - HIT_EPSILON || point.z > bounds.maxZ + HIT_EPSILON
-  ) return false
-  return circles.every((circle) => {
+    point.x < bounds.minX - HIT_EPSILON ||
+    point.x > bounds.maxX + HIT_EPSILON ||
+    point.z < bounds.minZ - HIT_EPSILON ||
+    point.z > bounds.maxZ + HIT_EPSILON
+  )
+    return false
+  return circles.every(circle => {
     const radius = Math.max(0, circle.radius - HIT_EPSILON)
     return lengthSquared(subtract(point, circle.center)) >= radius * radius
   })
 }
 
-function circleIntersections(
-  left: ConfigurationCircle | undefined,
-  right: ConfigurationCircle | undefined,
-) {
+function circleIntersections(left: ConfigurationCircle | undefined, right: ConfigurationCircle | undefined) {
   if (!left || !right) return []
   const delta = subtract(right.center, left.center)
   const centerDistance = length(delta)
@@ -460,10 +524,11 @@ function circleIntersections(
     centerDistance <= EPSILON ||
     centerDistance > left.radius + right.radius + HIT_EPSILON ||
     centerDistance < Math.abs(left.radius - right.radius) - HIT_EPSILON
-  ) return []
-  const along = (
-    left.radius * left.radius - right.radius * right.radius + centerDistance * centerDistance
-  ) / (2 * centerDistance)
+  )
+    return []
+  const along =
+    (left.radius * left.radius - right.radius * right.radius + centerDistance * centerDistance) /
+    (2 * centerDistance)
   const heightSquared = Math.max(0, left.radius * left.radius - along * along)
   const direction = scale(delta, 1 / centerDistance)
   const base = add(left.center, scale(direction, along))
@@ -506,6 +571,7 @@ function deepestProjection(
   for (const sample of body) {
     const center = add(position, sample.offset)
     for (const obstacle of obstacles) {
+      if (!verticalIntervalsOverlap(sample.vertical, obstacle.vertical)) continue
       const difference = subtract(center, obstacle.center)
       const separation = length(difference)
       const required = sample.radius + obstacle.radius + skin
@@ -548,16 +614,56 @@ function boundaryProjections(
   const restitution = unitCoefficient(world.boundaryRestitution, 0)
   const candidates: ProjectionCandidate[] = []
   if (center.x < minimumX) {
-    candidates.push(boundaryProjection('wall-left', body, { x: 1, z: 0 }, { x: world.bounds.minX, z: center.z }, minimumX - center.x, friction, restitution))
+    candidates.push(
+      boundaryProjection(
+        'wall-left',
+        body,
+        { x: 1, z: 0 },
+        { x: world.bounds.minX, z: center.z },
+        minimumX - center.x,
+        friction,
+        restitution,
+      ),
+    )
   }
   if (center.x > maximumX) {
-    candidates.push(boundaryProjection('wall-right', body, { x: -1, z: 0 }, { x: world.bounds.maxX, z: center.z }, center.x - maximumX, friction, restitution))
+    candidates.push(
+      boundaryProjection(
+        'wall-right',
+        body,
+        { x: -1, z: 0 },
+        { x: world.bounds.maxX, z: center.z },
+        center.x - maximumX,
+        friction,
+        restitution,
+      ),
+    )
   }
   if (center.z < minimumZ) {
-    candidates.push(boundaryProjection('wall-near', body, { x: 0, z: 1 }, { x: center.x, z: world.bounds.minZ }, minimumZ - center.z, friction, restitution))
+    candidates.push(
+      boundaryProjection(
+        'wall-near',
+        body,
+        { x: 0, z: 1 },
+        { x: center.x, z: world.bounds.minZ },
+        minimumZ - center.z,
+        friction,
+        restitution,
+      ),
+    )
   }
   if (center.z > maximumZ) {
-    candidates.push(boundaryProjection('wall-far', body, { x: 0, z: -1 }, { x: center.x, z: world.bounds.maxZ }, center.z - maximumZ, friction, restitution))
+    candidates.push(
+      boundaryProjection(
+        'wall-far',
+        body,
+        { x: 0, z: -1 },
+        { x: center.x, z: world.bounds.maxZ },
+        center.z - maximumZ,
+        friction,
+        restitution,
+      ),
+    )
   }
   return candidates
 }
@@ -596,6 +702,7 @@ function findEarliestSweepHits(
   for (const sample of body) {
     const center = add(position, sample.offset)
     for (const obstacle of obstacles) {
+      if (!verticalIntervalsOverlap(sample.vertical, obstacle.vertical)) continue
       const candidate = sweepCircleObstacle(center, displacement, sample, obstacle, skin)
       if (candidate) candidates.push(candidate)
     }
@@ -604,7 +711,7 @@ function findEarliestSweepHits(
   if (candidates.length === 0) return []
   candidates.sort(compareCandidates)
   const earliest = candidates[0]?.time ?? 1
-  return candidates.filter((candidate) => Math.abs(candidate.time - earliest) <= HIT_EPSILON)
+  return candidates.filter(candidate => Math.abs(candidate.time - earliest) <= HIT_EPSILON)
 }
 
 function sweepCircleObstacle(
@@ -665,9 +772,8 @@ function sweepArenaBounds(
     if (time < -HIT_EPSILON || time > 1 + HIT_EPSILON) return
     const clampedTime = clamp(time, 0, 1)
     const impactCenter = add(center, scale(displacement, clampedTime))
-    const point = axis === 'x'
-      ? { x: wallPosition, z: impactCenter.z }
-      : { x: impactCenter.x, z: wallPosition }
+    const point =
+      axis === 'x' ? { x: wallPosition, z: impactCenter.z } : { x: impactCenter.x, z: wallPosition }
     candidates.push({
       time: clampedTime,
       type: 'boundary',
@@ -690,7 +796,7 @@ function sweepArenaBounds(
   } else if (displacement.z > EPSILON) {
     addBoundary('wall-far', (maximumZ - center.z) / displacement.z, { x: 0, z: -1 }, 'z', world.bounds.maxZ)
   }
-  return candidates.filter((candidate) => dot(displacement, candidate.normal) < -EPSILON)
+  return candidates.filter(candidate => dot(displacement, candidate.normal) < -EPSILON)
 }
 
 function contactFromSweep(candidate: SweepCandidate, time: number): TerrariumPlanarContact {
@@ -742,9 +848,10 @@ function supportContactFor(
   const friction = coefficient(input?.friction, 1)
   const normalY = grounded ? clamp(finiteOr(input?.normalY, 1), 0, 1) : 0
   const contactRatio = grounded ? clamp(finiteOr(input?.contactRatio, 1), 0, 1) : 0
-  const obstacleFriction = obstacleContacts.length > 0
-    ? obstacleContacts.reduce((sum, contact) => sum + contact.friction, 0) / obstacleContacts.length
-    : 0
+  const obstacleFriction =
+    obstacleContacts.length > 0
+      ? obstacleContacts.reduce((sum, contact) => sum + contact.friction, 0) / obstacleContacts.length
+      : 0
   const slidingSpeed = obstacleContacts.reduce((maximum, contact) => {
     const tangentSpeed = Math.abs(-contact.normal.z * velocity.x + contact.normal.x * velocity.z)
     return Math.max(maximum, tangentSpeed)
@@ -793,6 +900,7 @@ function validateWorld(world: TerrariumCollisionWorld) {
     ids.add(obstacle.id)
     requirePoint(obstacle.center, `obstacle ${obstacle.id} center`)
     requirePositive(obstacle.radius, `obstacle ${obstacle.id} radius`)
+    if (obstacle.vertical) validateVerticalInterval(obstacle.vertical, `obstacle ${obstacle.id} vertical`)
     coefficient(obstacle.friction, DEFAULT_OBSTACLE_FRICTION)
     unitCoefficient(obstacle.restitution, 0)
   }
@@ -812,14 +920,29 @@ function validateMotion(motion: SweptBodyMotion) {
     ids.add(sample.id)
     requirePoint(sample.offset, `body ${sample.id} offset`)
     requirePositive(sample.radius, `body ${sample.id} radius`)
+    if (sample.vertical) validateVerticalInterval(sample.vertical, `body ${sample.id} vertical`)
   }
 }
 
-function validateBodyFitsBounds(
-  body: readonly TerrariumBodyCircle[],
-  bounds: ArenaBounds,
-  skin: number,
-) {
+function isPreparedTerrariumCollisionWorld(
+  world: TerrariumCollisionWorld,
+): world is PreparedTerrariumCollisionWorld {
+  return preparedCollisionWorlds.has(world)
+}
+
+function validateVerticalInterval(interval: VerticalInterval, label: string) {
+  requireFinite(interval.minY, `${label}.minY`)
+  requireFinite(interval.maxY, `${label}.maxY`)
+  if (interval.minY > interval.maxY) throw new Error(`${label} must have minY <= maxY`)
+}
+
+/** Infinite-height legacy samples overlap every explicitly bounded interval. */
+function verticalIntervalsOverlap(left: VerticalInterval | undefined, right: VerticalInterval | undefined) {
+  if (!left || !right) return true
+  return left.maxY >= right.minY - HIT_EPSILON && right.maxY >= left.minY - HIT_EPSILON
+}
+
+function validateBodyFitsBounds(body: readonly TerrariumBodyCircle[], bounds: ArenaBounds, skin: number) {
   rootBoundsForBody(body, bounds, skin)
 }
 
@@ -851,7 +974,10 @@ function rootBoundsForBody(
 
 function selectDeeper(current: ProjectionCandidate | null, candidate: ProjectionCandidate) {
   if (!current || candidate.penetration > current.penetration + HIT_EPSILON) return candidate
-  if (Math.abs(candidate.penetration - current.penetration) <= HIT_EPSILON && candidate.sortKey < current.sortKey) {
+  if (
+    Math.abs(candidate.penetration - current.penetration) <= HIT_EPSILON &&
+    candidate.sortKey < current.sortKey
+  ) {
     return candidate
   }
   return current

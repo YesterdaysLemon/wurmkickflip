@@ -8,10 +8,10 @@ from pathlib import Path
 
 import numpy as np
 
+from .articulated_locomotion import articulated_plant_step, initial_body
 from .evolve_locomotion_policy import (
     POLICY_TIMESTEP,
     SEGMENT_COUNT,
-    actuator_plant_step,
     segmental_network_step,
 )
 
@@ -37,11 +37,17 @@ def main() -> None:
     previous_command = np.zeros((1, 1, SEGMENT_COUNT), dtype=np.float64)
     joint = np.zeros_like(previous_command)
     joint_velocity = np.zeros_like(previous_command)
-    position = np.zeros((1, 1, 2), dtype=np.float64)
+    body_scale = np.ones(1, dtype=np.float64)
+    body_position, body_velocity = initial_body(1, 1, body_scale)
+    position = np.mean(body_position, axis=2)
     forward = np.zeros_like(position)
     forward[:, :, 0] = 1.0
     speed = np.zeros((1, 1), dtype=np.float64)
     angular_speed = np.zeros_like(speed)
+    contact_load = np.full_like(joint, 0.8)
+    slip_speed = np.zeros_like(joint)
+    obstacle_forward = np.zeros_like(joint)
+    obstacle_right = np.zeros_like(joint)
     input_weights = np.asarray(weights["input"], dtype=np.float64)[None, :]
     recurrent_weights = np.asarray(weights["recurrent"], dtype=np.float64)[None, :]
     output_weights = np.asarray(weights["output"], dtype=np.float64)[None, :]
@@ -65,6 +71,10 @@ def main() -> None:
             angular_speed,
             friction,
             urgency,
+            contact_load,
+            slip_speed,
+            obstacle_forward,
+            obstacle_right,
             input_weights,
             recurrent_weights,
             output_weights,
@@ -73,15 +83,27 @@ def main() -> None:
         # The JS policy keeps recurrent state in Float64, but its PolicyAction is
         # Float32 before the plant reads it. Preserve that exact quantization split.
         applied_command = neural_command.astype(np.float32).astype(np.float64)
-        actuator_plant_step(
+        (
+            _step_distance,
+            position,
+            forward,
+            speed,
+            angular_speed,
+            contact_load,
+            slip_speed,
+            obstacle_forward,
+            obstacle_right,
+        ) = articulated_plant_step(
             applied_command,
             joint,
             joint_velocity,
-            speed,
-            angular_speed,
-            forward,
-            position,
+            body_position,
+            body_velocity,
             friction,
+            np.zeros_like(friction),
+            body_scale,
+            np.zeros((1, 2), dtype=np.float64),
+            np.zeros(1, dtype=np.float64),
             POLICY_TIMESTEP,
         )
         previous_command = neural_command.copy()

@@ -85,7 +85,12 @@ export function advanceSimulation(state: SimState, action: PolicyAction, delta =
   state.distance += Math.max(0, state.boardVx * delta)
   state.boardZ = MathUtils.clamp(state.boardZ + state.boardVz * delta, -1.15, 1.15)
   state.boardY = 0.42 + Math.sin(state.time * 1.8) * 0.012
-  state.boardRoll = MathUtils.damp(state.boardRoll, lean * 0.18 + Math.sin(state.time * 2.1) * 0.025, 3.2, delta)
+  state.boardRoll = MathUtils.damp(
+    state.boardRoll,
+    lean * 0.18 + Math.sin(state.time * 2.1) * 0.025,
+    3.2,
+    delta,
+  )
   state.boardPitch = MathUtils.damp(state.boardPitch, -0.04 + propulsion * 0.045, 2.5, delta)
   state.boardYaw = MathUtils.damp(state.boardYaw, state.boardVz * 0.18, 2.2, delta)
   state.wheelSpin -= state.boardVx * delta * 7

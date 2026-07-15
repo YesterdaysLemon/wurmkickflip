@@ -2,76 +2,38 @@
 
 ## Operating Rules
 
-- Read `/docs/README.md` and `/docs/policy-contract.md` before changing policy, training, or simulation code.
-- Read `/docs/evolution-lab.md` before changing creature, environment, or skateboard task logic.
-- Preserve TypeScript types and Python constants together. A policy contract change is not complete until browser code, training code, metadata, and docs agree.
-- Preserve the skateboard objective. Creature morphology can generalize, but the task family is finding and riding a skateboard.
-- Prefer small, committed checkpoints after successful verification.
-- Do not commit generated caches, local virtualenvs, build output, or training run directories.
-- Do not commit `public/models/wurmkickflip_policy.onnx` unless the user explicitly asks to version a trained model.
-- GitHub CLI was unavailable when the repo was initialized. Local Git commits are acceptable unless `gh` is installed later.
+- Read [`README.md`](README.md), [`policy-contract.md`](policy-contract.md), and [`evolution-lab.md`](evolution-lab.md) before changing policies, training, or simulation ownership.
+- Treat `contracts/locomotion-v2.json` as canonical. A contract change must update TypeScript, Python, artifacts, validators, and docs together.
+- Preserve skateboarding as the task family, even if morphology becomes more general.
+- Keep generated caches, virtual environments, build output, and training runs untracked. Promote a model only with reproducible provenance.
+- Never add a hidden root-motion channel, gait clock, phase input, or trigonometric gait recipe to detached locomotion.
+- Keep claims explicit: the network owns segment commands; the plant owns constraints/friction/collisions; the scene owns goals and contact/stunt choreography.
 
-## Required Verification
+## Verification Routing
 
-For docs-only changes:
+- Contracts or policy constants: `npm run verify:contract` and `npm run verify:parity`.
+- Terrain mesh/physics sampling: `npm run verify:terrain`.
+- Bounds, props, bowls, board, or swept contacts: `npm run verify:collisions`.
+- Articulated forces, constraints, friction, or body invariants: `npm run verify:dynamics` and `npm run verify:locomotion`.
+- Food, water, inventories, mouth contact, refill, or goal selection: `npm run verify:needs`.
+- Mount/dismount/feed poses and ownership handoffs: `npm run verify:interactions`.
+- Integrated board/worm/resource lifecycle: `npm run verify:motion`.
+- Replay schema/recorder/player: `npm run verify:replay`.
+- Config loading/runtime adapter: `npm run verify:configs`.
+- UI or accessibility behavior: `npm run check:browser` plus an interactive browser pass.
+- Any implementation change: finish with `npm run check` and `git diff --check`.
+- Published locomotion artifact or recipe: also run the intentionally long `npm run check:repro`.
 
-- Inspect changed docs for consistency with current constants.
-- Run `npm run verify:contract` after docs that mention policy constants.
-- Run `npm run verify:parity` after docs that describe observation layout.
-- Run `npm run verify:needs` after docs that describe homeostasis/resource semantics.
-- Run `npm run verify:collisions` after docs that describe arena bounds, solid props/resources, sweep response, friction, or contact telemetry.
-- Run `npm run verify:interactions` after docs that describe segment ordering or mount/dismount/eat/drink choreography.
-- Run `npm run verify:locomotion` after docs that describe the recurrent controller, evolved parameters, or joint-work plant.
-- Run `npm run verify:motion` after docs that describe integrated collision, grip, feeding, resource release, or board/worm lifecycle behavior.
-- Run `npm run build` when docs reference source paths or when any code changed.
-- Run `git status --short` before committing.
+Python changes additionally require `npm run python:check`. Run Python commands through `uv` from `training/` and keep `training/uv.lock` aligned with dependency changes.
 
-For app/runtime changes:
+## Current Boundaries
 
-- Run `npm run verify:contract` after policy contract changes.
-- Run `npm run verify:parity` after changing observation construction.
-- Run `npm run verify:terrain` after changing the terrain field, environment dimensions, terrain rendering, or terrain-dependent motion.
-- Run `npm run verify:collisions` after changing `terrariumCollisions.ts`, arena bounds, decor/resource collision geometry, friction/restitution response, or collision telemetry.
-- Run `npm run verify:interactions` after changing `wormInteractionAnimation.ts`, scene segment order, contact weights, locomotion handoffs, or mouth/bowl cues.
-- Run `npm run verify:needs` after changing food/water/board resources, need growth/restoration, target selection, or homeostasis observations.
-- Run `npm run verify:locomotion` after changing the segmental recurrent artifact/runtime, neural sensors, joint-work plant, or locomotion evolution.
-- Run `npm run verify:motion` after changing board travel, worm-root locomotion, segment grip/collisions, resource visits/releases, feeding, mount transitions, action smoothing, or segment pose updates.
-- Run `npm run build`.
-- Start or reuse the dev server.
-- Verify the app renders a nonblank canvas.
-- Verify scripted fallback works without an ONNX file.
-- Verify ONNX WebGPU and WASM paths with `?policyBackend=webgpu` and `?policyBackend=wasm` when a local model artifact exists.
-- Check browser console errors.
+- The browser simulation is deterministic and physically inspired, not a faithful biological or skateboard transfer environment.
+- Detached locomotion is genuinely evolved inside a compact free-particle contact plant. Mean-free muscle forces and constraints cannot translate the center of mass without friction or obstacle impulses.
+- Homeostasis chooses targets but is not a learned planner. Food/water restoration requires live 3D mouth contact with finite contents; well-being requires mounting.
+- Feeding, mounting, dismounting, route selection, post-contact recovery, pop, aerial board rotation, landing, and lifecycle timing are scripted.
+- The mounted stunt JSON is behavior-distilled imitation, not reinforcement-learned kickflip physics.
+- Browser ONNX Runtime is retired. PPO/ONNX and sinusoidal CPG/morphology tools are offline legacy experiments only.
+- Creature genomes currently project appearance onto a fixed 16-segment, 32-channel runtime lattice; their declared legacy controller metadata is not executed.
 
-For training changes:
-
-- Run Python syntax checks at minimum.
-- Prefer `uv run python -m ...` from `training/`.
-- Training progress bars are opt-in with `--progress-bar` and require Stable Baselines3 extra progress dependencies.
-- Keep `training/uv.lock` updated when dependency requirements change.
-- Run `npm run verify:contract` after changing training constants or export metadata.
-- Run `npm run verify:parity` after changing `_observe`, `snapshotToObservation`, or fixture observation code.
-- Validate ONNX export shape with `uv run python -m wurmkickflip_rl.validate_onnx` before calling a policy browser-compatible.
-
-## Current Known Limits
-
-- The browser simulation is a deterministic, physically inspired stunt showcase, not a physically faithful RL environment.
-- The current board/worm plants are authored fixed-step state dynamics, not Rapier rigid-body or soft-body physics.
-- Detached locomotion uses a genuinely evolved segmental recurrent controller, but only in the compact joint-work plant; this is not evidence of transfer to physical worm locomotion.
-- Root propulsion/steering, terrain traction, per-segment stick-slip anchors, and swept contact are derived deterministic browser dynamics. The controller did not evolve the collision solver or grip rules.
-- Feeding, mounting/dismounting, board routing, post-collision tangent steering, kickflip pop, aerial board rotation, landing window, and lifecycle are scripted. The separate stunt JSON is behavior-distilled imitation, not PPO/RL.
-- The tracked version 2 JSON policy deliberately masks unsupported observation channels; do not restore nonzero ignored-feature weights without a teacher and verifier that use those features.
-- The older sinusoidal CPG/morphology evolution and Gymnasium environment are legacy experiments, not the browser's recurrent crawl brain. They should eventually be replaced or calibrated against high-fidelity trainable physics, not treated as validated transfer from the showcase.
-- The project is no longer worm-only; the existing segmented body is a starter morphology.
-- The optional local ONNX smoke artifact predates the 174-input contract and must be regenerated before WebGPU/WASM claims are renewed.
-
-## Recommended Commit Practice
-
-Use concise commit messages that describe the outcome:
-
-- `Document agent handoff requirements`
-- `Validate ONNX policy contract`
-- `Add policy parity tests`
-- `Improve skateboard physics calibration`
-
-Before every commit, confirm the tree contains only intentional changes.
+Before handing off, report the exact checks run, any intentionally skipped long lane, and any remaining ownership or fidelity limitation.

@@ -1,0 +1,72 @@
+{
+  "schemaVersion": 2,
+  "kind": "wurmkickflip.locomotionContract",
+  "plantVersion": "articulated-contact-v2",
+  "segmentCount": 16,
+  "muscleChannelCount": 32,
+  "timestep": 0.016666666666666666,
+  "sensorNames": [
+    "targetForward",
+    "targetRight",
+    "targetDistance",
+    "forwardSpeed",
+    "angularSpeed",
+    "terrainFriction",
+    "urgency",
+    "contactLoad",
+    "slipSpeed",
+    "obstacleForward",
+    "obstacleRight"
+  ],
+  "inputWeightNames": [
+    "bias",
+    "segmentPosition",
+    "targetForward",
+    "targetRight",
+    "targetRightByPosition",
+    "targetDistance",
+    "forwardSpeed",
+    "angularSpeed",
+    "terrainFriction",
+    "urgency",
+    "segmentBend",
+    "segmentBendVelocity",
+    "previousCommand",
+    "contactLoad",
+    "slipSpeed",
+    "obstacleForward",
+    "obstacleRight"
+  ],
+  "recurrentWeightNames": ["self", "anteriorNeighbor", "posteriorNeighbor"],
+  "outputWeightNames": [
+    "bias",
+    "self",
+    "anteriorNeighbor",
+    "posteriorNeighbor",
+    "targetRight",
+    "targetRightByPosition",
+    "segmentBend",
+    "obstacleRight",
+    "contactLoad"
+  ],
+  "joint": {
+    "stiffness": 22,
+    "damping": 7,
+    "limit": 1.15
+  },
+  "dynamics": {
+    "spacing": 0.102,
+    "actuatorStiffness": 78,
+    "actuatorDamping": 8.5,
+    "shapeBendScale": 0.19,
+    "constraintIterations": 6,
+    "constraintCompliance": 0.035,
+    "longitudinalFriction": 1.15,
+    "lateralFriction": 17.5,
+    "freeVelocityDrag": 0.42,
+    "maximumSpeed": 2.4,
+    "maximumVerticalSpeed": 2.4,
+    "baseRadius": 0.085,
+    "baseGroundClearance": 0.105
+  }
+}

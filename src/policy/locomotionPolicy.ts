@@ -1,66 +1,26 @@
 import { ACTION_SIZE, POLICY_TIMESTEP, SEGMENT_COUNT, type PolicyAction } from './types'
+import { LOCOMOTION_CONTRACT } from './locomotionContract'
 
 export const LOCOMOTION_POLICY_PATH = '/models/wurmkickflip_locomotion_policy.json'
 
-/** Fixed plant contract used by evolution, artifact validation, and the browser. */
+/** Versioned articulated plant contract shared by evolution and the browser. */
 export const LOCOMOTION_PLANT_CONTRACT = {
+  version: LOCOMOTION_CONTRACT.plantVersion,
   timestep: POLICY_TIMESTEP,
-  jointStiffness: 22,
-  jointDamping: 7,
-  jointLimit: 1.15,
-  waveGain: -1.35,
-  maximumForwardAcceleration: 2.4,
-  linearDrag: 0.75,
-  inverseTractionDrag: 0.18,
-  tractionMinimum: 0,
-  tractionMaximum: 1.2,
-  inverseTractionFloor: 0.12,
-  minimumForwardSpeed: -1.45,
-  maximumForwardSpeed: 1.45,
-  frontTurnBase: 1.15,
-  frontTurnSpeedGain: 1.65,
-  angularDrag: 2.8,
-  minimumAngularSpeed: -3,
-  maximumAngularSpeed: 3,
+  jointStiffness: LOCOMOTION_CONTRACT.joint.stiffness,
+  jointDamping: LOCOMOTION_CONTRACT.joint.damping,
+  jointLimit: LOCOMOTION_CONTRACT.joint.limit,
+  ...LOCOMOTION_CONTRACT.dynamics,
 } as const
 
-export const LOCOMOTION_SENSOR_NAMES = [
-  'targetForward',
-  'targetRight',
-  'targetDistance',
-  'forwardSpeed',
-  'angularSpeed',
-  'terrainFriction',
-  'urgency',
-] as const
+export const LOCOMOTION_SENSOR_NAMES = LOCOMOTION_CONTRACT.sensorNames
+export const LOCOMOTION_INPUT_WEIGHT_NAMES = LOCOMOTION_CONTRACT.inputWeightNames
+export const LOCOMOTION_RECURRENT_WEIGHT_NAMES = LOCOMOTION_CONTRACT.recurrentWeightNames
+export const LOCOMOTION_OUTPUT_WEIGHT_NAMES = LOCOMOTION_CONTRACT.outputWeightNames
 
-const INPUT_WEIGHT_NAMES = [
-  'bias',
-  'segmentPosition',
-  'targetForward',
-  'targetRight',
-  'targetRightByPosition',
-  'targetDistance',
-  'forwardSpeed',
-  'angularSpeed',
-  'terrainFriction',
-  'urgency',
-  'segmentBend',
-  'segmentBendVelocity',
-  'previousCommand',
-] as const
-
-const RECURRENT_WEIGHT_NAMES = ['self', 'anteriorNeighbor', 'posteriorNeighbor'] as const
-
-const OUTPUT_WEIGHT_NAMES = [
-  'bias',
-  'self',
-  'anteriorNeighbor',
-  'posteriorNeighbor',
-  'targetRight',
-  'targetRightByPosition',
-  'segmentBend',
-] as const
+const LEGACY_SENSOR_NAMES = LOCOMOTION_SENSOR_NAMES.slice(0, 7)
+const LEGACY_INPUT_WEIGHT_NAMES = LOCOMOTION_INPUT_WEIGHT_NAMES.slice(0, 13)
+const LEGACY_OUTPUT_WEIGHT_NAMES = LOCOMOTION_OUTPUT_WEIGHT_NAMES.slice(0, 7)
 
 export type LocomotionSensors = {
   targetForward: number
@@ -70,10 +30,15 @@ export type LocomotionSensors = {
   angularSpeed: number
   terrainFriction: number
   urgency: number
+  /** Segment-local feedback arrays are anterior-to-posterior. */
+  contactLoads?: ArrayLike<number>
+  slipSpeeds?: ArrayLike<number>
+  obstacleForward?: ArrayLike<number>
+  obstacleRight?: ArrayLike<number>
 }
 
 export type LocomotionPolicyArtifact = {
-  schemaVersion: 1
+  schemaVersion: 2
   kind: 'wurmkickflip.locomotionPolicy'
   modelVersion: string
   architecture: 'segmental-recurrent-tanh'
@@ -95,20 +60,20 @@ export type LocomotionPolicyArtifact = {
     jointStiffness: number
     jointDamping: number
     jointLimit: number
-    waveGain: number
-    maximumForwardAcceleration: number
-    linearDrag: number
-    inverseTractionDrag: number
-    tractionMinimum: number
-    tractionMaximum: number
-    inverseTractionFloor: number
-    minimumForwardSpeed: number
-    maximumForwardSpeed: number
-    frontTurnBase: number
-    frontTurnSpeedGain: number
-    angularDrag: number
-    minimumAngularSpeed: number
-    maximumAngularSpeed: number
+    version: string
+    spacing: number
+    actuatorStiffness: number
+    actuatorDamping: number
+    shapeBendScale: number
+    constraintIterations: number
+    constraintCompliance: number
+    longitudinalFriction: number
+    lateralFriction: number
+    freeVelocityDrag: number
+    maximumSpeed: number
+    maximumVerticalSpeed: number
+    baseRadius: number
+    baseGroundClearance: number
   }
   training: Record<string, unknown>
 }
@@ -155,6 +120,10 @@ export class EvolvedLocomotionPolicy {
       const position = positions[segment]
       const bend = finiteOrZero(segmentBends[segment])
       const bendVelocity = finiteOrZero(segmentBendVelocities[segment])
+      const contactLoad = localSensor(safeSensors.contactLoads, segment, 1, 0, 1)
+      const slipSpeed = localSensor(safeSensors.slipSpeeds, segment, 0, 0, 2)
+      const obstacleForward = localSensor(safeSensors.obstacleForward, segment, 0, -1, 1)
+      const obstacleRight = localSensor(safeSensors.obstacleRight, segment, 0, -1, 1)
       const anterior = segment > 0 ? this.hidden[segment - 1] : 0
       const posterior = segment + 1 < SEGMENT_COUNT ? this.hidden[segment + 1] : 0
       const drive =
@@ -171,6 +140,10 @@ export class EvolvedLocomotionPolicy {
         input[10] * bend +
         input[11] * bendVelocity +
         input[12] * this.previousCommand[segment] +
+        input[13] * contactLoad +
+        input[14] * slipSpeed +
+        input[15] * obstacleForward +
+        input[16] * obstacleRight +
         recurrent[0] * this.hidden[segment] +
         recurrent[1] * anterior +
         recurrent[2] * posterior
@@ -183,6 +156,8 @@ export class EvolvedLocomotionPolicy {
       const bend = finiteOrZero(segmentBends[segment])
       const anterior = segment > 0 ? this.nextHidden[segment - 1] : 0
       const posterior = segment + 1 < SEGMENT_COUNT ? this.nextHidden[segment + 1] : 0
+      const contactLoad = localSensor(safeSensors.contactLoads, segment, 1, 0, 1)
+      const obstacleRight = localSensor(safeSensors.obstacleRight, segment, 0, -1, 1)
       const command = Math.tanh(
         output[0] +
           output[1] * this.nextHidden[segment] +
@@ -190,7 +165,9 @@ export class EvolvedLocomotionPolicy {
           output[3] * posterior +
           output[4] * safeSensors.targetRight +
           output[5] * safeSensors.targetRight * position +
-          output[6] * bend,
+          output[6] * bend +
+          output[7] * obstacleRight +
+          output[8] * contactLoad,
       )
       this.previousCommand[segment] = command
       action[segment * 2] = command
@@ -203,7 +180,10 @@ export class EvolvedLocomotionPolicy {
 
 export function parseLocomotionPolicy(value: unknown): LocomotionPolicyArtifact {
   if (!isRecord(value)) throw new Error('locomotion artifact is not an object')
-  if (value.schemaVersion !== 1) throw new Error('locomotion schemaVersion must be 1')
+  if (value.schemaVersion !== 1 && value.schemaVersion !== 2) {
+    throw new Error('locomotion schemaVersion must be 1 or 2')
+  }
+  const legacy = value.schemaVersion === 1
   if (value.kind !== 'wurmkickflip.locomotionPolicy') throw new Error('unexpected locomotion artifact kind')
   if (value.architecture !== 'segmental-recurrent-tanh') throw new Error('unexpected locomotion architecture')
   if (typeof value.modelVersion !== 'string' || value.modelVersion.length === 0) {
@@ -212,74 +192,115 @@ export function parseLocomotionPolicy(value: unknown): LocomotionPolicyArtifact 
   if (value.segmentCount !== SEGMENT_COUNT || value.actionSize !== ACTION_SIZE) {
     throw new Error(`locomotion artifact requires ${SEGMENT_COUNT} segments and ${ACTION_SIZE} actions`)
   }
-  const sensorNames = exactStringVector(value.sensorNames, LOCOMOTION_SENSOR_NAMES, 'sensorNames')
+  exactStringVector(value.sensorNames, legacy ? LEGACY_SENSOR_NAMES : LOCOMOTION_SENSOR_NAMES, 'sensorNames')
   const segmentPositions = finiteVector(value.segmentPositions, SEGMENT_COUNT, 'segmentPositions')
   const initialState = finiteVector(value.initialState, SEGMENT_COUNT, 'initialState')
   if (!isRecord(value.weights)) throw new Error('locomotion weights must be an object')
-  const inputNames = exactStringVector(value.weights.inputNames, INPUT_WEIGHT_NAMES, 'weights.inputNames')
-  const input = finiteVector(value.weights.input, INPUT_WEIGHT_NAMES.length, 'weights.input')
+  const expectedInputNames = legacy ? LEGACY_INPUT_WEIGHT_NAMES : LOCOMOTION_INPUT_WEIGHT_NAMES
+  exactStringVector(value.weights.inputNames, expectedInputNames, 'weights.inputNames')
+  const parsedInput = finiteVector(value.weights.input, expectedInputNames.length, 'weights.input')
+  const input = legacy
+    ? [...parsedInput, ...new Array(LOCOMOTION_INPUT_WEIGHT_NAMES.length - parsedInput.length).fill(0)]
+    : parsedInput
   const recurrentNames = exactStringVector(
     value.weights.recurrentNames,
-    RECURRENT_WEIGHT_NAMES,
+    LOCOMOTION_RECURRENT_WEIGHT_NAMES,
     'weights.recurrentNames',
   )
   const recurrent = finiteVector(
     value.weights.recurrent,
-    RECURRENT_WEIGHT_NAMES.length,
+    LOCOMOTION_RECURRENT_WEIGHT_NAMES.length,
     'weights.recurrent',
   )
-  const outputNames = exactStringVector(value.weights.outputNames, OUTPUT_WEIGHT_NAMES, 'weights.outputNames')
-  const output = finiteVector(value.weights.output, OUTPUT_WEIGHT_NAMES.length, 'weights.output')
-  const plant = parsePlant(value.plant)
+  const expectedOutputNames = legacy ? LEGACY_OUTPUT_WEIGHT_NAMES : LOCOMOTION_OUTPUT_WEIGHT_NAMES
+  exactStringVector(value.weights.outputNames, expectedOutputNames, 'weights.outputNames')
+  const parsedOutput = finiteVector(value.weights.output, expectedOutputNames.length, 'weights.output')
+  const output = legacy
+    ? [...parsedOutput, ...new Array(LOCOMOTION_OUTPUT_WEIGHT_NAMES.length - parsedOutput.length).fill(0)]
+    : parsedOutput
+  const plant = legacy ? parseLegacyPlant(value.plant) : parsePlant(value.plant)
   if (!isRecord(value.training)) throw new Error('locomotion training metadata must be an object')
 
   return {
-    schemaVersion: 1,
+    schemaVersion: 2,
     kind: 'wurmkickflip.locomotionPolicy',
     modelVersion: value.modelVersion,
     architecture: 'segmental-recurrent-tanh',
     segmentCount: SEGMENT_COUNT,
     actionSize: ACTION_SIZE,
-    sensorNames,
+    sensorNames: [...LOCOMOTION_SENSOR_NAMES],
     segmentPositions,
     initialState,
-    weights: { inputNames, input, recurrentNames, recurrent, outputNames, output },
+    weights: {
+      inputNames: [...LOCOMOTION_INPUT_WEIGHT_NAMES],
+      input,
+      recurrentNames,
+      recurrent,
+      outputNames: [...LOCOMOTION_OUTPUT_WEIGHT_NAMES],
+      output,
+    },
     plant,
-    training: { ...value.training },
+    training: legacy
+      ? { ...value.training, runtimeMigration: 'schema-1-zero-contact-weights' }
+      : { ...value.training },
   }
 }
 
 function parsePlant(value: unknown): LocomotionPolicyArtifact['plant'] {
   if (!isRecord(value)) throw new Error('locomotion plant metadata must be an object')
   const plant = {
+    version: exactString(value.version, 'plant.version'),
     timestep: positiveFinite(value.timestep, 'plant.timestep'),
     jointStiffness: positiveFinite(value.jointStiffness, 'plant.jointStiffness'),
     jointDamping: positiveFinite(value.jointDamping, 'plant.jointDamping'),
     jointLimit: positiveFinite(value.jointLimit, 'plant.jointLimit'),
-    waveGain: finiteNumber(value.waveGain, 'plant.waveGain'),
-    maximumForwardAcceleration: positiveFinite(
-      value.maximumForwardAcceleration,
-      'plant.maximumForwardAcceleration',
-    ),
-    linearDrag: positiveFinite(value.linearDrag, 'plant.linearDrag'),
-    inverseTractionDrag: positiveFinite(value.inverseTractionDrag, 'plant.inverseTractionDrag'),
-    tractionMinimum: finiteNumber(value.tractionMinimum, 'plant.tractionMinimum'),
-    tractionMaximum: positiveFinite(value.tractionMaximum, 'plant.tractionMaximum'),
-    inverseTractionFloor: positiveFinite(value.inverseTractionFloor, 'plant.inverseTractionFloor'),
-    minimumForwardSpeed: finiteNumber(value.minimumForwardSpeed, 'plant.minimumForwardSpeed'),
-    maximumForwardSpeed: positiveFinite(value.maximumForwardSpeed, 'plant.maximumForwardSpeed'),
-    frontTurnBase: positiveFinite(value.frontTurnBase, 'plant.frontTurnBase'),
-    frontTurnSpeedGain: positiveFinite(value.frontTurnSpeedGain, 'plant.frontTurnSpeedGain'),
-    angularDrag: positiveFinite(value.angularDrag, 'plant.angularDrag'),
-    minimumAngularSpeed: finiteNumber(value.minimumAngularSpeed, 'plant.minimumAngularSpeed'),
-    maximumAngularSpeed: positiveFinite(value.maximumAngularSpeed, 'plant.maximumAngularSpeed'),
+    spacing: positiveFinite(value.spacing, 'plant.spacing'),
+    actuatorStiffness: positiveFinite(value.actuatorStiffness, 'plant.actuatorStiffness'),
+    actuatorDamping: positiveFinite(value.actuatorDamping, 'plant.actuatorDamping'),
+    shapeBendScale: positiveFinite(value.shapeBendScale, 'plant.shapeBendScale'),
+    constraintIterations: positiveFinite(value.constraintIterations, 'plant.constraintIterations'),
+    constraintCompliance: positiveFinite(value.constraintCompliance, 'plant.constraintCompliance'),
+    longitudinalFriction: positiveFinite(value.longitudinalFriction, 'plant.longitudinalFriction'),
+    lateralFriction: positiveFinite(value.lateralFriction, 'plant.lateralFriction'),
+    freeVelocityDrag: positiveFinite(value.freeVelocityDrag, 'plant.freeVelocityDrag'),
+    maximumSpeed: positiveFinite(value.maximumSpeed, 'plant.maximumSpeed'),
+    maximumVerticalSpeed:
+      value.maximumVerticalSpeed === undefined
+        ? LOCOMOTION_PLANT_CONTRACT.maximumVerticalSpeed
+        : positiveFinite(value.maximumVerticalSpeed, 'plant.maximumVerticalSpeed'),
+    baseRadius: positiveFinite(value.baseRadius, 'plant.baseRadius'),
+    baseGroundClearance: positiveFinite(value.baseGroundClearance, 'plant.baseGroundClearance'),
   }
   for (const key of Object.keys(LOCOMOTION_PLANT_CONTRACT) as Array<keyof typeof LOCOMOTION_PLANT_CONTRACT>) {
-    if (Math.abs(plant[key] - LOCOMOTION_PLANT_CONTRACT[key]) > 1e-9) {
+    const actual = plant[key]
+    const expected = LOCOMOTION_PLANT_CONTRACT[key]
+    if (
+      typeof expected === 'string'
+        ? actual !== expected
+        : typeof actual !== 'number' || Math.abs(actual - expected) > 1e-9
+    ) {
       throw new Error(`plant.${key} does not match the browser locomotion contract`)
     }
   }
   return plant
+}
+
+function parseLegacyPlant(value: unknown): LocomotionPolicyArtifact['plant'] {
+  if (!isRecord(value)) throw new Error('legacy locomotion plant metadata must be an object')
+  const expected = LOCOMOTION_PLANT_CONTRACT
+  const checks = [
+    ['timestep', expected.timestep],
+    ['jointStiffness', expected.jointStiffness],
+    ['jointDamping', expected.jointDamping],
+    ['jointLimit', expected.jointLimit],
+  ] as const
+  for (const [key, expectedValue] of checks) {
+    const actual = finiteNumber(value[key], `plant.${key}`)
+    if (Math.abs(actual - expectedValue) > 1e-9) {
+      throw new Error(`legacy plant.${key} does not match the joint contract`)
+    }
+  }
+  return { ...LOCOMOTION_PLANT_CONTRACT }
 }
 
 function sanitizeSensors(sensors: LocomotionSensors): LocomotionSensors {
@@ -291,14 +312,29 @@ function sanitizeSensors(sensors: LocomotionSensors): LocomotionSensors {
     angularSpeed: clamp(finiteOrZero(sensors.angularSpeed), -3, 3),
     terrainFriction: clamp(finiteOrZero(sensors.terrainFriction), 0, 1.2),
     urgency: clamp(finiteOrZero(sensors.urgency), 0, 1),
+    contactLoads: sensors.contactLoads,
+    slipSpeeds: sensors.slipSpeeds,
+    obstacleForward: sensors.obstacleForward,
+    obstacleRight: sensors.obstacleRight,
   }
 }
 
-function exactStringVector(
-  value: unknown,
-  expected: readonly string[],
-  label: string,
-): string[] {
+function localSensor(
+  values: ArrayLike<number> | undefined,
+  index: number,
+  fallback: number,
+  minimum: number,
+  maximum: number,
+) {
+  return clamp(values ? finiteOr(values[index], fallback) : fallback, minimum, maximum)
+}
+
+function exactString(value: unknown, label: string) {
+  if (typeof value !== 'string' || value.length === 0) throw new Error(`${label} must be non-empty`)
+  return value
+}
+
+function exactStringVector(value: unknown, expected: readonly string[], label: string): string[] {
   if (
     !Array.isArray(value) ||
     value.length !== expected.length ||
@@ -329,6 +365,10 @@ function finiteNumber(value: unknown, label: string): number {
 
 function finiteOrZero(value: number | undefined): number {
   return typeof value === 'number' && Number.isFinite(value) ? value : 0
+}
+
+function finiteOr(value: number | undefined, fallback: number) {
+  return typeof value === 'number' && Number.isFinite(value) ? value : fallback
 }
 
 function clamp(value: number, lower: number, upper: number): number {

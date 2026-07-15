@@ -49,6 +49,8 @@ The first implementation can use a simple segmented creature. Future implementat
 - Load a creature genome JSON and render the creature from config.
 - Make creature selection visibly change anatomy (primitive silhouette, proportions, and configured branching appendages), not only palette.
 - Load an environment JSON and show key environment parameters in the viewer.
+- Load configuration resources independently, retain every valid creature/environment when a sibling fails, expose the failing resource path and validation/request error, and provide an in-app retry action.
+- Validate the selected creature against an explicit articulated runtime profile. For the current exhibit, label genome morphology as an appearance-only projection and do not imply that its declared controller executes.
 - Keep the existing worm/skateboard policy demo working as the first skateboard scenario.
 - Keep board and creature travel continuous, bounded, and genuinely two-dimensional in the current square terrarium; do not wrap or teleport at arena edges.
 - Treat glass bounds, tree/rock trunks, bowls, and the skateboard as solid scene geometry. Sweep the board and worm body through each fixed step so fast motion and leading segments cannot tunnel through obstacles; preserve deterministic frictional tangent sliding and recover safely from initial overlap or wedged contacts.
@@ -56,15 +58,15 @@ The first implementation can use a simple segmented creature. Future implementat
 - Give the terrarium deterministic food and water bowls, treat the skateboard as the well-being resource, and expose hunger, thirst, well-being, current target, and fulfillment in the viewer.
 - Select resource targets by need urgency with enough hysteresis to prevent rapid target flicker.
 - Drive ordinary detached movement through the tracked evolved segmental recurrent controller. Its segment actuators must cause root movement through the locomotion plant; resource coordinates must never directly translate the worm.
-- Derive segment ground grip from joint motion, terrain friction, and bounded contact strain so planted segments can stick and active/overloaded segments can slip. Do not replace neural joint commands with an authored gait phase.
-- Enter explicit feeding only after substantial head-to-bowl contact, pause learned translation during the contact pose, keep the posterior body out of the bowl, and clear the active resource before it can collide or retrigger again.
+- Move the measured body center only through mean-free internal segment forces interacting with anisotropic terrain friction or obstacle impulses. Do not add a scalar root-thrust shortcut or replace neural joint commands with an authored gait phase.
+- Enter explicit feeding only after 3D mouth-to-visible-contents contact, pause learned control during the contact pose, debit a finite resource inventory, and clear the bowl before it can retrigger.
 - Script and label contact choreography honestly: mounting progresses head to tail, dismounting releases the head to terrain first, eating/drinking animate the face and bowl, and collision tangent steering remains an authored environment response.
 - Keep time, clock, cycle, authored phase, and trigonometric gait generators out of the evolved crawl-controller inputs and trainer.
 - Keep the kickflip scripted and label the distilled stunt JSON accurately as an imitation-learned mounted pose prior rather than a learned physics stunt.
 - Run safely without the locomotion artifact by holding detached actuator commands at zero and reporting the unavailable brain.
 - Run without the mounted stunt artifact by falling back to deterministic scripted stunt control.
-- Load ONNX policy artifacts only when explicitly requested and compatible with the current metadata contract.
-- Degrade requested mounted-stunt JSON or ONNX policies safely to scripted stunt control; never substitute an authored crawl gait for a missing locomotion brain.
+- Degrade a missing or invalid mounted-stunt JSON safely to scripted stunt control; never substitute an authored crawl gait for a missing locomotion brain.
+- Honor `prefers-reduced-motion: reduce` in simulation behavior as well as CSS: initialize and pause autoplay, explain the pause, and allow an explicit Play action to run the simulation.
 
 ## Success Criteria
 
@@ -76,7 +78,7 @@ The completed browser/config milestone is:
 - The docs describe Python evolution/training as the source of generated artifacts.
 - The existing smoke policy path and verification commands still pass.
 
-The current refinement baseline additionally includes a shared seeded heightfield with surface-dependent friction, bounded two-dimensional travel, solid swept collisions, per-segment stick-slip grip, and a three-resource homeostasis loop with explicit feeding/mount lifecycle states. Detached crawling is controlled by a 39-parameter, 16-neuron recurrent policy refined for 80 risk-sensitive generations at population 128 from a preserved 110-generation base model. Causal joint-work propulsion and zero/frozen/shuffled/no-friction ablations establish that its segment activations matter in the compact plant. Collision response and grip are derived browser dynamics; feeding, mounting, dismounting, board routing, and the kickflip are scripted. The next training-fidelity milestone is contact-rich articulated physics rather than treating any of these authored layers as transfer evidence.
+The current refinement baseline additionally includes one seeded heightfield shared exactly by rendering and dynamics, bounded two-dimensional travel, swept 3D-height-aware collisions, a free 16-particle body, and a three-resource homeostasis loop. Detached crawling is controlled by a 45-value recurrent policy evolved in two deterministic stages across 12 randomized contact scenarios. Zero/frozen/segment-derangement interventions and an obstacle-free zero-friction center-of-mass invariant establish that segment activations and contacts cause travel. Feeding, mounting, dismounting, board routing, and the kickflip remain scripted. The next fidelity milestone is evaluating the complete resource/mount lifecycle inside contact-rich articulated training rather than treating authored scene layers as learned behavior.
 
 Longer-term success:
 
@@ -96,8 +98,8 @@ Longer-term success:
 
 ## Runtime Requirements
 
-- Web app: Vite, React, TypeScript, Three.js, React Three Fiber, Drei, ONNX Runtime Web.
-- Browser: Chrome or Edge recommended for WebGPU; fallback must keep the app usable elsewhere.
+- Web app: Vite, React, TypeScript, Three.js, React Three Fiber, and Drei.
+- Browser: current Chrome, Edge, Firefox, or Safari with WebGL support.
 - Training: Python 3.11 managed with `uv`, Gymnasium, Stable Baselines3, PyTorch, ONNX.
 - Future training candidates: MuJoCo, Brax, PufferLib, or custom vectorized simulators once the genome/environment contract stabilizes.
 
@@ -106,15 +108,21 @@ Longer-term success:
 - `npm run check` completes.
 - The local app loads at the dev server URL and shows a visible canvas plus training viewer.
 - Creature and environment config files load without TypeScript errors.
+- `npm run verify:configs` confirms strict schemas, partial-load preservation, per-resource failures, malformed/incompatible runtime rejection, and the successful fixed adapter.
+- The fixed adapter identifies 16 antagonistic actuator pairs—one dorsal/ventral pair for each segment—and 32 scalar muscle channels; UI terminology must not conflate those counts.
 - Built-in creature selections render distinct anatomy while the stunt policy keeps its fixed 16-segment action lattice.
 - With the tracked locomotion JSON present, detached crawling reports the evolved model and uses segment-local recurrence without a gait clock.
 - With the tracked stunt JSON present, mounted pose inference uses the 174-float observation; kickflip launch and board rotation remain scripted.
 - `npm run verify:terrain` confirms deterministic height, normal, surface, friction, and waypoint sampling.
+- `npm run verify:simulation` confirms that the fixed-step core has no React/Fiber/Drei dependency and reproduces the same headless trace.
 - `npm run verify:collisions` confirms high-speed anti-tunneling, long-body leading-probe contact, glass-wall/corner response, initial-overlap and wedged-prop recovery, frictional tangent sliding/support telemetry, determinism, and obstacle-order independence.
 - `npm run verify:interactions` confirms deterministic, finite, bounded, phase-continuous mount/dismount/eat/drink poses; staged head/midbody/tail contact; face-only bowl contact; distinct bite/sip cues; neutral boundaries; and locomotion ownership handoffs.
-- `npm run verify:needs` confirms deterministic bowls/resources, urgency selection, restoration semantics, stable observation order, and all three need interactions.
+- `npm run verify:needs` confirms deterministic finite inventories/refills, urgency selection, exact 3D mouth-contact restoration, empty-resource behavior, immutability, stable observation order, and all three need interactions.
 - `npm run verify:locomotion` confirms evolved artifact provenance, deterministic reproduction, steering, segment-owned antagonistic outputs, browser-plant parity, and causal ablations.
 - `npm run verify:motion` confirms deterministic two-axis travel, bounded and non-penetrating board/root/segment motion, scripted kickflip landings, neural detached crawling, explicit feeding, food/water visits across all three terrarium presets, tree and rock contacts, board seeking, remounting, post-remount well-being restoration, integrated zero/frozen/shuffled/no-traction interventions, and segment/root motion budgets.
+- `npm run verify:performance` enforces the headless policy/dynamics/collision step budget.
+- `npm run verify:replay` confirms strict timing, deterministic interpolation, all 32 channels, semantic metrics, defensive copies, and tamper rejection.
 - With the locomotion JSON absent or invalid, detached actions stay at zero and status clearly reports the unavailable brain.
 - With the stunt JSON absent or invalid, the mounted action request falls back to `scripted` with a clear message.
-- With an explicitly requested ONNX model present, metadata shape validation passes before inference starts.
+- `npm run verify:bundle` confirms that browser ONNX Runtime/WASM assets remain retired and enforces the initial bundle budget.
+- `npm run check:browser` covers config recovery, reduced-motion pause/override, replay capture/import/export, and live/replay reset behavior.

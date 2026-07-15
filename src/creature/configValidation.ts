@@ -6,12 +6,11 @@ import type {
   EnvironmentConfig,
   PrimitiveShape,
   Range,
+  RuntimeProfile,
   Vec3,
 } from './types'
 
-export type ConfigValidationResult<T> =
-  | { ok: true; value: T }
-  | { ok: false; errors: string[] }
+export type ConfigValidationResult<T> = { ok: true; value: T } | { ok: false; errors: string[] }
 
 const primitiveShapes = ['capsule', 'box', 'sphere', 'cylinder'] as const satisfies readonly PrimitiveShape[]
 const jointTypes = ['hinge', 'ball', 'fixed'] as const
@@ -27,7 +26,15 @@ const sensors = [
   'environment_probe',
 ] as const satisfies readonly CreatureSensor[]
 const terrainKinds = ['flat', 'slope', 'bumps', 'obstacle_field'] as const
-const taskKinds = ['forward_locomotion', 'target_reach', 'skateboard_balance', 'find_and_ride_skateboard'] as const
+const taskKinds = [
+  'forward_locomotion',
+  'target_reach',
+  'skateboard_balance',
+  'find_and_ride_skateboard',
+] as const
+const runtimePolicyKinds = ['segmental-recurrent-json'] as const
+const actuatorLayouts = ['antagonistic-pairs'] as const
+const genomeProjections = ['appearance-only'] as const
 
 export function validateCreatureGenome(value: unknown): ConfigValidationResult<CreatureGenome> {
   const errors: string[] = []
@@ -35,14 +42,20 @@ export function validateCreatureGenome(value: unknown): ConfigValidationResult<C
   const morphology = root ? asRecord(root.morphology, 'creature.morphology', errors) : null
   const controller = root ? asRecord(root.controller, 'creature.controller', errors) : null
   const mutation = root ? asRecord(root.mutation, 'creature.mutation', errors) : null
-  const bodyPartsInput = morphology ? asArray(morphology.bodyParts, 'creature.morphology.bodyParts', errors) : []
+  const bodyPartsInput = morphology
+    ? asArray(morphology.bodyParts, 'creature.morphology.bodyParts', errors)
+    : []
   const jointsInput = morphology ? asArray(morphology.joints, 'creature.morphology.joints', errors) : []
   const sensorsInput = root ? asArray(root.sensors, 'creature.sensors', errors) : []
 
-  const bodyParts = bodyPartsInput.map((part, index) => parseBodyPart(part, `creature.morphology.bodyParts[${index}]`, errors))
-  const joints = jointsInput.map((joint, index) => parseJoint(joint, `creature.morphology.joints[${index}]`, errors))
-  const bodyPartIds = new Set(bodyParts.map((part) => part.id).filter(Boolean))
-  const jointIds = new Set(joints.map((joint) => joint.id).filter(Boolean))
+  const bodyParts = bodyPartsInput.map((part, index) =>
+    parseBodyPart(part, `creature.morphology.bodyParts[${index}]`, errors),
+  )
+  const joints = jointsInput.map((joint, index) =>
+    parseJoint(joint, `creature.morphology.joints[${index}]`, errors),
+  )
+  const bodyPartIds = new Set(bodyParts.map(part => part.id).filter(Boolean))
+  const jointIds = new Set(joints.map(joint => joint.id).filter(Boolean))
 
   if (bodyParts.length === 0) {
     errors.push('creature.morphology.bodyParts must include at least one part.')
@@ -92,8 +105,16 @@ export function validateCreatureGenome(value: unknown): ConfigValidationResult<C
       enabled: asBoolean(mutation?.enabled, 'creature.mutation.enabled', errors),
       partScaleRange: asRange(mutation?.partScaleRange, 'creature.mutation.partScaleRange', errors),
       massScaleRange: asRange(mutation?.massScaleRange, 'creature.mutation.massScaleRange', errors),
-      jointLimitJitter: asNonNegativeNumber(mutation?.jointLimitJitter, 'creature.mutation.jointLimitJitter', errors),
-      controllerJitter: asNonNegativeNumber(mutation?.controllerJitter, 'creature.mutation.controllerJitter', errors),
+      jointLimitJitter: asNonNegativeNumber(
+        mutation?.jointLimitJitter,
+        'creature.mutation.jointLimitJitter',
+        errors,
+      ),
+      controllerJitter: asNonNegativeNumber(
+        mutation?.controllerJitter,
+        'creature.mutation.controllerJitter',
+        errors,
+      ),
     },
   }
 
@@ -120,7 +141,11 @@ export function validateEnvironmentConfig(value: unknown): ConfigValidationResul
       size: asVec3(world?.size, 'environment.world.size', errors),
       gravity: asVec3(world?.gravity, 'environment.world.gravity', errors),
       airDrag: asNonNegativeNumber(world?.airDrag, 'environment.world.airDrag', errors),
-      solverIterations: asPositiveNumber(world?.solverIterations, 'environment.world.solverIterations', errors),
+      solverIterations: asPositiveNumber(
+        world?.solverIterations,
+        'environment.world.solverIterations',
+        errors,
+      ),
     },
     terrain: {
       kind: asEnum(terrain?.kind, terrainKinds, 'environment.terrain.kind', errors),
@@ -128,7 +153,11 @@ export function validateEnvironmentConfig(value: unknown): ConfigValidationResul
       restitution: asNonNegativeNumber(terrain?.restitution, 'environment.terrain.restitution', errors),
       slopeDegrees: asFiniteNumber(terrain?.slopeDegrees, 'environment.terrain.slopeDegrees', errors),
       roughness: asNonNegativeNumber(terrain?.roughness, 'environment.terrain.roughness', errors),
-      obstacleDensity: asNonNegativeNumber(terrain?.obstacleDensity, 'environment.terrain.obstacleDensity', errors),
+      obstacleDensity: asNonNegativeNumber(
+        terrain?.obstacleDensity,
+        'environment.terrain.obstacleDensity',
+        errors,
+      ),
     },
     task: {
       kind: asEnum(task?.kind, taskKinds, 'environment.task.kind', errors),
@@ -142,8 +171,16 @@ export function validateEnvironmentConfig(value: unknown): ConfigValidationResul
       deckSize: asVec3(skateboard?.deckSize, 'environment.skateboard.deckSize', errors),
       mass: asPositiveNumber(skateboard?.mass, 'environment.skateboard.mass', errors),
       wheelRadius: asPositiveNumber(skateboard?.wheelRadius, 'environment.skateboard.wheelRadius', errors),
-      wheelFriction: asNonNegativeNumber(skateboard?.wheelFriction, 'environment.skateboard.wheelFriction', errors),
-      discoveryRadius: asPositiveNumber(skateboard?.discoveryRadius, 'environment.skateboard.discoveryRadius', errors),
+      wheelFriction: asNonNegativeNumber(
+        skateboard?.wheelFriction,
+        'environment.skateboard.wheelFriction',
+        errors,
+      ),
+      discoveryRadius: asPositiveNumber(
+        skateboard?.discoveryRadius,
+        'environment.skateboard.discoveryRadius',
+        errors,
+      ),
       mountHeightTolerance: asNonNegativeNumber(
         skateboard?.mountHeightTolerance,
         'environment.skateboard.mountHeightTolerance',
@@ -156,28 +193,68 @@ export function validateEnvironmentConfig(value: unknown): ConfigValidationResul
       dragScale: asRange(randomization?.dragScale, 'environment.randomization.dragScale', errors),
       slopeDegrees: asRange(randomization?.slopeDegrees, 'environment.randomization.slopeDegrees', errors),
       roughness: asRange(randomization?.roughness, 'environment.randomization.roughness', errors),
-      obstacleDensity: asRange(randomization?.obstacleDensity, 'environment.randomization.obstacleDensity', errors),
-      actuatorStrength: asRange(randomization?.actuatorStrength, 'environment.randomization.actuatorStrength', errors),
-      actuatorLatencyMs: asRange(randomization?.actuatorLatencyMs, 'environment.randomization.actuatorLatencyMs', errors),
+      obstacleDensity: asRange(
+        randomization?.obstacleDensity,
+        'environment.randomization.obstacleDensity',
+        errors,
+      ),
+      actuatorStrength: asRange(
+        randomization?.actuatorStrength,
+        'environment.randomization.actuatorStrength',
+        errors,
+      ),
+      actuatorLatencyMs: asRange(
+        randomization?.actuatorLatencyMs,
+        'environment.randomization.actuatorLatencyMs',
+        errors,
+      ),
       sensorNoise: asRange(randomization?.sensorNoise, 'environment.randomization.sensorNoise', errors),
-      spawnYawDegrees: asRange(randomization?.spawnYawDegrees, 'environment.randomization.spawnYawDegrees', errors),
-      skateboardSpawnX: asRange(randomization?.skateboardSpawnX, 'environment.randomization.skateboardSpawnX', errors),
-      skateboardSpawnZ: asRange(randomization?.skateboardSpawnZ, 'environment.randomization.skateboardSpawnZ', errors),
-      skateboardMass: asRange(randomization?.skateboardMass, 'environment.randomization.skateboardMass', errors),
+      spawnYawDegrees: asRange(
+        randomization?.spawnYawDegrees,
+        'environment.randomization.spawnYawDegrees',
+        errors,
+      ),
+      skateboardSpawnX: asRange(
+        randomization?.skateboardSpawnX,
+        'environment.randomization.skateboardSpawnX',
+        errors,
+      ),
+      skateboardSpawnZ: asRange(
+        randomization?.skateboardSpawnZ,
+        'environment.randomization.skateboardSpawnZ',
+        errors,
+      ),
+      skateboardMass: asRange(
+        randomization?.skateboardMass,
+        'environment.randomization.skateboardMass',
+        errors,
+      ),
       wheelFriction: asRange(randomization?.wheelFriction, 'environment.randomization.wheelFriction', errors),
     },
     rewardWeights: {
-      forwardProgress: asFiniteNumber(rewardWeights?.forwardProgress, 'environment.rewardWeights.forwardProgress', errors),
+      forwardProgress: asFiniteNumber(
+        rewardWeights?.forwardProgress,
+        'environment.rewardWeights.forwardProgress',
+        errors,
+      ),
       stability: asFiniteNumber(rewardWeights?.stability, 'environment.rewardWeights.stability', errors),
       energy: asFiniteNumber(rewardWeights?.energy, 'environment.rewardWeights.energy', errors),
       survival: asFiniteNumber(rewardWeights?.survival, 'environment.rewardWeights.survival', errors),
-      targetAlignment: asFiniteNumber(rewardWeights?.targetAlignment, 'environment.rewardWeights.targetAlignment', errors),
+      targetAlignment: asFiniteNumber(
+        rewardWeights?.targetAlignment,
+        'environment.rewardWeights.targetAlignment',
+        errors,
+      ),
       skateboardDiscovery: asFiniteNumber(
         rewardWeights?.skateboardDiscovery,
         'environment.rewardWeights.skateboardDiscovery',
         errors,
       ),
-      skateboardContact: asFiniteNumber(rewardWeights?.skateboardContact, 'environment.rewardWeights.skateboardContact', errors),
+      skateboardContact: asFiniteNumber(
+        rewardWeights?.skateboardContact,
+        'environment.rewardWeights.skateboardContact',
+        errors,
+      ),
       skateboardVelocity: asFiniteNumber(
         rewardWeights?.skateboardVelocity,
         'environment.rewardWeights.skateboardVelocity',
@@ -187,6 +264,41 @@ export function validateEnvironmentConfig(value: unknown): ConfigValidationResul
   }
 
   return errors.length > 0 ? { ok: false, errors } : { ok: true, value: environment }
+}
+
+export function validateRuntimeProfile(value: unknown): ConfigValidationResult<RuntimeProfile> {
+  const errors: string[] = []
+  const root = asRecord(value, 'runtimeProfile', errors)
+  const policy = root ? asRecord(root.policy, 'runtimeProfile.policy', errors) : null
+  const segmentCount = asPositiveInteger(root?.segmentCount, 'runtimeProfile.segmentCount', errors)
+  const actionSize = asPositiveInteger(root?.actionSize, 'runtimeProfile.actionSize', errors)
+
+  if (actionSize !== segmentCount * 2) {
+    errors.push('runtimeProfile.actionSize must equal segmentCount * 2 for antagonistic actuator pairs.')
+  }
+
+  const profile: RuntimeProfile = {
+    schemaVersion: asSchemaVersion(root?.schemaVersion, 'runtimeProfile.schemaVersion', errors),
+    kind: asLiteral(root?.kind, 'wurmkickflip.runtimeProfile', 'runtimeProfile.kind', errors),
+    id: asNonEmptyString(root?.id, 'runtimeProfile.id', errors),
+    name: asNonEmptyString(root?.name, 'runtimeProfile.name', errors),
+    plantVersion: asNonEmptyString(root?.plantVersion, 'runtimeProfile.plantVersion', errors),
+    segmentCount,
+    actionSize,
+    actuatorLayout: asEnum(root?.actuatorLayout, actuatorLayouts, 'runtimeProfile.actuatorLayout', errors),
+    genomeProjection: asEnum(
+      root?.genomeProjection,
+      genomeProjections,
+      'runtimeProfile.genomeProjection',
+      errors,
+    ),
+    policy: {
+      kind: asEnum(policy?.kind, runtimePolicyKinds, 'runtimeProfile.policy.kind', errors),
+      artifactPath: asModelArtifactPath(policy?.artifactPath, 'runtimeProfile.policy.artifactPath', errors),
+    },
+  }
+
+  return errors.length > 0 ? { ok: false, errors } : { ok: true, value: profile }
 }
 
 function parseBodyPart(value: unknown, path: string, errors: string[]): CreatureBodyPart {
@@ -309,6 +421,14 @@ function asPositiveNumber(value: unknown, path: string, errors: string[]): numbe
   return result
 }
 
+function asPositiveInteger(value: unknown, path: string, errors: string[]): number {
+  const result = asPositiveNumber(value, path, errors)
+  if (!Number.isInteger(result)) {
+    errors.push(`${path} must be an integer.`)
+  }
+  return result
+}
+
 function asNonNegativeNumber(value: unknown, path: string, errors: string[]): number {
   const result = asFiniteNumber(value, path, errors)
   if (result < 0) {
@@ -338,10 +458,40 @@ function asTuple(value: unknown, path: string, length: number, errors: string[])
   return value.map((item, index) => asFiniteNumber(item, `${path}[${index}]`, errors))
 }
 
-function asEnum<const T extends readonly string[]>(value: unknown, allowed: T, path: string, errors: string[]): T[number] {
+function asEnum<const T extends readonly string[]>(
+  value: unknown,
+  allowed: T,
+  path: string,
+  errors: string[],
+): T[number] {
   if (typeof value === 'string' && allowed.includes(value)) {
     return value
   }
   errors.push(`${path} must be one of: ${allowed.join(', ')}.`)
   return allowed[0]
+}
+
+function asLiteral<const T extends string | number>(
+  value: unknown,
+  expected: T,
+  path: string,
+  errors: string[],
+): T {
+  if (value !== expected) {
+    errors.push(`${path} must equal ${String(expected)}.`)
+  }
+  return expected
+}
+
+function asModelArtifactPath(value: unknown, path: string, errors: string[]): string {
+  const result = asNonEmptyString(value, path, errors)
+  if (
+    !result.startsWith('/models/') ||
+    !result.endsWith('.json') ||
+    result.includes('..') ||
+    result.includes('\\')
+  ) {
+    errors.push(`${path} must be an absolute /models/*.json path without traversal.`)
+  }
+  return result
 }

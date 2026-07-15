@@ -52,9 +52,42 @@
       }
     ],
     "joints": [
-      { "id": "j-core-left", "parentId": "core", "childId": "left-paddle", "type": "ball", "axis": [0, 1, 0], "anchor": [-1.42, 0.61, -0.2], "limits": [-0.85, 0.85], "stiffness": 12, "damping": 1.8, "motorStrength": 5 },
-      { "id": "j-core-right", "parentId": "core", "childId": "right-paddle", "type": "ball", "axis": [0, 1, 0], "anchor": [-1.42, 0.61, 0.2], "limits": [-0.85, 0.85], "stiffness": 12, "damping": 1.8, "motorStrength": 5 },
-      { "id": "j-core-rear", "parentId": "core", "childId": "rear-paddle", "type": "hinge", "axis": [0, 0, 1], "anchor": [-1.56, 0.6, 0], "limits": [-0.7, 0.7], "stiffness": 14, "damping": 1.6, "motorStrength": 5.5 }
+      {
+        "id": "j-core-left",
+        "parentId": "core",
+        "childId": "left-paddle",
+        "type": "ball",
+        "axis": [0, 1, 0],
+        "anchor": [-1.42, 0.61, -0.2],
+        "limits": [-0.85, 0.85],
+        "stiffness": 12,
+        "damping": 1.8,
+        "motorStrength": 5
+      },
+      {
+        "id": "j-core-right",
+        "parentId": "core",
+        "childId": "right-paddle",
+        "type": "ball",
+        "axis": [0, 1, 0],
+        "anchor": [-1.42, 0.61, 0.2],
+        "limits": [-0.85, 0.85],
+        "stiffness": 12,
+        "damping": 1.8,
+        "motorStrength": 5
+      },
+      {
+        "id": "j-core-rear",
+        "parentId": "core",
+        "childId": "rear-paddle",
+        "type": "hinge",
+        "axis": [0, 0, 1],
+        "anchor": [-1.56, 0.6, 0],
+        "limits": [-0.7, 0.7],
+        "stiffness": 14,
+        "damping": 1.6,
+        "motorStrength": 5.5
+      }
     ]
   },
   "controller": {
@@ -67,7 +100,14 @@
       "forwardBias": 0.12
     }
   },
-  "sensors": ["body_pose", "body_velocity", "joint_angles", "contacts", "target_direction", "environment_probe"],
+  "sensors": [
+    "body_pose",
+    "body_velocity",
+    "joint_angles",
+    "contacts",
+    "target_direction",
+    "environment_probe"
+  ],
   "mutation": {
     "enabled": true,
     "partScaleRange": [0.72, 1.4],

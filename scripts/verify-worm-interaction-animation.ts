@@ -16,7 +16,7 @@ verifyFeedingSequence()
 verifyNamedPhasesAndContinuity()
 verifyLoopSeams()
 
-const continuity = Object.fromEntries(kinds.map((kind) => [kind, maximumFrameDelta(kind, 240)]))
+const continuity = Object.fromEntries(kinds.map(kind => [kind, maximumFrameDelta(kind, 240)]))
 console.log(
   'Worm interaction animation verification passed.',
   JSON.stringify({
@@ -38,9 +38,15 @@ function verifyDeterminismAndBounds(kind: WormInteractionKind) {
     expect(first.headSegmentIndex === 15, `${kind} must identify scene segment 15 as the face`)
     expect(first.side === -1, `${kind} must preserve the requested board side`)
     expect(first.progress >= 0 && first.progress <= 1, `${kind} progress escaped [0, 1]`)
-    expect(first.locomotionWeight >= 0 && first.locomotionWeight <= 1, `${kind} locomotion weight escaped [0, 1]`)
+    expect(
+      first.locomotionWeight >= 0 && first.locomotionWeight <= 1,
+      `${kind} locomotion weight escaped [0, 1]`,
+    )
     expect(allNumbers(first).every(Number.isFinite), `${kind} emitted a non-finite channel`)
-    expect(allContactWeights(first).every((value) => value >= 0 && value <= 1), `${kind} emitted an invalid contact cue`)
+    expect(
+      allContactWeights(first).every(value => value >= 0 && value <= 1),
+      `${kind} emitted an invalid contact cue`,
+    )
   }
 }
 
@@ -65,11 +71,22 @@ function verifyMountSequence() {
   expect(early.phase === 'mount-head-contact', 'mount must name its head-contact phase')
   expect(head.vertical > tail.vertical + 0.1, 'the face must climb onto the board before the tail')
   expect(early.contact.headWeight > 0.8, 'the face must establish early deck contact')
-  expect(early.contact.midbodyWeight < 0.02 && early.contact.tailWeight < 0.02, 'early mount must not teleport the body onto the deck')
+  expect(
+    early.contact.midbodyWeight < 0.02 && early.contact.tailWeight < 0.02,
+    'early mount must not teleport the body onto the deck',
+  )
   expect(middle.contact.midbodyWeight > 0.4, 'mount haul must transfer deck support into the midbody')
   expect(late.contact.tailWeight > 0.6, 'mount settle must bring the tail onto the deck')
-  expect(finished.contact.headWeight === 1 && finished.contact.midbodyWeight === 1 && finished.contact.tailWeight === 1, 'completed mount must leave the whole worm supported by the deck')
-  expect(finished.locomotionWeight === 0, 'completed mount must hand pose ownership away from the crawl plant')
+  expect(
+    finished.contact.headWeight === 1 &&
+      finished.contact.midbodyWeight === 1 &&
+      finished.contact.tailWeight === 1,
+    'completed mount must leave the whole worm supported by the deck',
+  )
+  expect(
+    finished.locomotionWeight === 0,
+    'completed mount must hand pose ownership away from the crawl plant',
+  )
 }
 
 function verifyDismountSequence() {
@@ -78,12 +95,29 @@ function verifyDismountSequence() {
   const groundBrace = at('dismounting', 0.55)
   const finished = at('dismounting', 1)
 
-  expect(start.contact.headWeight === 1 && start.contact.midbodyWeight === 1 && start.contact.tailWeight === 1, 'dismount must begin fully supported by the deck')
+  expect(
+    start.contact.headWeight === 1 && start.contact.midbodyWeight === 1 && start.contact.tailWeight === 1,
+    'dismount must begin fully supported by the deck',
+  )
   expect(headLed.contact.headWeight < 0.02, 'the face must release the deck first when dismounting')
-  expect(headLed.contact.midbodyWeight > 0.98 && headLed.contact.tailWeight > 0.98, 'midbody and tail must remain supported while the face reaches down')
-  expect(groundBrace.contact.groundHeadWeight > 0.95, 'the face must visibly brace on terrain during the slide-off')
-  expect(finished.contact.headWeight === 0 && finished.contact.midbodyWeight === 0 && finished.contact.tailWeight === 0, 'dismount must release all deck contacts')
-  expect(finished.locomotionWeight === 1, 'completed dismount must return ownership to the learned crawl plant')
+  expect(
+    headLed.contact.midbodyWeight > 0.98 && headLed.contact.tailWeight > 0.98,
+    'midbody and tail must remain supported while the face reaches down',
+  )
+  expect(
+    groundBrace.contact.groundHeadWeight > 0.95,
+    'the face must visibly brace on terrain during the slide-off',
+  )
+  expect(
+    finished.contact.headWeight === 0 &&
+      finished.contact.midbodyWeight === 0 &&
+      finished.contact.tailWeight === 0,
+    'dismount must release all deck contacts',
+  )
+  expect(
+    finished.locomotionWeight === 1,
+    'completed dismount must return ownership to the learned crawl plant',
+  )
 }
 
 function verifyFeedingSequence() {
@@ -94,14 +128,35 @@ function verifyFeedingSequence() {
 
   expect(eating.contact.target === 'food-bowl', 'eating must target the food bowl')
   expect(drinking.contact.target === 'water-bowl', 'drinking must target the water bowl')
-  expect(eating.contact.headWeight > 0.98 && drinking.contact.headWeight > 0.98, 'feeding must establish face-to-bowl contact')
-  expect(eating.contact.midbodyWeight === 0 && eating.contact.tailWeight === 0, 'the food bowl must contact the face, not the whole body')
-  expect(drinking.contact.midbodyWeight === 0 && drinking.contact.tailWeight === 0, 'the water bowl must contact the face, not the whole body')
-  expect(eatingHead.vertical < -0.12 && eatingHead.pitch > 0.35, 'eating must lower and pitch the face into the bowl')
+  expect(
+    eating.contact.headWeight > 0.98 && drinking.contact.headWeight > 0.98,
+    'feeding must establish face-to-bowl contact',
+  )
+  expect(
+    eating.contact.midbodyWeight === 0 && eating.contact.tailWeight === 0,
+    'the food bowl must contact the face, not the whole body',
+  )
+  expect(
+    drinking.contact.midbodyWeight === 0 && drinking.contact.tailWeight === 0,
+    'the water bowl must contact the face, not the whole body',
+  )
+  expect(
+    eatingHead.vertical < -0.12 && eatingHead.pitch > 0.35,
+    'eating must lower and pitch the face into the bowl',
+  )
   expect(drinkingHead.vertical < eatingHead.vertical - 0.025, 'drinking must use a distinct, deeper face dip')
-  expect(Math.abs(eating.segments[0].vertical) < 1e-12, 'feeding must not drag the posterior segment into the bowl')
-  expect(eating.contact.mouthOpen > drinking.contact.mouthOpen + 0.2, 'eating must read as a bite rather than a sip')
-  expect(eating.locomotionWeight < 0.1 && drinking.locomotionWeight < 0.1, 'bowl contact must pause learned translation instead of skating through the vessel')
+  expect(
+    Math.abs(eating.segments[0].vertical) < 1e-12,
+    'feeding must not drag the posterior segment into the bowl',
+  )
+  expect(
+    eating.contact.mouthOpen > drinking.contact.mouthOpen + 0.2,
+    'eating must read as a bite rather than a sip',
+  )
+  expect(
+    eating.locomotionWeight < 0.1 && drinking.locomotionWeight < 0.1,
+    'bowl contact must pause learned translation instead of skating through the vessel',
+  )
   expect(at('eating', 0.78).contact.swallow > 0.9, 'eating must include a swallow cue')
   expect(at('drinking', 0.76).contact.swallow > 0.9, 'drinking must include a swallow cue')
 }
@@ -128,7 +183,10 @@ function verifyNamedPhasesAndContinuity() {
     for (const boundary of boundaries[kind]) {
       const before = at(kind, boundary - 1e-5)
       const after = at(kind, boundary + 1e-5)
-      expect(maximumNumericDifference(before, after) < 0.001, `${kind} pose jumped at named phase boundary ${boundary}`)
+      expect(
+        maximumNumericDifference(before, after) < 0.001,
+        `${kind} pose jumped at named phase boundary ${boundary}`,
+      )
     }
   }
 }
@@ -151,7 +209,10 @@ function maximumFrameDelta(kind: WormInteractionKind, hertz: number) {
   let previous = sampleWormInteractionAnimation({ kind, elapsedSeconds: 0 })
   let maximum = 0
   for (let frame = 1; frame <= frameCount; frame += 1) {
-    const current = sampleWormInteractionAnimation({ kind, elapsedSeconds: Math.min(duration, frame / hertz) })
+    const current = sampleWormInteractionAnimation({
+      kind,
+      elapsedSeconds: Math.min(duration, frame / hertz),
+    })
     maximum = Math.max(maximum, maximumNumericDifference(previous, current))
     previous = current
   }
@@ -169,9 +230,11 @@ function at(kind: WormInteractionKind, progress: number) {
 }
 
 function isNeutralPose(sample: WormInteractionAnimationSample) {
-  const rootNeutral = [sample.root.forward, sample.root.lateral, sample.root.vertical, sample.root.yaw].every((value) => Math.abs(value) < 1e-12)
+  const rootNeutral = [sample.root.forward, sample.root.lateral, sample.root.vertical, sample.root.yaw].every(
+    value => Math.abs(value) < 1e-12,
+  )
   const segmentsNeutral = sample.segments.every(
-    (segment) =>
+    segment =>
       Math.abs(segment.forward) < 1e-12 &&
       Math.abs(segment.lateral) < 1e-12 &&
       Math.abs(segment.vertical) < 1e-12 &&
@@ -192,7 +255,7 @@ function allNumbers(sample: WormInteractionAnimationSample) {
     sample.root.lateral,
     sample.root.vertical,
     sample.root.yaw,
-    ...sample.segments.flatMap((segment) => [
+    ...sample.segments.flatMap(segment => [
       segment.forward,
       segment.lateral,
       segment.vertical,
@@ -216,7 +279,10 @@ function allContactWeights(sample: WormInteractionAnimationSample) {
   ]
 }
 
-function maximumNumericDifference(first: WormInteractionAnimationSample, second: WormInteractionAnimationSample) {
+function maximumNumericDifference(
+  first: WormInteractionAnimationSample,
+  second: WormInteractionAnimationSample,
+) {
   const firstNumbers = animationNumbers(first)
   const secondNumbers = animationNumbers(second)
   expect(firstNumbers.length === secondNumbers.length, 'sample channel count changed')
@@ -230,7 +296,7 @@ function animationNumbers(sample: WormInteractionAnimationSample) {
     sample.root.lateral,
     sample.root.vertical,
     sample.root.yaw,
-    ...sample.segments.flatMap((segment) => [
+    ...sample.segments.flatMap(segment => [
       segment.forward,
       segment.lateral,
       segment.vertical,

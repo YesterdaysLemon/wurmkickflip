@@ -206,7 +206,10 @@ function segmentOffsetFor(
   if (kind === 'mounting') {
     return {
       forward: channels.lead * anteriorReach * 0.13 - channels.support * posterior * 0.035,
-      lateral: side * (channels.lead * anteriorReach * 0.095 + channels.support * (0.25 + posteriorToAnterior * 0.75) * 0.055),
+      lateral:
+        side *
+        (channels.lead * anteriorReach * 0.095 +
+          channels.support * (0.25 + posteriorToAnterior * 0.75) * 0.055),
       vertical: channels.lead * (0.025 + anteriorReach * 0.17) + channels.support * (0.045 + midbody * 0.085),
       pitch: -channels.lead * anteriorReach * 0.5 + channels.support * (posteriorToAnterior - 0.5) * 0.16,
       yaw: side * (channels.lead * anteriorReach * 0.34 - channels.support * midbody * 0.1),
@@ -218,9 +221,18 @@ function segmentOffsetFor(
   if (kind === 'dismounting') {
     return {
       forward: channels.lead * anteriorReach * 0.09 + channels.release * posterior * 0.04,
-      lateral: side * (channels.support * anteriorReach * 0.13 + channels.release * (0.3 + posteriorToAnterior * 0.7) * 0.085),
-      vertical: channels.lead * anteriorReach * 0.055 - channels.support * anteriorReach * 0.145 + channels.release * posterior * 0.06,
-      pitch: channels.lead * anteriorReach * 0.18 + channels.support * anteriorReach * 0.58 - channels.release * posterior * 0.12,
+      lateral:
+        side *
+        (channels.support * anteriorReach * 0.13 +
+          channels.release * (0.3 + posteriorToAnterior * 0.7) * 0.085),
+      vertical:
+        channels.lead * anteriorReach * 0.055 -
+        channels.support * anteriorReach * 0.145 +
+        channels.release * posterior * 0.06,
+      pitch:
+        channels.lead * anteriorReach * 0.18 +
+        channels.support * anteriorReach * 0.58 -
+        channels.release * posterior * 0.12,
       yaw: side * (channels.support * anteriorReach * 0.4 + channels.release * midbody * 0.12),
       axialScale: 1 - channels.accent * anteriorReach * 0.045,
       radialScale: 1 + channels.accent * anteriorReach * 0.065,
@@ -336,11 +348,7 @@ function contactCueFor(
   }
 }
 
-function locomotionWeightFor(
-  kind: WormInteractionKind,
-  progress: number,
-  channels: AnimationChannels,
-) {
+function locomotionWeightFor(kind: WormInteractionKind, progress: number, channels: AnimationChannels) {
   if (kind === 'mounting') return 1 - rise(progress, 0.08, 0.82)
   if (kind === 'dismounting') return rise(progress, 0.18, 0.92)
   return 1 - channels.contact * 0.92

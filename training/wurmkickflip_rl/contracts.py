@@ -1,9 +1,18 @@
 from __future__ import annotations
 
-SEGMENT_COUNT = 16
-ACTION_SIZE = SEGMENT_COUNT * 2
+import json
+from pathlib import Path
+
+
+_ROOT = Path(__file__).resolve().parents[2]
+_LOCOMOTION_CONTRACT = json.loads(
+    (_ROOT / "contracts" / "locomotion-v2.json").read_text(encoding="utf-8")
+)
+
+SEGMENT_COUNT = int(_LOCOMOTION_CONTRACT["segmentCount"])
+ACTION_SIZE = int(_LOCOMOTION_CONTRACT["muscleChannelCount"])
 OBSERVATION_SIZE = 174
-POLICY_TIMESTEP = 1.0 / 60.0
+POLICY_TIMESTEP = float(_LOCOMOTION_CONTRACT["timestep"])
 
 OBSERVATION_HEADER_SIZE = 14
 SEGMENT_OBSERVATION_SIZE = 8

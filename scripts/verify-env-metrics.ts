@@ -99,7 +99,14 @@ const result = JSON.parse(python.stdout) as {
   environmentDistanceDelta: number
 }
 
-const requiredKeys = ['average_contact_ratio', 'contact_ratio', 'distance', 'energy_use', 'fall_reason', 'survival_time']
+const requiredKeys = [
+  'average_contact_ratio',
+  'contact_ratio',
+  'distance',
+  'energy_use',
+  'fall_reason',
+  'survival_time',
+]
 const failures: string[] = []
 for (const key of requiredKeys) {
   if (!result.resetKeys.includes(key)) failures.push(`reset info missing ${key}.`)

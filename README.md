@@ -1,133 +1,83 @@
-# !!! DEEPLY UNSERIOUS REPO MOSTLY CODEX SLOP EXPERIMENTATION !!!
+# !!! DEEPLY UNSERIOUS REPO, SERIOUSLY TESTED WORM !!!
 
 # Wurmkickflip
 
-A React and Three.js virtual terrarium where a segmented worm develops hunger, thirst, and well-being, then travels between food, water, and its skateboard. Detached movement comes from a tracked, evolved recurrent neural controller whose 16 neurons each own one body segment. The kickflip remains deliberately scripted because reliable aerial board physics is outside the current plant.
+Wurmkickflip is a React/Three.js virtual terrarium containing a 16-segment neural worm, finite food and water bowls, and a skateboard that satisfies well-being. The worm autonomously chooses the most urgent resource, crawls there with an evolved recurrent controller, and uses scripted contact choreography to eat, drink, mount, dismount, and kickflip.
 
-The ordinary crawl brain is `locomotion-segmental-es-quality-robust-v1` in `public/models/wurmkickflip_locomotion_policy.json`. It is a clock-free chain of 16 locally coupled recurrent `tanh` neurons. The published brain is an 80-generation, population-128 risk-sensitive refinement warm-started from the preserved 110-generation base model. Its 39 evolved parameters contain recurrent state and shared sensor, neighbor, and output weights; it receives body feedback, target direction, terrain friction, and need urgency, but no time, clock, cycle, phase, sine, cosine, or demonstration gait. Each neuron emits the antagonistic actuator pair for its own segment.
+The boundary is intentional: ordinary travel is neural and contact-driven; the aerial kickflip is authored because this compact plant is not a high-fidelity skateboard simulator.
 
-The fixed-step locomotion plant turns joint commands into segment bend and joint velocity, then derives root thrust only from non-reciprocal work traveling across adjacent joints. Target coordinates never directly move the root. Causal verification shows that zero actions stay still, a frozen pose cannot substitute for traveling joint work, shuffling segment activations damages progress, and zero terrain friction prevents displacement from rest. This is still a compact authored plant, not rigid-body or soft-body transfer physics.
+## How The Worm Moves
 
-The terrarium includes deterministic food and water bowls plus the live skateboard as a third resource. Need urgencies accumulate over time; a deterministic urgency selector with target hysteresis chooses where to go. A substantial head-to-bowl contact starts an authored eating or drinking cycle, while well-being is restored only after the worm reaches and mounts the skateboard. The active bowl is released from anterior collision only during the contact pose, then a short release cooldown lets the worm clear it without snapping back or immediately retriggering. The neural crawl controller steers toward the selected resource; the selector and lifecycle do not prescribe a gait or translate the creature.
+The tracked controller is [`public/models/wurmkickflip_locomotion_policy.json`](public/models/wurmkickflip_locomotion_policy.json). It is a clock-free chain of 16 locally coupled recurrent `tanh` neurons. Every neuron owns one anatomical segment and emits that segment's dorsal/ventral muscle pair, for 32 action channels at 60 Hz.
 
-The older `stunt-distilled-v2` artifact remains the mounted pose prior inside the exhibition path. The browser scripts the pop, aerial rotation, landing window, and ride lifecycle. Its imitation-learning signals are not the source of detached crawling and are not evidence that a kickflip was learned in physics.
+Its 45 evolved values are 16 initial recurrent states, 17 shared sensor weights, three recurrent-neighbor weights, and nine output weights. Inputs include resource direction and distance, measured body motion, urgency, joint state, prior command, and segment-local support, slip, and obstacle normals. There is no time, cycle, phase, sine, cosine, demonstration gait, or writable root-thrust channel.
 
-## Behavior Ownership
+Muscle servos reshape a free particle chain. Internal accelerations are explicitly mean-free, distance constraints are equal-and-opposite, and the root pose is measured from the resulting segment center of mass. Translation emerges from that changing shape interacting with anisotropic terrain friction and obstacle impulses. In an obstacle-free zero-friction world, active muscles conserve horizontal center of mass to numerical precision.
 
-- **Evolved neural output:** during `crawling` and `seeking`, the 16-neuron recurrent controller turns goal sensors and proprioception into 32 segment muscle activations. The needs selector chooses the goal; it is deterministic homeostasis, not another learned policy.
-- **Derived scene physics:** damped joints turn those activations into poses, adjacent-joint work creates root thrust and steering, terrain friction supplies traction, and quiet ground segments establish stick-slip anchors that release under joint motion or strain. Deterministic swept contacts constrain the worm root, every rendered segment, and board deck probes against glass bounds, trees, rocks, bowls, and the skateboard, preserving frictional tangent motion without tunneling.
-- **Scripted choreography:** board routing, collision tangent reorientation, staged head-to-tail mounting, head-first dismounting, eating/drinking poses and bowl effects, and the pop/aerial flip/landing sequence are authored. These layers make resource contact and the kickflip readable; they are not outputs learned by the crawl model.
+Verification compares the live controller with zero, frozen, and segment-deranged actions; checks steering and local contact sensitivity; and enforces the zero-friction invariant. This is a compact deterministic articulated plant, not evidence of transfer to a real soft body.
 
-## Web App
+## Terrarium Life
+
+- Hunger, thirst, and well-being decay continuously. A deterministic selector with hysteresis chooses the most urgent available resource; it chooses a goal but never prescribes a gait.
+- Food and water have finite deterministic inventories. Restoration requires continued 3D contact between the live head-derived mouth point and the visible bowl contents. Empty bowls stop restoring and refill deterministically.
+- The skateboard is the well-being resource. Well-being restores only while mounted.
+- Trees, rocks, glass bounds, annular bowl rims, the skateboard deck, and every body segment participate in deterministic swept collision handling.
+- Eating/drinking poses, mount/dismount transitions, board routing, pop, aerial rotation, and landing are scripted and are reported as such in the UI.
+
+The separate `stunt-distilled-v2` artifact shapes mounted exhibition poses. It is behavior-distilled imitation and is not the source of detached locomotion or proof that a kickflip was learned.
+
+## Run It
+
+Requires Node 22.
 
 ```powershell
 npm install
 npm run dev
 ```
 
-Build verification:
+Useful checks:
 
 ```powershell
-npm run build
+npm run check          # static checks, fast verifiers, build, integration rollout
+npm run check:browser  # Playwright UI coverage
+npm run check:repro    # exact long-form published locomotion reproduction
 ```
 
-Full verification:
+The fast suite covers the shared render/physics heightfield, articulated dynamics, swept contacts, mouth resources, interaction poses, policy contracts, replay integrity, and bundle budgets. The integration suite runs deterministic long terrarium lifecycles and locomotion interventions.
 
-```powershell
-npm run check
-```
+## Evolve The Crawl Brain
 
-The full check includes deterministic terrain and homeostasis sampling (`verify:terrain`, `verify:needs`), swept collision/traction checks (`verify:collisions`), mount/feed pose continuity (`verify:interactions`), evolved-controller contract and causal ablations (`verify:locomotion`), and complete integrated motion/lifecycle coverage (`verify:motion`) in addition to policy, runtime, training, replay, and build verification.
-
-## Evolved Locomotion
-
-The Python workspace is under `training/` and is intended to be run with Python 3.11 through `uv`.
-
-Reproduce the tracked crawl controller:
+The Python 3.11 workspace is under `training/` and uses `uv`:
 
 ```powershell
 cd training
-uv sync
-uv run python -m wurmkickflip_rl.evolve_locomotion_policy --seed 20260719 --generations 80 --population-size 128 --elite-count 18 --episode-steps 420 --model-version locomotion-segmental-es-quality-robust-v1 --warm-start seeds/wurmkickflip_locomotion_warm_start_v1.json --out ../public/models/wurmkickflip_locomotion_policy.json --summary runs/locomotion_evolution/latest-summary.json
+uv sync --group dev
 cd ..
 npm run verify:locomotion
 ```
 
-`npm run verify:locomotion:published` reruns the full 80-generation refinement
-and requires the tracked artifact to match its canonical JSON exactly. It is kept
-out of the fast `npm run check` path because it takes about a minute on this machine.
+The published controller uses a deterministic two-stage evolution recipe across 12 randomized contact scenarios. `npm run check:repro` stages warm starts in fresh temporary directories, reruns both stages, and requires canonical output equality with the tracked artifact. See [`training/LOCOMOTION_POLICY.md`](training/LOCOMOTION_POLICY.md) for the exact commands, genome layout, objective, provenance, and ablations.
 
-The evolutionary search scores target progress and steering across eight approach/friction scenarios. It has no trigonometric gait teacher or CPG recipe. See [`training/LOCOMOTION_POLICY.md`](training/LOCOMOTION_POLICY.md) for the neuron, genome, plant, reproduction, and ablation details.
+The trainer and browser both consume [`contracts/locomotion-v2.json`](contracts/locomotion-v2.json), which is the canonical 16-segment `articulated-contact-v2` contract.
 
-## Stunt And Legacy Training Scaffold
+## Runtime And Legacy Experiments
 
-Reproduce and validate the separate mounted stunt prior:
+The current browser ships only two mounted-policy modes:
 
-```powershell
-cd training
-uv sync
-uv run python -m wurmkickflip_rl.train_stunt_policy
-uv run python -m wurmkickflip_rl.validate_stunt_policy
-```
+- `neural-js` loads the tracked recurrent crawl brain and tracked mounted stunt JSON.
+- `scripted`, selected with `?policyBackend=scripted`, keeps neural crawling but replaces the mounted pose prior with a deterministic diagnostic fallback.
 
-The generated `public/models/wurmkickflip_stunt_policy.json` is intentionally tracked as the mounted exhibition prior, not the autonomous crawl brain. Training folds input normalization into the exported weights and records the teacher feature mask in the artifact. `npm run verify:stunt-policy` checks its schema, exact 174-to-hidden-to-32 matrix dimensions, finite parameters, held-out stunt signals, zeroed ignored-feature columns, and invariance to large ignored-feature perturbations. The browser still scripts the actual pop and aerial kickflip. See [`training/STUNT_POLICY.md`](training/STUNT_POLICY.md) for its imitation-learning and physics limitations.
+The old browser ONNX Runtime dependency and WASM payloads were retired. The Python PPO/ONNX exporter and sinusoidal morphology/CPG evolution remain offline legacy experiments for research, but their output is not loaded by the exhibit and must not be described as provenance for the tracked crawl model.
 
-The older PPO surrogate, ONNX export, and morphology-plus-CPG evolution experiments remain available as legacy experiments:
+## Architecture At A Glance
 
-```powershell
-cd training
-uv python install 3.11
-uv sync
-uv run python -m wurmkickflip_rl.train --timesteps 200000
-uv run python -m wurmkickflip_rl.export_policy --checkpoint runs\ppo_wurmkickflip.zip
-uv run python -m wurmkickflip_rl.validate_onnx
-uv run python -m wurmkickflip_rl.evolve --generations 4 --population-size 12 --out runs\evolution\summary.json
-```
+- `src/scene/terrariumSimulation.ts`: pure fixed-step terrarium state machine and simulation orchestration.
+- `src/scene/wormDynamics.ts`: free articulated chain, muscle forces, constraints, friction, and segment collisions.
+- `src/scene/terrariumNeeds.ts`: goal selection, finite resource inventories, mouth-contact restoration, and refill.
+- `src/scene/WurmkickflipScene.tsx`: Three.js rendering and browser integration.
+- `src/policy/locomotionPolicy.ts`: dependency-free recurrent inference and schema migration.
+- `src/replay/`: checksummed deterministic recorder/player core.
+- `training/wurmkickflip_rl/`: vectorized evolution plus older experimental trainers.
+- `scripts/`: contract, physics, lifecycle, performance, reproducibility, and artifact verifiers.
 
-The optional PPO export writes:
-
-- `public/models/wurmkickflip_policy.onnx`
-- `public/models/wurmkickflip_policy.meta.json`
-
-The ONNX file and training checkpoints are local generated artifacts and are ignored by Git. Any local `ppo-smoke-v1` ONNX file created before the 174-observation contract repair has a stale 118-float input and must be retrained and re-exported before use.
-
-That legacy evolution scaffold reads the browser creature/environment configs and writes a local generation summary JSON under `training/runs/`. The Python surrogate consumes creature morphology, joint, material, skateboard, terrain, and randomization fields so evolved controller/body scales affect rollout fitness before export. Its sinusoidal CPG is not the tracked recurrent locomotion model used for browser crawling.
-To publish the current best evolved controller back into the local browser exhibit, export a generated creature config and manifest:
-
-```powershell
-cd training
-uv run python -m wurmkickflip_rl.evolve --generations 8 --population-size 18 --out runs\evolution\summary.json --export-creature ..\public\configs\evolved\best-creature.json --export-manifest ..\public\configs\evolved\manifest.json
-```
-
-The browser loads `public/configs/evolved/manifest.json` when it exists and appends those generated creatures to the built-in selector. Generated evolved configs are ignored by Git until one is intentionally promoted.
-
-Smoke-test workflow:
-
-```powershell
-cd training
-uv run python -m wurmkickflip_rl.train --timesteps 4096 --out runs\ppo_smoke.zip
-uv run python -m wurmkickflip_rl.export_policy --checkpoint runs\ppo_smoke.zip --version ppo-smoke-v1
-uv run python -m wurmkickflip_rl.validate_onnx
-```
-
-When a newly exported 174-input ONNX artifact exists, force the optional providers with:
-
-- `http://127.0.0.1:5173/?policyBackend=webgpu`
-- `http://127.0.0.1:5173/?policyBackend=wasm`
-
-Runtime modes:
-
-- `neural-js` reports the tracked evolved locomotion brain used whenever the worm is detached. Mounted exhibition poses may also use the separate distilled stunt prior.
-- `scripted` is the mounted diagnostic wave selected with `?policyBackend=scripted` or used as a safe stunt fallback when a requested stunt artifact fails. A missing locomotion artifact instead yields zero detached actuator commands and a clear unavailable status.
-- `ONNX + wasm` and `ONNX + webgpu` are optional legacy/retraining paths selected explicitly with query parameters. They require a current 174-input export.
-
-## Architecture
-
-- Browser scene: seeded square heightfield terrarium, solid swept-contact props and glass bounds, three-resource homeostasis loop, causal joint-work crawl plant with segment stick-slip grip, scripted resource/mount choreography, scripted stunt plant, and worm/skateboard visual rig.
-- Locomotion contract: seven global sensors plus per-segment joint feedback feed 16 locally coupled recurrent neurons and 32 antagonistic activations at 60 Hz.
-- Stunt contract: a separate 174-float observation to 32-activation mounted pose prior; pop and aerial board motion remain scripted.
-- Training: tracked 39-parameter evolved locomotion model, behavior-distilled stunt prior, and separate legacy Gymnasium/PPO/CPG experiments. None is currently a high-fidelity transfer-physics trainer.
-
-## Documentation
-
-Agent-facing requirements, architecture notes, policy contract details, and the prioritized backlog live in [`docs/README.md`](docs/README.md).
+More detail lives in [`docs/README.md`](docs/README.md).

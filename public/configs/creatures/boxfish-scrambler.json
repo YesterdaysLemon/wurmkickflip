@@ -63,10 +63,54 @@
       }
     ],
     "joints": [
-      { "id": "j-torso-front-left", "parentId": "torso", "childId": "front-left", "type": "ball", "axis": [1, 0, 0], "anchor": [-1.12, 0.62, -0.18], "limits": [-0.75, 0.75], "stiffness": 15, "damping": 2.1, "motorStrength": 4.5 },
-      { "id": "j-torso-front-right", "parentId": "torso", "childId": "front-right", "type": "ball", "axis": [1, 0, 0], "anchor": [-1.12, 0.62, 0.18], "limits": [-0.75, 0.75], "stiffness": 15, "damping": 2.1, "motorStrength": 4.5 },
-      { "id": "j-torso-rear-left", "parentId": "torso", "childId": "rear-left", "type": "ball", "axis": [1, 0, 0], "anchor": [-1.43, 0.62, -0.16], "limits": [-0.75, 0.75], "stiffness": 15, "damping": 2.1, "motorStrength": 4.5 },
-      { "id": "j-torso-rear-right", "parentId": "torso", "childId": "rear-right", "type": "ball", "axis": [1, 0, 0], "anchor": [-1.43, 0.62, 0.16], "limits": [-0.75, 0.75], "stiffness": 15, "damping": 2.1, "motorStrength": 4.5 }
+      {
+        "id": "j-torso-front-left",
+        "parentId": "torso",
+        "childId": "front-left",
+        "type": "ball",
+        "axis": [1, 0, 0],
+        "anchor": [-1.12, 0.62, -0.18],
+        "limits": [-0.75, 0.75],
+        "stiffness": 15,
+        "damping": 2.1,
+        "motorStrength": 4.5
+      },
+      {
+        "id": "j-torso-front-right",
+        "parentId": "torso",
+        "childId": "front-right",
+        "type": "ball",
+        "axis": [1, 0, 0],
+        "anchor": [-1.12, 0.62, 0.18],
+        "limits": [-0.75, 0.75],
+        "stiffness": 15,
+        "damping": 2.1,
+        "motorStrength": 4.5
+      },
+      {
+        "id": "j-torso-rear-left",
+        "parentId": "torso",
+        "childId": "rear-left",
+        "type": "ball",
+        "axis": [1, 0, 0],
+        "anchor": [-1.43, 0.62, -0.16],
+        "limits": [-0.75, 0.75],
+        "stiffness": 15,
+        "damping": 2.1,
+        "motorStrength": 4.5
+      },
+      {
+        "id": "j-torso-rear-right",
+        "parentId": "torso",
+        "childId": "rear-right",
+        "type": "ball",
+        "axis": [1, 0, 0],
+        "anchor": [-1.43, 0.62, 0.16],
+        "limits": [-0.75, 0.75],
+        "stiffness": 15,
+        "damping": 2.1,
+        "motorStrength": 4.5
+      }
     ]
   },
   "controller": {
@@ -79,7 +123,14 @@
       "forwardBias": 0.18
     }
   },
-  "sensors": ["body_pose", "body_velocity", "joint_angles", "joint_velocities", "contacts", "target_direction"],
+  "sensors": [
+    "body_pose",
+    "body_velocity",
+    "joint_angles",
+    "joint_velocities",
+    "contacts",
+    "target_direction"
+  ],
   "mutation": {
     "enabled": true,
     "partScaleRange": [0.7, 1.35],

@@ -74,11 +74,66 @@
       }
     ],
     "joints": [
-      { "id": "j-head-mid-1", "parentId": "head", "childId": "mid-1", "type": "hinge", "axis": [0, 1, 0], "anchor": [-0.6, 0.61, 0], "limits": [-0.65, 0.65], "stiffness": 18, "damping": 2.2, "motorStrength": 4 },
-      { "id": "j-mid-1-mid-2", "parentId": "mid-1", "childId": "mid-2", "type": "hinge", "axis": [0, 1, 0], "anchor": [-0.3, 0.6, 0], "limits": [-0.7, 0.7], "stiffness": 16, "damping": 2, "motorStrength": 4 },
-      { "id": "j-mid-2-mid-3", "parentId": "mid-2", "childId": "mid-3", "type": "hinge", "axis": [0, 1, 0], "anchor": [0, 0.6, 0], "limits": [-0.7, 0.7], "stiffness": 16, "damping": 2, "motorStrength": 4 },
-      { "id": "j-mid-3-mid-4", "parentId": "mid-3", "childId": "mid-4", "type": "hinge", "axis": [0, 1, 0], "anchor": [0.3, 0.6, 0], "limits": [-0.7, 0.7], "stiffness": 16, "damping": 2, "motorStrength": 4 },
-      { "id": "j-mid-4-tail", "parentId": "mid-4", "childId": "tail", "type": "hinge", "axis": [0, 1, 0], "anchor": [0.585, 0.61, 0], "limits": [-0.65, 0.65], "stiffness": 18, "damping": 2.2, "motorStrength": 4 }
+      {
+        "id": "j-head-mid-1",
+        "parentId": "head",
+        "childId": "mid-1",
+        "type": "hinge",
+        "axis": [0, 1, 0],
+        "anchor": [-0.6, 0.61, 0],
+        "limits": [-0.65, 0.65],
+        "stiffness": 18,
+        "damping": 2.2,
+        "motorStrength": 4
+      },
+      {
+        "id": "j-mid-1-mid-2",
+        "parentId": "mid-1",
+        "childId": "mid-2",
+        "type": "hinge",
+        "axis": [0, 1, 0],
+        "anchor": [-0.3, 0.6, 0],
+        "limits": [-0.7, 0.7],
+        "stiffness": 16,
+        "damping": 2,
+        "motorStrength": 4
+      },
+      {
+        "id": "j-mid-2-mid-3",
+        "parentId": "mid-2",
+        "childId": "mid-3",
+        "type": "hinge",
+        "axis": [0, 1, 0],
+        "anchor": [0, 0.6, 0],
+        "limits": [-0.7, 0.7],
+        "stiffness": 16,
+        "damping": 2,
+        "motorStrength": 4
+      },
+      {
+        "id": "j-mid-3-mid-4",
+        "parentId": "mid-3",
+        "childId": "mid-4",
+        "type": "hinge",
+        "axis": [0, 1, 0],
+        "anchor": [0.3, 0.6, 0],
+        "limits": [-0.7, 0.7],
+        "stiffness": 16,
+        "damping": 2,
+        "motorStrength": 4
+      },
+      {
+        "id": "j-mid-4-tail",
+        "parentId": "mid-4",
+        "childId": "tail",
+        "type": "hinge",
+        "axis": [0, 1, 0],
+        "anchor": [0.585, 0.61, 0],
+        "limits": [-0.65, 0.65],
+        "stiffness": 18,
+        "damping": 2.2,
+        "motorStrength": 4
+      }
     ]
   },
   "controller": {
@@ -91,7 +146,14 @@
       "forwardBias": 0.2
     }
   },
-  "sensors": ["body_pose", "body_velocity", "joint_angles", "joint_velocities", "contacts", "target_direction"],
+  "sensors": [
+    "body_pose",
+    "body_velocity",
+    "joint_angles",
+    "joint_velocities",
+    "contacts",
+    "target_direction"
+  ],
   "mutation": {
     "enabled": true,
     "partScaleRange": [0.75, 1.35],

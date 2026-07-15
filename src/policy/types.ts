@@ -1,26 +1,17 @@
-export const SEGMENT_COUNT = 16
-export const MUSCLE_COUNT = SEGMENT_COUNT * 2
+import { LOCOMOTION_CONTRACT } from './locomotionContract'
+
+export const SEGMENT_COUNT = LOCOMOTION_CONTRACT.segmentCount
+export const MUSCLE_COUNT = LOCOMOTION_CONTRACT.muscleChannelCount
 export const OBSERVATION_SIZE = 174
 export const ACTION_SIZE = MUSCLE_COUNT
-export const POLICY_TIMESTEP = 1 / 60
+export const POLICY_TIMESTEP = LOCOMOTION_CONTRACT.timestep
 
-export type PolicyBackend = 'loading' | 'neural-js' | 'onnx-webgpu' | 'onnx-wasm' | 'scripted' | 'unavailable'
+export type PolicyBackend = 'loading' | 'neural-js' | 'scripted' | 'unavailable'
 
 export type PolicyStatus = {
   backend: PolicyBackend
   message: string
   modelVersion: string
-}
-
-export type PolicyMeta = {
-  modelVersion: string
-  modelPath: string
-  observationSize: number
-  actionSize: number
-  timestep: number
-  trainingReward: number | null
-  observationMean: number[]
-  observationStd: number[]
 }
 
 export type PolicyObservation = Float32Array

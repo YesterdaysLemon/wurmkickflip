@@ -43,7 +43,10 @@ function verifyActionSanitizer() {
   assert(sanitized[1] === -1, 'Expected low action value to clamp to -1.')
   assert(sanitized[2] === 0.25, 'Expected in-range action value to remain unchanged.')
 
-  assert(sanitizePolicyAction(new Float32Array(ACTION_SIZE - 1)) === null, 'Expected short action data to fail.')
+  assert(
+    sanitizePolicyAction(new Float32Array(ACTION_SIZE - 1)) === null,
+    'Expected short action data to fail.',
+  )
 
   const nonFinite = new Float32Array(ACTION_SIZE)
   nonFinite[0] = Number.NaN
@@ -57,8 +60,12 @@ async function verifyScenePolicyIntegration() {
     'Scene must construct policy observations with snapshotToObservation.',
   )
   assert(
-    /policyRunner\.run\s*\(/.test(scene),
-    'Scene must invoke PolicyRunner.run so a loaded learned policy cannot be silently ignored.',
+    /policyRunner\s*\.\s*run\s*\(/.test(scene),
+    'Scene must invoke PolicyRunner.run so the loaded mounted-stunt policy cannot be silently ignored.',
+  )
+  assert(
+    /locomotionRunner\s*\.\s*run\s*\(/.test(scene) && /locomotionSensorsFor\s*\(/.test(scene),
+    'Scene must invoke LocomotionPolicyRunner with live segment sensors during detached locomotion.',
   )
 }
 
@@ -73,15 +80,9 @@ function runScriptedRollout(steps: number): RolloutSummary {
   }
 
   const segmentIndexes = [0, 8, 15]
-  const segmentSample = segmentIndexes.flatMap((index) => {
+  const segmentSample = segmentIndexes.flatMap(index => {
     const segment = state.segments[index]
-    return [
-      round(segment.x),
-      round(segment.y),
-      round(segment.z),
-      round(segment.pitch),
-      round(segment.yaw),
-    ]
+    return [round(segment.x), round(segment.y), round(segment.z), round(segment.pitch), round(segment.yaw)]
   })
 
   return {

@@ -49,14 +49,14 @@ export function deriveWurmAnatomy(creature: CreatureGenome | null): WurmAnatomy 
   const parts = creature?.morphology.bodyParts ?? []
   if (parts.length === 0) return fallbackAnatomy
 
-  const root = parts.find((part) => part.parentId === null) ?? parts[0]
+  const root = parts.find(part => part.parentId === null) ?? parts[0]
   const halfAxialSize = (part: (typeof parts)[number]) => Math.max(...part.size) * 0.5
-  const xMin = Math.min(...parts.map((part) => part.position[0] - halfAxialSize(part)))
-  const xMax = Math.max(...parts.map((part) => part.position[0] + halfAxialSize(part)))
-  const zMin = Math.min(...parts.map((part) => part.position[2] - part.size[2] * 0.5))
-  const zMax = Math.max(...parts.map((part) => part.position[2] + part.size[2] * 0.5))
+  const xMin = Math.min(...parts.map(part => part.position[0] - halfAxialSize(part)))
+  const xMax = Math.max(...parts.map(part => part.position[0] + halfAxialSize(part)))
+  const zMin = Math.min(...parts.map(part => part.position[2] - part.size[2] * 0.5))
+  const zMax = Math.max(...parts.map(part => part.position[2] + part.size[2] * 0.5))
   const xSpan = Math.max(0.2, xMax - xMin)
-  const directChildren = parts.filter((part) => part.parentId === root.id)
+  const directChildren = parts.filter(part => part.parentId === root.id)
   const branchedParts = directChildren.length > 1 ? directChildren.slice(0, 6) : []
   const rootWidth = (root.size[0] + root.size[2]) * 0.5
   const segmentShape = root.shape
@@ -70,7 +70,7 @@ export function deriveWurmAnatomy(creature: CreatureGenome | null): WurmAnatomy 
     axialScale: axialScaleFor(segmentShape),
     motionWidthScale: clamp(0.92 + (zMax - zMin) * 0.18, 0.92, 1.18),
     connectorScale: clamp(rootWidth / 0.21, 0.82, 1.24),
-    appendages: branchedParts.map((part) => ({
+    appendages: branchedParts.map(part => ({
       id: part.id,
       shape: part.shape,
       color: part.visual.color,

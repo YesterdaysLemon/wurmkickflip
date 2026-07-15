@@ -1,0 +1,11 @@
+.git
+dist
+node_modules
+public/models
+training/.venv
+training/runs
+training/uv.lock
+package-lock.json
+playwright-report
+test-results
+*.onnx

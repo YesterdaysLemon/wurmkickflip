@@ -16,6 +16,9 @@ export type TerrainField = {
   /** Minimum and maximum heights at the vertices of the rendered terrain grid. */
   minimumHeight: number
   maximumHeight: number
+  gridResolution: typeof TERRAIN_GRID_RESOLUTION
+  /** Exact vertex height used by the rendered triangle mesh. */
+  heightAtGridVertex: (xIndex: number, zIndex: number) => number
   waypoints: Array<[number, number]>
   sample: (x: number, z: number) => TerrainSample
 }
@@ -63,7 +66,7 @@ export function createTerrainField(environmentConfig: EnvironmentConfig | null):
   const mossRotation = frictionAngle * 0.47 + 0.35
   const clayRotation = frictionAngle * -0.38 - 0.2
 
-  const heightAt = (x: number, z: number) => {
+  const analyticHeightAt = (x: number, z: number) => {
     const alongTarget = x * targetDirection[0] + z * targetDirection[1]
     const slope = Math.tan(slopeRadians) * alongTarget
     const hill = gaussianHill(x, z, hillCenter[0], hillCenter[1], hillRadius, hillHeight)
@@ -78,11 +81,65 @@ export function createTerrainField(environmentConfig: EnvironmentConfig | null):
     return TERRAIN_TOP_Y + slope + hill + mound + microRelief
   }
 
+  const row = TERRAIN_GRID_RESOLUTION + 1
+  const vertexHeights = new Float64Array(row * row)
+  for (let zIndex = 0; zIndex <= TERRAIN_GRID_RESOLUTION; zIndex += 1) {
+    const z = (zIndex / TERRAIN_GRID_RESOLUTION - 0.5) * depth
+    for (let xIndex = 0; xIndex <= TERRAIN_GRID_RESOLUTION; xIndex += 1) {
+      const x = (xIndex / TERRAIN_GRID_RESOLUTION - 0.5) * width
+      vertexHeights[zIndex * row + xIndex] = analyticHeightAt(x, z)
+    }
+  }
+  const heightAtGridVertex = (xIndex: number, zIndex: number) => {
+    if (
+      !Number.isInteger(xIndex) ||
+      !Number.isInteger(zIndex) ||
+      xIndex < 0 ||
+      zIndex < 0 ||
+      xIndex > TERRAIN_GRID_RESOLUTION ||
+      zIndex > TERRAIN_GRID_RESOLUTION
+    ) {
+      throw new Error('terrain grid vertex indices must be integers inside the rendered grid')
+    }
+    return vertexHeights[zIndex * row + xIndex]
+  }
+
+  // Match the two triangles emitted by makeTerrainGeometry exactly. Physics,
+  // resource placement, and rendering now sample the same piecewise-planar
+  // surface instead of an analytic field hidden below a triangulated mesh.
+  const renderedSurfaceAt = (worldX: number, worldZ: number) => {
+    const gridX = clamp((worldX / width + 0.5) * TERRAIN_GRID_RESOLUTION, 0, TERRAIN_GRID_RESOLUTION)
+    const gridZ = clamp((worldZ / depth + 0.5) * TERRAIN_GRID_RESOLUTION, 0, TERRAIN_GRID_RESOLUTION)
+    const xIndex = Math.min(TERRAIN_GRID_RESOLUTION - 1, Math.floor(gridX))
+    const zIndex = Math.min(TERRAIN_GRID_RESOLUTION - 1, Math.floor(gridZ))
+    const localX = gridX - xIndex
+    const localZ = gridZ - zIndex
+    const topLeft = heightAtGridVertex(xIndex, zIndex)
+    const topRight = heightAtGridVertex(xIndex + 1, zIndex)
+    const bottomLeft = heightAtGridVertex(xIndex, zIndex + 1)
+    const bottomRight = heightAtGridVertex(xIndex + 1, zIndex + 1)
+    const cellWidth = width / TERRAIN_GRID_RESOLUTION
+    const cellDepth = depth / TERRAIN_GRID_RESOLUTION
+    if (localX + localZ <= 1) {
+      return {
+        height: topLeft + localX * (topRight - topLeft) + localZ * (bottomLeft - topLeft),
+        slopeX: (topRight - topLeft) / cellWidth,
+        slopeZ: (bottomLeft - topLeft) / cellDepth,
+      }
+    }
+    return {
+      height:
+        bottomRight + (1 - localX) * (bottomLeft - bottomRight) + (1 - localZ) * (topRight - bottomRight),
+      slopeX: (bottomRight - bottomLeft) / cellWidth,
+      slopeZ: (bottomRight - topRight) / cellDepth,
+    }
+  }
+
   const sample = (x: number, z: number): TerrainSample => {
-    const height = heightAt(x, z)
-    const normalStep = Math.min(width, depth) / 512
-    const slopeX = (heightAt(x + normalStep, z) - heightAt(x - normalStep, z)) / (normalStep * 2)
-    const slopeZ = (heightAt(x, z + normalStep) - heightAt(x, z - normalStep)) / (normalStep * 2)
+    const surfacePoint = renderedSurfaceAt(x, z)
+    const height = surfacePoint.height
+    const slopeX = surfacePoint.slopeX
+    const slopeZ = surfacePoint.slopeZ
     const normalLength = Math.hypot(slopeX, 1, slopeZ)
     const normal: Vec3 = [-slopeX / normalLength, 1 / normalLength, -slopeZ / normalLength]
 
@@ -106,48 +163,31 @@ export function createTerrainField(environmentConfig: EnvironmentConfig | null):
     )
     const friction = clamp(baseFriction * (1 - mossInfluence * 0.52 + clayInfluence * 0.45), 0.05, 3)
     const surface: TerrainSurface =
-      mossInfluence > clayInfluence && mossInfluence > 0.16
-        ? 'moss'
-        : clayInfluence > 0.16
-          ? 'clay'
-          : 'sand'
+      mossInfluence > clayInfluence && mossInfluence > 0.16 ? 'moss' : clayInfluence > 0.16 ? 'clay' : 'sand'
 
     return { height, friction, normal, surface }
   }
 
-  const [minimumHeight, maximumHeight] = measureRenderedHeightRange(heightAt, width, depth)
+  const minimumHeight = Math.min(...vertexHeights)
+  const maximumHeight = Math.max(...vertexHeights)
 
   return {
     width,
     depth,
     minimumHeight,
     maximumHeight,
+    gridResolution: TERRAIN_GRID_RESOLUTION,
+    heightAtGridVertex,
     waypoints: makeWaypoints(halfWidth, halfDepth, routeAngle),
     sample,
   }
 }
 
-function measureRenderedHeightRange(
-  heightAt: (x: number, z: number) => number,
-  width: number,
-  depth: number,
-): [number, number] {
-  let minimum = Number.POSITIVE_INFINITY
-  let maximum = Number.NEGATIVE_INFINITY
-  for (let zIndex = 0; zIndex <= TERRAIN_GRID_RESOLUTION; zIndex += 1) {
-    const z = (zIndex / TERRAIN_GRID_RESOLUTION - 0.5) * depth
-    for (let xIndex = 0; xIndex <= TERRAIN_GRID_RESOLUTION; xIndex += 1) {
-      const x = (xIndex / TERRAIN_GRID_RESOLUTION - 0.5) * width
-      const height = heightAt(x, z)
-      minimum = Math.min(minimum, height)
-      maximum = Math.max(maximum, height)
-    }
-  }
-  return [minimum, maximum]
-}
-
 function makeWaypoints(halfWidth: number, halfDepth: number, routeAngle: number): Array<[number, number]> {
-  const inset = Math.min(0.85, Math.min(halfWidth, halfDepth) * 0.18)
+  // Route centers must leave room for the full rotating skateboard footprint,
+  // not merely its root point. Otherwise a turn near glass can create a deep
+  // initial overlap and a visible one-frame projection.
+  const inset = Math.min(1.7, Math.min(halfWidth, halfDepth) * 0.3)
   const xLimit = halfWidth - inset
   const zLimit = halfDepth - inset
   const normalizedRoute: Array<[number, number]> = [
@@ -201,7 +241,8 @@ function ellipseInfluence(
   rotation: number,
 ) {
   const local = rotatePoint(x - centerX, z - centerZ, -rotation)
-  const distanceSquared = (local[0] * local[0]) / (radiusX * radiusX) + (local[1] * local[1]) / (radiusZ * radiusZ)
+  const distanceSquared =
+    (local[0] * local[0]) / (radiusX * radiusX) + (local[1] * local[1]) / (radiusZ * radiusZ)
   return 1 - smoothstep(0.62, 1, distanceSquared)
 }
 

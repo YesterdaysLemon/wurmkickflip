@@ -10,65 +10,26 @@ from typing import Any
 import numpy as np
 
 from .contracts import ACTION_SIZE, POLICY_TIMESTEP, SEGMENT_COUNT
+from .articulated_locomotion import (
+    CONTRACT,
+    DYNAMICS,
+    JOINT_DAMPING,
+    JOINT_LIMIT,
+    JOINT_STIFFNESS,
+    articulated_plant_step,
+    initial_body,
+)
 
 
 ROOT = Path(__file__).resolve().parents[2]
 DEFAULT_ARTIFACT = ROOT / "public/models/wurmkickflip_locomotion_policy.json"
 DEFAULT_SUMMARY = ROOT / "training/runs/locomotion_evolution/latest-summary.json"
-OBJECTIVE_VERSION = "risk-sensitive-bottom-two-v1"
+OBJECTIVE_VERSION = "articulated-contact-obstacle-recovery-v2"
 
-JOINT_STIFFNESS = 22.0
-JOINT_DAMPING = 7.0
-JOINT_LIMIT = 1.15
-WAVE_GAIN = -1.35
-MAXIMUM_FORWARD_ACCELERATION = 2.4
-LINEAR_DRAG = 0.75
-INVERSE_TRACTION_DRAG = 0.18
-TRACTION_MINIMUM = 0.0
-TRACTION_MAXIMUM = 1.2
-INVERSE_TRACTION_FLOOR = 0.12
-MINIMUM_FORWARD_SPEED = -1.45
-MAXIMUM_FORWARD_SPEED = 1.45
-FRONT_TURN_BASE = 1.15
-FRONT_TURN_SPEED_GAIN = 1.65
-ANGULAR_DRAG = 2.8
-MINIMUM_ANGULAR_SPEED = -3.0
-MAXIMUM_ANGULAR_SPEED = 3.0
-
-SENSOR_NAMES = (
-    "targetForward",
-    "targetRight",
-    "targetDistance",
-    "forwardSpeed",
-    "angularSpeed",
-    "terrainFriction",
-    "urgency",
-)
-INPUT_WEIGHT_NAMES = (
-    "bias",
-    "segmentPosition",
-    "targetForward",
-    "targetRight",
-    "targetRightByPosition",
-    "targetDistance",
-    "forwardSpeed",
-    "angularSpeed",
-    "terrainFriction",
-    "urgency",
-    "segmentBend",
-    "segmentBendVelocity",
-    "previousCommand",
-)
-RECURRENT_WEIGHT_NAMES = ("self", "anteriorNeighbor", "posteriorNeighbor")
-OUTPUT_WEIGHT_NAMES = (
-    "bias",
-    "self",
-    "anteriorNeighbor",
-    "posteriorNeighbor",
-    "targetRight",
-    "targetRightByPosition",
-    "segmentBend",
-)
+SENSOR_NAMES = tuple(CONTRACT["sensorNames"])
+INPUT_WEIGHT_NAMES = tuple(CONTRACT["inputWeightNames"])
+RECURRENT_WEIGHT_NAMES = tuple(CONTRACT["recurrentWeightNames"])
+OUTPUT_WEIGHT_NAMES = tuple(CONTRACT["outputWeightNames"])
 
 INITIAL_STATE_SIZE = SEGMENT_COUNT
 INPUT_WEIGHT_SIZE = len(INPUT_WEIGHT_NAMES)
@@ -82,6 +43,10 @@ RECURRENT_SLICE = slice(INPUT_SLICE.stop, INPUT_SLICE.stop + RECURRENT_WEIGHT_SI
 OUTPUT_SLICE = slice(RECURRENT_SLICE.stop, RECURRENT_SLICE.stop + OUTPUT_WEIGHT_SIZE)
 
 SEGMENT_POSITIONS = np.linspace(-1.0, 1.0, SEGMENT_COUNT, dtype=np.float64)
+SEGMENT_SHUFFLE = np.array(
+    [0, 9, 2, 13, 4, 15, 6, 11, 8, 1, 10, 3, 12, 5, 14, 7],
+    dtype=np.int64,
+)
 
 
 @dataclass(frozen=True)
@@ -90,6 +55,11 @@ class Scenario:
     target_z: float
     friction: float
     urgency: float
+    roughness: float = 0.0
+    body_scale: float = 1.0
+    obstacle_x: float = 0.0
+    obstacle_z: float = 0.0
+    obstacle_radius: float = 0.0
 
 
 @dataclass(frozen=True)
@@ -108,14 +78,18 @@ class RolloutMetrics:
 
 
 SCENARIOS = (
-    Scenario(4.2, 0.0, 0.95, 0.72),
-    Scenario(3.2, 3.2, 0.58, 0.88),
-    Scenario(3.2, -3.2, 1.12, 0.64),
-    Scenario(0.5, 4.3, 0.82, 1.0),
-    Scenario(0.5, -4.3, 0.42, 0.92),
-    Scenario(-2.2, 3.5, 1.05, 0.78),
-    Scenario(-2.2, -3.5, 0.67, 0.84),
-    Scenario(4.8, 1.2, 0.33, 1.0),
+    Scenario(4.2, 0.0, 0.95, 0.72, 0.08, 1.0),
+    Scenario(3.2, 3.2, 0.58, 0.88, 0.22, 0.9),
+    Scenario(3.2, -3.2, 1.12, 0.64, 0.12, 1.1),
+    Scenario(0.5, 4.3, 0.82, 1.0, 0.3, 1.0, 0.15, 1.65, 0.42),
+    Scenario(0.5, -4.3, 0.42, 0.92, 0.35, 0.86, 0.1, -1.55, 0.46),
+    Scenario(-2.2, 3.5, 1.05, 0.78, 0.18, 1.12, -0.8, 1.25, 0.38),
+    Scenario(-2.2, -3.5, 0.67, 0.84, 0.26, 0.94, -0.75, -1.3, 0.4),
+    Scenario(4.8, 1.2, 0.33, 1.0, 0.4, 1.06, 1.35, 0.35, 0.5),
+    Scenario(4.5, -1.8, 0.76, 0.9, 0.2, 1.0, 1.4, -0.55, 0.52),
+    Scenario(2.3, 4.1, 0.9, 0.82, 0.28, 0.88, 0.7, 1.45, 0.44),
+    Scenario(2.3, -4.1, 0.52, 0.96, 0.32, 1.1, 0.65, -1.5, 0.44),
+    Scenario(-3.8, 1.8, 1.0, 0.74, 0.16, 1.04, -1.2, 0.55, 0.48),
 )
 
 
@@ -133,7 +107,7 @@ def main() -> None:
     parser.add_argument("--population-size", type=int, default=160)
     parser.add_argument("--elite-count", type=int, default=20)
     parser.add_argument("--episode-steps", type=int, default=480)
-    parser.add_argument("--model-version", default="locomotion-segmental-es-v1")
+    parser.add_argument("--model-version", default="locomotion-articulated-contact-es-v2")
     parser.add_argument(
         "--warm-start",
         type=Path,
@@ -168,7 +142,7 @@ def main() -> None:
         warm_start_metadata=warm_start_metadata,
     )
     summary = {
-        "schemaVersion": 1,
+        "schemaVersion": 2,
         "kind": "wurmkickflip.locomotionEvolutionSummary",
         "modelVersion": args.model_version,
         "seed": args.seed,
@@ -232,11 +206,16 @@ def load_warm_start(path: Path | None) -> tuple[np.ndarray | None, dict[str, str
     canonical_payload = payload.replace(b"\r\n", b"\n").replace(b"\r", b"\n")
     artifact = json.loads(payload)
     try:
+        input_values = list(artifact["weights"]["input"])
+        output_values = list(artifact["weights"]["output"])
+        if artifact.get("schemaVersion") == 1:
+            input_values.extend([0.0] * (INPUT_WEIGHT_SIZE - len(input_values)))
+            output_values.extend([0.0] * (OUTPUT_WEIGHT_SIZE - len(output_values)))
         genome = np.asarray(
             artifact["initialState"]
-            + artifact["weights"]["input"]
+            + input_values
             + artifact["weights"]["recurrent"]
-            + artifact["weights"]["output"],
+            + output_values,
             dtype=np.float64,
         )
     except (KeyError, TypeError, ValueError) as error:
@@ -244,7 +223,6 @@ def load_warm_start(path: Path | None) -> tuple[np.ndarray | None, dict[str, str
     if genome.shape != (GENOME_SIZE,) or not np.all(np.isfinite(genome)):
         raise SystemExit(f"--warm-start must contain {GENOME_SIZE} finite genome values")
     return bound_genome(genome), {
-        "path": path.as_posix(),
         "sha256": hashlib.sha256(canonical_payload).hexdigest(),
         "modelVersion": str(artifact.get("modelVersion", "unknown")),
     }
@@ -274,7 +252,7 @@ def evolve(
     history: list[dict[str, float | int]] = []
 
     for generation in range(generations):
-        fitness = evaluate_population(population, episode_steps, SCENARIOS)
+        fitness, causal_gap = evaluate_selection_fitness(population, episode_steps)
         order = np.argsort(fitness)[::-1]
         population = population[order]
         fitness = fitness[order]
@@ -288,6 +266,7 @@ def evolve(
                 "bestFitness": round(best_fitness, 8),
                 "generationBestFitness": round(float(fitness[0]), 8),
                 "meanFitness": round(float(np.mean(fitness)), 8),
+                "meanCausalGap": round(float(np.mean(causal_gap)), 8),
             }
         )
 
@@ -309,11 +288,29 @@ def evolve(
             children.append(bound_genome(child))
         population = np.stack(children[:population_size])
 
-    final_fitness = evaluate_population(population, episode_steps, SCENARIOS)
+    final_fitness = evaluate_selection_fitness(population, episode_steps)[0]
     final_best = population[int(np.argmax(final_fitness))]
     if float(np.max(final_fitness)) > best_fitness:
         best = final_best.copy()
     return bound_genome(best), history
+
+
+def evaluate_selection_fitness(
+    population: np.ndarray,
+    episode_steps: int,
+) -> tuple[np.ndarray, np.ndarray]:
+    full = evaluate_population(population, episode_steps, SCENARIOS)
+    causal_steps = max(90, episode_steps // 2)
+    causal_scenarios = SCENARIOS[3::3]
+    causal_full = evaluate_population(population, causal_steps, causal_scenarios)
+    causal_shuffled = evaluate_population(
+        population,
+        causal_steps,
+        causal_scenarios,
+        intervention="shuffled",
+    )
+    causal_gap = causal_full - causal_shuffled
+    return full + np.clip(causal_gap, -4.0, 6.0) * 2.2, causal_gap
 
 
 def initial_population(population_size: int, rng: np.random.Generator) -> np.ndarray:
@@ -334,6 +331,8 @@ def evaluate_population(
     population: np.ndarray,
     episode_steps: int,
     scenarios: tuple[Scenario, ...],
+    *,
+    intervention: str = "full",
 ) -> np.ndarray:
     candidate_count = population.shape[0]
     scenario_count = len(scenarios)
@@ -342,12 +341,22 @@ def evaluate_population(
     recurrent_weights = population[:, RECURRENT_SLICE]
     output_weights = population[:, OUTPUT_SLICE]
 
-    target = np.array([[scenario.target_x, scenario.target_z] for scenario in scenarios], dtype=np.float64)
+    target = np.array(
+        [[scenario.target_x, scenario.target_z] for scenario in scenarios],
+        dtype=np.float64,
+    )
     friction = np.array([scenario.friction for scenario in scenarios], dtype=np.float64)[None, :]
     urgency = np.array([scenario.urgency for scenario in scenarios], dtype=np.float64)[None, :]
-    initial_distance = np.linalg.norm(target, axis=1)[None, :]
+    roughness = np.array([scenario.roughness for scenario in scenarios], dtype=np.float64)[None, :]
+    body_scale = np.array([scenario.body_scale for scenario in scenarios], dtype=np.float64)
+    obstacle_center = np.array(
+        [[scenario.obstacle_x, scenario.obstacle_z] for scenario in scenarios],
+        dtype=np.float64,
+    )
+    obstacle_radius = np.array([scenario.obstacle_radius for scenario in scenarios], dtype=np.float64)
 
-    position = np.zeros((candidate_count, scenario_count, 2), dtype=np.float64)
+    body_position, body_velocity = initial_body(candidate_count, scenario_count, body_scale)
+    position = np.mean(body_position, axis=2)
     forward = np.zeros_like(position)
     forward[:, :, 0] = 1.0
     speed = np.zeros((candidate_count, scenario_count), dtype=np.float64)
@@ -356,13 +365,26 @@ def evaluate_population(
     joint_velocity = np.zeros_like(joint)
     command = np.zeros_like(joint)
     hidden = np.broadcast_to(initial_state[:, None, :], joint.shape).copy()
+    contact_load = np.broadcast_to(np.clip(friction[:, :, None], 0.0, 1.0), joint.shape).copy()
+    slip_speed = np.zeros_like(joint)
+    obstacle_forward = np.zeros_like(joint)
+    obstacle_right = np.zeros_like(joint)
 
     path_length = np.zeros_like(speed)
+    progress = np.zeros_like(speed)
     energy_sum = np.zeros_like(speed)
+    slip_sum = np.zeros_like(speed)
+    obstacle_contact_steps = np.zeros_like(speed)
+    alignment_sum = np.zeros_like(speed)
+    near_target_steps = np.zeros_like(speed)
     command_sum = np.zeros_like(joint)
     command_square_sum = np.zeros_like(joint)
 
-    for _step in range(episode_steps):
+    for step in range(episode_steps):
+        if step == episode_steps // 2:
+            switch = obstacle_radius > 0
+            target[switch, 1] *= -0.72
+            target[switch, 0] += np.sign(target[switch, 1] + 1.0e-9) * 0.35
         relative = target[None, :, :] - position
         distance = np.linalg.norm(relative, axis=2)
         inverse_distance = 1.0 / np.maximum(distance, 1.0e-9)
@@ -370,6 +392,8 @@ def evaluate_population(
         right_z = forward[:, :, 0]
         target_forward = (relative[:, :, 0] * forward[:, :, 0] + relative[:, :, 1] * forward[:, :, 1]) * inverse_distance
         target_right = (relative[:, :, 0] * right_x + relative[:, :, 1] * right_z) * inverse_distance
+        alignment_sum += target_forward
+        near_target_steps += distance < 1.15
 
         hidden = segmental_network_step(
             hidden,
@@ -383,25 +407,57 @@ def evaluate_population(
             angular_speed,
             friction,
             urgency,
+            contact_load,
+            slip_speed,
+            obstacle_forward,
+            obstacle_right,
             input_weights,
             recurrent_weights,
             output_weights,
         )[0]
-        command = segmental_network_output(hidden, joint, target_right, output_weights)
+        command = segmental_network_output(
+            hidden,
+            joint,
+            target_right,
+            obstacle_right,
+            contact_load,
+            output_weights,
+        )
+        if intervention == "shuffled":
+            command = command[:, :, SEGMENT_SHUFFLE]
 
-        step_distance = actuator_plant_step(
+        (
+            step_distance,
+            position,
+            forward,
+            speed,
+            angular_speed,
+            contact_load,
+            slip_speed,
+            obstacle_forward,
+            obstacle_right,
+        ) = articulated_plant_step(
             command.astype(np.float32).astype(np.float64),
             joint,
             joint_velocity,
-            speed,
-            angular_speed,
-            forward,
-            position,
+            body_position,
+            body_velocity,
             friction,
+            roughness,
+            body_scale,
+            obstacle_center,
+            obstacle_radius,
             POLICY_TIMESTEP,
         )
+        next_distance = np.linalg.norm(target[None, :, :] - position, axis=2)
+        progress += distance - next_distance
         path_length += step_distance
         energy_sum += np.mean(np.abs(command), axis=2)
+        slip_sum += np.mean(slip_speed, axis=2)
+        obstacle_contact_steps += np.any(
+            np.abs(obstacle_forward) + np.abs(obstacle_right) > 1.0e-8,
+            axis=2,
+        )
         command_sum += command
         command_square_sum += command * command
 
@@ -409,7 +465,6 @@ def evaluate_population(
     final_distance = np.linalg.norm(final_relative, axis=2)
     final_direction = final_relative / np.maximum(final_distance[:, :, None], 1.0e-9)
     heading_alignment = np.sum(final_direction * forward, axis=2)
-    progress = initial_distance - final_distance
     mean_progress = np.mean(progress, axis=1)
     worst_progress = np.min(progress, axis=1)
     efficiency = np.mean(np.maximum(progress, 0.0) / np.maximum(path_length, 0.15), axis=1)
@@ -421,6 +476,11 @@ def evaluate_population(
     temporal_std = np.mean(np.sqrt(variance), axis=(1, 2))
     segment_diversity = np.mean(np.std(mean_command, axis=2), axis=1)
     spin_penalty = np.mean(np.maximum(np.abs(angular_speed) - 2.4, 0.0), axis=1)
+    slip_penalty = slip_sum.mean(axis=1) / episode_steps
+    blocked_ratio = obstacle_contact_steps.mean(axis=1) / episode_steps
+    path_alignment = alignment_sum.mean(axis=1) / episode_steps
+    worst_path_alignment = np.min(alignment_sum / episode_steps, axis=1)
+    near_target_ratio = near_target_steps.mean(axis=1) / episode_steps
     covered_progress = np.mean(np.clip(progress, -1.0, 1.6), axis=1)
     bottom_two_progress = np.mean(np.partition(progress, 1, axis=1)[:, :2], axis=1)
     approach_ratio = np.mean(final_distance < 2.4, axis=1)
@@ -438,10 +498,15 @@ def evaluate_population(
         + np.minimum(mean_speed, 1.0) * 0.55
         + np.mean(heading_alignment, axis=1) * 0.8
         + np.min(heading_alignment, axis=1) * 0.45
+        + path_alignment * 3.2
+        + worst_path_alignment * 1.4
+        + near_target_ratio * 5.0
         + temporal_std * 0.2
         + segment_diversity * 0.25
         - energy * 0.22
         - spin_penalty * 0.8
+        - slip_penalty * 0.42
+        - blocked_ratio * 0.35
     )
 
 
@@ -457,6 +522,10 @@ def segmental_network_step(
     angular_speed: np.ndarray,
     friction: np.ndarray,
     urgency: np.ndarray,
+    contact_load: np.ndarray,
+    slip_speed: np.ndarray,
+    obstacle_forward: np.ndarray,
+    obstacle_right: np.ndarray,
     input_weights: np.ndarray,
     recurrent_weights: np.ndarray,
     output_weights: np.ndarray,
@@ -479,18 +548,31 @@ def segmental_network_step(
         + iw[:, :, 10, None] * joint
         + iw[:, :, 11, None] * joint_velocity
         + iw[:, :, 12, None] * previous_command
+        + iw[:, :, 13, None] * contact_load
+        + iw[:, :, 14, None] * slip_speed
+        + iw[:, :, 15, None] * obstacle_forward
+        + iw[:, :, 16, None] * obstacle_right
         + rw[:, :, 0, None] * hidden
         + rw[:, :, 1, None] * anterior
         + rw[:, :, 2, None] * posterior
     )
     next_hidden = np.tanh(drive)
-    return next_hidden, segmental_network_output(next_hidden, joint, target_right, output_weights)
+    return next_hidden, segmental_network_output(
+        next_hidden,
+        joint,
+        target_right,
+        obstacle_right,
+        contact_load,
+        output_weights,
+    )
 
 
 def segmental_network_output(
     hidden: np.ndarray,
     joint: np.ndarray,
     target_right: np.ndarray,
+    obstacle_right: np.ndarray,
+    contact_load: np.ndarray,
     output_weights: np.ndarray,
 ) -> np.ndarray:
     anterior = np.pad(hidden[:, :, :-1], ((0, 0), (0, 0), (1, 0)))
@@ -504,70 +586,9 @@ def segmental_network_output(
         + ow[:, :, 4, None] * target_right[:, :, None]
         + ow[:, :, 5, None] * target_right[:, :, None] * SEGMENT_POSITIONS
         + ow[:, :, 6, None] * joint
+        + ow[:, :, 7, None] * obstacle_right
+        + ow[:, :, 8, None] * contact_load
     )
-
-
-def actuator_plant_step(
-    command: np.ndarray,
-    joint: np.ndarray,
-    joint_velocity: np.ndarray,
-    speed: np.ndarray,
-    angular_speed: np.ndarray,
-    forward: np.ndarray,
-    position: np.ndarray,
-    friction: np.ndarray,
-    timestep: float,
-) -> np.ndarray:
-    joint_velocity += (
-        (command - joint) * JOINT_STIFFNESS - joint_velocity * JOINT_DAMPING
-    ) * timestep
-    joint[:] = np.clip(joint + joint_velocity * timestep, -JOINT_LIMIT, JOINT_LIMIT)
-
-    wave_work = np.mean(
-        (joint[:, :, 1:] - joint[:, :, :-1])
-        * 0.5
-        * (joint_velocity[:, :, 1:] + joint_velocity[:, :, :-1]),
-        axis=2,
-    )
-    traction = np.clip(friction, TRACTION_MINIMUM, TRACTION_MAXIMUM)
-    forward_acceleration = np.clip(
-        WAVE_GAIN * wave_work,
-        -MAXIMUM_FORWARD_ACCELERATION,
-        MAXIMUM_FORWARD_ACCELERATION,
-    ) * traction
-    speed += (
-        forward_acceleration
-        - (
-            LINEAR_DRAG
-            + INVERSE_TRACTION_DRAG / np.maximum(traction, INVERSE_TRACTION_FLOOR)
-        )
-        * speed
-    ) * timestep
-    speed[:] = np.clip(speed, MINIMUM_FORWARD_SPEED, MAXIMUM_FORWARD_SPEED)
-
-    front_weights = np.linspace(1.0, 0.0, SEGMENT_COUNT, dtype=np.float64)
-    front_bias = np.mean(joint * front_weights, axis=2)
-    angular_acceleration = front_bias * (
-        FRONT_TURN_BASE + FRONT_TURN_SPEED_GAIN * np.abs(speed)
-    )
-    angular_speed += (angular_acceleration - ANGULAR_DRAG * angular_speed) * timestep
-    angular_speed[:] = np.clip(
-        angular_speed, MINIMUM_ANGULAR_SPEED, MAXIMUM_ANGULAR_SPEED
-    )
-
-    right_x = -forward[:, :, 1]
-    right_z = forward[:, :, 0]
-    forward[:, :, 0] += right_x * angular_speed * timestep
-    forward[:, :, 1] += right_z * angular_speed * timestep
-    forward_length = np.maximum(np.linalg.norm(forward, axis=2), 1.0e-9)
-    forward[:, :, 0] /= forward_length
-    forward[:, :, 1] /= forward_length
-
-    delta_x = forward[:, :, 0] * speed * timestep
-    delta_z = forward[:, :, 1] * speed * timestep
-    position[:, :, 0] += delta_x
-    position[:, :, 1] += delta_z
-    return np.hypot(delta_x, delta_z)
 
 
 def evaluate_genome(
@@ -585,8 +606,15 @@ def evaluate_genome(
     target = np.array([[scenario.target_x, scenario.target_z] for scenario in scenarios], dtype=np.float64)
     friction = np.array([scenario.friction for scenario in scenarios], dtype=np.float64)
     urgency = np.array([scenario.urgency for scenario in scenarios], dtype=np.float64)
-    initial_distance = np.linalg.norm(target, axis=1)
-    position = np.zeros((scenario_count, 2), dtype=np.float64)
+    roughness = np.array([scenario.roughness for scenario in scenarios], dtype=np.float64)
+    body_scale = np.array([scenario.body_scale for scenario in scenarios], dtype=np.float64)
+    obstacle_center = np.array(
+        [[scenario.obstacle_x, scenario.obstacle_z] for scenario in scenarios],
+        dtype=np.float64,
+    )
+    obstacle_radius = np.array([scenario.obstacle_radius for scenario in scenarios], dtype=np.float64)
+    body_position, body_velocity = initial_body(1, scenario_count, body_scale)
+    position = np.mean(body_position[0], axis=1)
     forward = np.zeros_like(position)
     forward[:, 0] = 1.0
     speed = np.zeros(scenario_count, dtype=np.float64)
@@ -594,13 +622,21 @@ def evaluate_genome(
     joint = np.zeros((scenario_count, SEGMENT_COUNT), dtype=np.float64)
     joint_velocity = np.zeros_like(joint)
     command = np.zeros_like(joint)
+    contact_load = np.broadcast_to(np.clip(friction[:, None], 0.0, 1.0), joint.shape).copy()
+    slip_speed = np.zeros_like(joint)
+    obstacle_forward = np.zeros_like(joint)
+    obstacle_right = np.zeros_like(joint)
     path_length = np.zeros_like(speed)
+    progress = np.zeros_like(speed)
     energy_sum = 0.0
     commands: list[np.ndarray] = []
     frozen_command: np.ndarray | None = None
-    shuffle = np.array([0, 9, 2, 13, 4, 15, 6, 11, 8, 1, 10, 3, 12, 5, 14, 7], dtype=np.int64)
 
     for step in range(episode_steps):
+        if step == episode_steps // 2:
+            switch = obstacle_radius > 0
+            target[switch, 1] *= -0.72
+            target[switch, 0] += np.sign(target[switch, 1] + 1.0e-9) * 0.35
         relative = target - position
         distance = np.linalg.norm(relative, axis=1)
         inverse_distance = 1.0 / np.maximum(distance, 1.0e-9)
@@ -619,6 +655,10 @@ def evaluate_genome(
             angular_speed[None, :],
             friction[None, :],
             urgency[None, :],
+            contact_load[None, :, :],
+            slip_speed[None, :, :],
+            obstacle_forward[None, :, :],
+            obstacle_right[None, :, :],
             input_weights,
             recurrent_weights,
             output_weights,
@@ -632,21 +672,43 @@ def evaluate_genome(
                 frozen_command = neural_command.copy()
             command = neural_command if frozen_command is None else frozen_command
         elif mode == "shuffled":
-            command = neural_command[:, shuffle]
+            command = neural_command[:, SEGMENT_SHUFFLE]
         else:
             command = neural_command
 
-        step_distance = actuator_plant_step(
+        (
+            step_distance,
+            position_batch,
+            forward_batch,
+            speed_batch,
+            angular_speed_batch,
+            contact_batch,
+            slip_batch,
+            obstacle_forward_batch,
+            obstacle_right_batch,
+        ) = articulated_plant_step(
             command.astype(np.float32).astype(np.float64)[None, :, :],
             joint[None, :, :],
             joint_velocity[None, :, :],
-            speed[None, :],
-            angular_speed[None, :],
-            forward[None, :, :],
-            position[None, :, :],
+            body_position,
+            body_velocity,
             friction[None, :],
+            roughness[None, :],
+            body_scale,
+            obstacle_center,
+            obstacle_radius,
             POLICY_TIMESTEP,
-        )[0]
+        )
+        position = position_batch[0]
+        forward = forward_batch[0]
+        speed = speed_batch[0]
+        angular_speed = angular_speed_batch[0]
+        contact_load = contact_batch[0]
+        slip_speed = slip_batch[0]
+        obstacle_forward = obstacle_forward_batch[0]
+        obstacle_right = obstacle_right_batch[0]
+        progress += distance - np.linalg.norm(target - position, axis=1)
+        step_distance = step_distance[0]
         path_length += step_distance
         energy_sum += float(np.mean(np.abs(command)))
         commands.append(command.copy())
@@ -655,7 +717,6 @@ def evaluate_genome(
     final_distance = np.linalg.norm(final_relative, axis=1)
     final_direction = final_relative / np.maximum(final_distance[:, None], 1.0e-9)
     heading_alignment = float(np.mean(np.sum(final_direction * forward, axis=1)))
-    progress = initial_distance - final_distance
     command_trace = np.stack(commands)
     temporal_std = float(np.mean(np.std(command_trace, axis=0)))
     segment_diversity = float(np.mean(np.std(np.mean(command_trace, axis=0), axis=1)))
@@ -663,7 +724,11 @@ def evaluate_genome(
     reached_ratio = float(np.mean(final_distance < 0.72))
     mean_speed = float(np.mean(path_length) / (episode_steps * POLICY_TIMESTEP))
     mean_energy = energy_sum / episode_steps
-    fitness = float(evaluate_population(genome[None, :], episode_steps, scenarios)[0]) if mode == "full" else float(np.mean(progress))
+    fitness = (
+        float(evaluate_population(genome[None, :], episode_steps, scenarios)[0])
+        if mode == "full"
+        else float(np.mean(progress))
+    )
     return RolloutMetrics(
         fitness=fitness,
         progress=float(np.mean(progress)),
@@ -685,7 +750,18 @@ def evaluate_ablations(genome: np.ndarray, episode_steps: int) -> dict[str, floa
     frozen = evaluate_genome(genome, episode_steps, SCENARIOS, mode="frozen")
     shuffled = evaluate_genome(genome, episode_steps, SCENARIOS, mode="shuffled")
     no_friction_scenarios = tuple(
-        Scenario(scenario.target_x, scenario.target_z, 0.0, scenario.urgency) for scenario in SCENARIOS
+        Scenario(
+            scenario.target_x,
+            scenario.target_z,
+            0.0,
+            scenario.urgency,
+            scenario.roughness,
+            scenario.body_scale,
+            scenario.obstacle_x,
+            scenario.obstacle_z,
+            0.0,
+        )
+        for scenario in SCENARIOS
     )
     no_friction = evaluate_genome(genome, episode_steps, no_friction_scenarios)
     return {
@@ -718,7 +794,7 @@ def make_artifact(
     warm_start_metadata: dict[str, str] | None,
 ) -> dict[str, Any]:
     return {
-        "schemaVersion": 1,
+        "schemaVersion": 2,
         "kind": "wurmkickflip.locomotionPolicy",
         "modelVersion": model_version,
         "architecture": "segmental-recurrent-tanh",
@@ -736,24 +812,12 @@ def make_artifact(
             "output": rounded_vector(genome[OUTPUT_SLICE]),
         },
         "plant": {
+            "version": CONTRACT["plantVersion"],
             "timestep": POLICY_TIMESTEP,
             "jointStiffness": JOINT_STIFFNESS,
             "jointDamping": JOINT_DAMPING,
             "jointLimit": JOINT_LIMIT,
-            "waveGain": WAVE_GAIN,
-            "maximumForwardAcceleration": MAXIMUM_FORWARD_ACCELERATION,
-            "linearDrag": LINEAR_DRAG,
-            "inverseTractionDrag": INVERSE_TRACTION_DRAG,
-            "tractionMinimum": TRACTION_MINIMUM,
-            "tractionMaximum": TRACTION_MAXIMUM,
-            "inverseTractionFloor": INVERSE_TRACTION_FLOOR,
-            "minimumForwardSpeed": MINIMUM_FORWARD_SPEED,
-            "maximumForwardSpeed": MAXIMUM_FORWARD_SPEED,
-            "frontTurnBase": FRONT_TURN_BASE,
-            "frontTurnSpeedGain": FRONT_TURN_SPEED_GAIN,
-            "angularDrag": ANGULAR_DRAG,
-            "minimumAngularSpeed": MINIMUM_ANGULAR_SPEED,
-            "maximumAngularSpeed": MAXIMUM_ANGULAR_SPEED,
+            **DYNAMICS,
         },
         "training": {
             "algorithm": "elitist-mutation-evolution",
@@ -763,6 +827,13 @@ def make_artifact(
             "eliteCount": elite_count,
             "episodeSteps": episode_steps,
             "scenarioCount": len(SCENARIOS),
+            "domainRandomization": [
+                "obstacles",
+                "spatial-friction",
+                "body-scale",
+                "target-switches",
+                "contact-loss",
+            ],
             "objectiveVersion": OBJECTIVE_VERSION,
             "actuatorPrecision": "float32-plant-command",
             **({"warmStart": warm_start_metadata} if warm_start_metadata else {}),

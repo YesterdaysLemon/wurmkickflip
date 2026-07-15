@@ -1,0 +1,36 @@
+name: Published model reproducibility
+
+on:
+  schedule:
+    - cron: '17 9 * * 1'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: published-model-reproducibility
+  cancel-in-progress: false
+
+jobs:
+  reproduce:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - uses: astral-sh/setup-uv@v7
+        with:
+          version: 0.11.8
+          enable-cache: true
+          cache-dependency-glob: training/uv.lock
+      - run: npm install --global npm@11.6.2
+      - run: npm ci
+      - run: uv sync --project training --frozen
+      - run: npm run check:repro

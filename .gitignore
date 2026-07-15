@@ -18,6 +18,8 @@ __pycache__
 training/runs
 public/configs/evolved
 public/models/*.onnx
+playwright-report
+test-results
 *.local
 
 # Editor directories and files

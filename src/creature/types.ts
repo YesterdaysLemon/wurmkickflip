@@ -52,6 +52,11 @@ export type CreatureGenome = {
     joints: CreatureJoint[]
   }
   controller: {
+    /**
+     * Legacy evolution/design metadata carried by the source genome. The live
+     * fixed articulated showcase does not execute this controller; a validated
+     * RuntimeProfile owns its policy and actuator contract.
+     */
     kind: 'cpg' | 'onnx_policy' | 'hybrid'
     actionSize: number
     parameters: Record<string, number>
@@ -63,6 +68,41 @@ export type CreatureGenome = {
     massScaleRange: [number, number]
     jointLimitJitter: number
     controllerJitter: number
+  }
+}
+
+export type RuntimeProfile = {
+  schemaVersion: 1
+  kind: 'wurmkickflip.runtimeProfile'
+  id: string
+  name: string
+  plantVersion: string
+  segmentCount: number
+  actionSize: number
+  actuatorLayout: 'antagonistic-pairs'
+  genomeProjection: 'appearance-only'
+  policy: {
+    kind: 'segmental-recurrent-json'
+    artifactPath: string
+  }
+}
+
+export type CreatureRuntimeAdapter = {
+  profile: RuntimeProfile
+  creatureId: string
+  compatibility: 'fixed-articulated-runtime'
+  actuatorContract: {
+    segmentCount: 16
+    antagonisticPairCount: 16
+    muscleChannelCount: 32
+    channelsPerPair: 2
+    channelOrder: ['dorsal', 'ventral']
+  }
+  appearanceProjection: {
+    kind: 'appearance-only'
+    declaredControllerKind: CreatureGenome['controller']['kind']
+    declaredControllerActionSize: number
+    declaredControllerExecuted: false
   }
 }
 

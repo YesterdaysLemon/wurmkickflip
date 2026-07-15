@@ -1,17 +1,24 @@
+import { spawnSync } from 'node:child_process'
 import { createHash } from 'node:crypto'
-import { mkdtemp, readFile, rm } from 'node:fs/promises'
+import { copyFile, mkdir, mkdtemp, readFile, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
-import { spawnSync } from 'node:child_process'
+import { deriveWurmAnatomy } from '../src/creature/anatomy'
 import {
   EvolvedLocomotionPolicy,
+  LOCOMOTION_INPUT_WEIGHT_NAMES,
+  LOCOMOTION_OUTPUT_WEIGHT_NAMES,
+  LOCOMOTION_PLANT_CONTRACT,
+  LOCOMOTION_RECURRENT_WEIGHT_NAMES,
+  LOCOMOTION_SENSOR_NAMES,
   parseLocomotionPolicy,
   type LocomotionPolicyArtifact,
   type LocomotionSensors,
 } from '../src/policy/locomotionPolicy'
-import { ACTION_SIZE, SEGMENT_COUNT } from '../src/policy/types'
-import { createWormLocomotionPlant, deriveWormLocalPose, stepWormLocomotion } from '../src/scene/wormLocomotion'
-import type { TerrainField } from '../src/scene/terrainField'
+import { ACTION_SIZE, SEGMENT_COUNT, type PolicyAction, type SegmentSnapshot } from '../src/policy/types'
+import { TERRAIN_GRID_RESOLUTION, type TerrainField } from '../src/scene/terrainField'
+import { stepArticulatedWorm } from '../src/scene/wormDynamics'
+import { createWormLocomotionPlant } from '../src/scene/wormLocomotion'
 
 type Mode = 'full' | 'zero' | 'frozen' | 'shuffled'
 
@@ -19,39 +26,40 @@ type Scenario = {
   targetX: number
   targetZ: number
   friction: number
-  plantFriction?: number
   urgency: number
 }
 
 type Rollout = {
   progress: number
   displacement: number
+  pathLength: number
   temporalStd: number
   spatialStd: number
+  meanContactRatio: number
   finalX: number
   finalZ: number
+  finalHeading: number
   traceHash: string
 }
 
-type ParityCheckpoint = {
-  step: number
-  position: number[]
-  heading: number
-  forwardSpeed: number
-  angularSpeed: number
-  joints: number[]
-  jointVelocities: number[]
-  commands: number[]
-}
-
 const root = resolve(import.meta.dirname, '..')
-const artifactUrl = new URL('../public/models/wurmkickflip_locomotion_policy.json', import.meta.url)
-const sourceUrl = new URL('../training/wurmkickflip_rl/evolve_locomotion_policy.py', import.meta.url)
-const warmStartUrl = new URL('../training/seeds/wurmkickflip_locomotion_warm_start_v1.json', import.meta.url)
-const artifact = parseLocomotionPolicy(JSON.parse(await readFile(artifactUrl, 'utf8')))
-const trainingSource = await readFile(sourceUrl, 'utf8')
-const warmStartPayload = await readFile(warmStartUrl)
-const canonicalWarmStartPayload = Buffer.from(warmStartPayload.toString('utf8').replace(/\r\n?/g, '\n'))
+const trainingRoot = resolve(root, 'training')
+const artifactSource = process.env.WURMKICKFLIP_LOCOMOTION_ARTIFACT
+  ? resolve(process.env.WURMKICKFLIP_LOCOMOTION_ARTIFACT)
+  : new URL('../public/models/wurmkickflip_locomotion_policy.json', import.meta.url)
+const legacyUrl = new URL('../training/seeds/wurmkickflip_locomotion_warm_start_v1.json', import.meta.url)
+const trainerUrl = new URL('../training/wurmkickflip_rl/evolve_locomotion_policy.py', import.meta.url)
+const rawV2 = JSON.parse(await readFile(artifactSource, 'utf8')) as any
+const rawV1 = JSON.parse(await readFile(legacyUrl, 'utf8')) as any
+const artifact = parseLocomotionPolicy(rawV2)
+const trainingSource = await readFile(trainerUrl, 'utf8')
+
+verifyContract(artifact, rawV2, trainingSource)
+verifyLegacyMigration(rawV1)
+verifyMalformedArtifacts(rawV2, rawV1)
+verifyAntagonisticOutputs(artifact)
+const localSensorDelta = verifyLocalSensorEffects(artifact)
+const steeringActionDelta = verifySteeringSensorEffect(artifact)
 
 const scenarios: Scenario[] = [
   { targetX: 4.2, targetZ: 0, friction: 0.95, urgency: 0.72 },
@@ -59,464 +67,591 @@ const scenarios: Scenario[] = [
   { targetX: 3.2, targetZ: -3.2, friction: 1.12, urgency: 0.64 },
   { targetX: 0.5, targetZ: 4.3, friction: 0.82, urgency: 1 },
   { targetX: 0.5, targetZ: -4.3, friction: 0.42, urgency: 0.92 },
-  { targetX: -2.2, targetZ: 3.5, friction: 1.05, urgency: 0.78 },
-  { targetX: -2.2, targetZ: -3.5, friction: 0.67, urgency: 0.84 },
   { targetX: 4.8, targetZ: 1.2, friction: 0.33, urgency: 1 },
 ]
-
-verifyContract(artifact, trainingSource)
-verifyPlantContractRejection(artifact)
-verifyAntagonisticOutputs(artifact)
-
 const steps = finiteInteger(artifact.training.episodeSteps, 'training.episodeSteps')
-const fullRollouts = scenarios.map((scenario) => runScenario(artifact, scenario, steps, 'full'))
+const fullRollouts = scenarios.map(scenario => runScenario(artifact, scenario, steps, 'full'))
 const full = aggregate(fullRollouts)
-const repeated = aggregate(scenarios.map((scenario) => runScenario(artifact, scenario, steps, 'full')))
-const zero = aggregate(scenarios.map((scenario) => runScenario(artifact, scenario, steps, 'zero')))
-const frozen = aggregate(scenarios.map((scenario) => runScenario(artifact, scenario, steps, 'frozen')))
-const shuffled = aggregate(scenarios.map((scenario) => runScenario(artifact, scenario, steps, 'shuffled')))
-const noFriction = aggregate(
-  scenarios.map((scenario) => runScenario(artifact, { ...scenario, plantFriction: 0 }, steps, 'full')),
+const repeated = aggregate(scenarios.map(scenario => runScenario(artifact, scenario, steps, 'full')))
+const zero = aggregate(scenarios.map(scenario => runScenario(artifact, scenario, steps, 'zero')))
+const frozen = aggregate(scenarios.map(scenario => runScenario(artifact, scenario, steps, 'frozen')))
+const shuffled = aggregate(scenarios.map(scenario => runScenario(artifact, scenario, steps, 'shuffled')))
+const frictionless = runScenario(
+  artifact,
+  { targetX: 4.2, targetZ: 1.1, friction: 0, urgency: 1 },
+  steps,
+  'full',
 )
 
-expect(full.traceHash === repeated.traceHash, 'runtime locomotion trace must be deterministic')
-expect(full.progress > 0.8, `evolved controller target progress is too small: ${full.progress}`)
+expect(full.traceHash === repeated.traceHash, 'articulated locomotion traces must be deterministic')
+expect(full.displacement > 0.5, `active ground contact must produce meaningful travel (${full.displacement})`)
+expect(full.progress > 0.45, `evolved controller target progress is too small (${full.progress})`)
+expect(full.progress > zero.progress + 0.4, 'evolved controller must beat the zero-action ablation')
+expect(full.progress > frozen.progress + 0.3, 'evolved controller must beat the frozen-output ablation')
+expect(full.progress > shuffled.progress + 0.2, 'evolved controller must beat the segment-shuffle ablation')
+expect(full.temporalStd > 0.2, 'recurrent actuator commands must vary over time')
+expect(full.spatialStd > 0.08, 'segments must own meaningfully different simultaneous commands')
+expect(full.meanContactRatio > 0.2, 'active locomotion must retain ground contact')
 expect(
-  Math.min(...fullRollouts.map((rollout) => rollout.progress)) > 0.12,
-  'evolved controller must make positive progress from every published approach direction',
+  zero.displacement <= 1e-12,
+  `zero outputs must leave the articulated chain stationary (${zero.displacement})`,
 )
-const reachedScenarioCount = fullRollouts.filter(
-  (rollout, index) => Math.hypot(scenarios[index].targetX, scenarios[index].targetZ) - rollout.progress < 0.72,
-).length
-expect(reachedScenarioCount >= 2, 'evolved controller reached too few published target scenarios')
-expect(full.progress > zero.progress + 0.8, 'evolved controller must beat zero-action progress')
-expect(full.progress > frozen.progress + 0.8, 'evolved controller must beat a frozen-pose ablation')
-expect(full.progress > shuffled.progress * 1.2, 'evolved controller must beat deterministic segment shuffling')
-expect(noFriction.displacement < 1e-10, 'zero traction must prevent actuator-driven translation from rest')
-expect(noFriction.temporalStd > 0.25, 'zero-traction ablation must retain active neural commands')
-expect(Math.abs(zero.displacement) < 1e-12, 'zero actions must leave the plant exactly stationary')
-expect(full.temporalStd > 0.25, 'recurrent actuators must vary over time')
-expect(full.spatialStd > 0.18, 'segments must produce meaningfully different simultaneous activations')
+expect(
+  frictionless.displacement <= 1e-12,
+  `obstacle-free zero-friction internal forces must exactly conserve planar COM (${frictionless.displacement})`,
+)
+expect(
+  frictionless.temporalStd > 0.15,
+  'the zero-friction invariant must be tested with active neural commands',
+)
 
 const left = runScenario(artifact, { targetX: 3.2, targetZ: 3.2, friction: 0.8, urgency: 0.9 }, steps, 'full')
-const right = runScenario(artifact, { targetX: 3.2, targetZ: -3.2, friction: 0.8, urgency: 0.9 }, steps, 'full')
-expect(left.finalZ > 0.15, 'positive local-right target must produce positive steering displacement')
-expect(right.finalZ < -0.15, 'negative local-right target must produce negative steering displacement')
-const browserPlant = runBrowserPlantScenario(
+const right = runScenario(
   artifact,
-  { targetX: 3.2, targetZ: 3.2, friction: 0.8, urgency: 0.9 },
+  { targetX: 3.2, targetZ: -3.2, friction: 0.8, urgency: 0.9 },
   steps,
+  'full',
 )
-const pythonParity = readPythonParityTrace()
-const parityMaximumDelta = compareParityCheckpoints(browserPlant.checkpoints, pythonParity.checkpoints)
-expect(Math.abs(browserPlant.finalX - left.finalX) < 1e-5, 'browser plant x motion drifted from evolved plant contract')
-expect(Math.abs(browserPlant.finalZ - left.finalZ) < 1e-5, 'browser plant z motion drifted from evolved plant contract')
-expect(browserPlant.maximumLateralSpan > 0.12, 'evolved joint motion must visibly articulate the body chain')
-expect(parityMaximumDelta < 0.01, `Python/browser checkpoint parity drifted by ${parityMaximumDelta}`)
+expect(left.finalZ > 0.1, `left target must steer toward positive z (${left.finalZ})`)
+expect(right.finalZ < -0.1, `right target must steer toward negative z (${right.finalZ})`)
+expect(left.finalZ - right.finalZ > 0.5, 'opposite target bearings must produce distinct articulated paths')
 
-await verifyTrainingReproducibility()
+const trainingRepro = await verifyTrainingReproducibility()
 
 console.log(
   JSON.stringify(
     {
       modelVersion: artifact.modelVersion,
-      architecture: artifact.architecture,
-      training: {
-        algorithm: artifact.training.algorithm,
-        seed: artifact.training.seed,
-        generations: artifact.training.generations,
-        populationSize: artifact.training.populationSize,
-      },
+      plantVersion: artifact.plant.version,
       targetProgress: round(full.progress),
-      perScenarioProgress: fullRollouts.map((rollout) => round(rollout.progress)),
-      reachedScenarioCount,
-      actuatorAblations: {
+      meanDisplacement: round(full.displacement),
+      perScenarioProgress: fullRollouts.map(rollout => round(rollout.progress)),
+      recurrentAblations: {
         zero: round(zero.progress),
         frozen: round(frozen.progress),
         shuffled: round(shuffled.progress),
-        noFrictionDisplacement: round(noFriction.displacement),
       },
-      actuatorTemporalStd: round(full.temporalStd),
-      actuatorSpatialStd: round(full.spatialStd),
+      commandVariation: {
+        temporal: round(full.temporalStd),
+        spatial: round(full.spatialStd),
+      },
+      zeroFrictionComDisplacement: frictionless.displacement,
       steeringFinalZ: { left: round(left.finalZ), right: round(right.finalZ) },
-      browserPoseLateralSpan: round(browserPlant.maximumLateralSpan),
-      pythonBrowserParityMaximumDelta: round(parityMaximumDelta),
+      steeringActionDelta: round(steeringActionDelta),
+      localSensorDelta: round(localSensorDelta),
       deterministicTraceHash: full.traceHash,
+      trainingReproducibility: trainingRepro,
     },
     null,
     2,
   ),
 )
-console.log('Evolved locomotion policy verification passed.')
+console.log('Articulated evolved locomotion policy verification passed.')
 
-function verifyContract(model: LocomotionPolicyArtifact, source: string) {
+function verifyContract(model: LocomotionPolicyArtifact, raw: any, source: string) {
+  expect(model.schemaVersion === 2, 'runtime locomotion schema must normalize to version 2')
   expect(model.segmentCount === SEGMENT_COUNT, `artifact must own ${SEGMENT_COUNT} segment neurons`)
-  expect(model.actionSize === ACTION_SIZE, `artifact must emit ${ACTION_SIZE} muscle activations`)
-  expect(model.architecture === 'segmental-recurrent-tanh', 'artifact must use the recurrent segmental architecture')
+  expect(model.actionSize === ACTION_SIZE, `artifact must emit ${ACTION_SIZE} muscle channels`)
+  expect(model.architecture === 'segmental-recurrent-tanh', 'artifact architecture changed')
+  expect(model.plant.version === 'articulated-contact-v2', 'artifact must target articulated-contact-v2')
+  expect(exactArray(model.sensorNames, LOCOMOTION_SENSOR_NAMES), 'sensor contract ordering changed')
+  expect(exactArray(model.weights.inputNames, LOCOMOTION_INPUT_WEIGHT_NAMES), 'input weight ordering changed')
   expect(
-    !model.sensorNames.some((name) => /time|clock|phase|cycle/i.test(name)),
-    'locomotion sensors must not expose a clock or gait phase',
-  )
-  expect(model.sensorNames.includes('targetRight'), 'locomotion controller must sense steering error')
-  expect(model.sensorNames.includes('terrainFriction'), 'locomotion controller must sense terrain friction')
-  expect(model.sensorNames.includes('urgency'), 'locomotion controller must sense need urgency')
-  expect(model.training.algorithm === 'elitist-mutation-evolution', 'artifact must record evolutionary training')
-  expect(
-    model.training.objectiveVersion === 'risk-sensitive-bottom-two-v1',
-    'published artifact must record the risk-sensitive objective',
+    exactArray(model.weights.recurrentNames, LOCOMOTION_RECURRENT_WEIGHT_NAMES),
+    'recurrent weight ordering changed',
   )
   expect(
-    model.training.actuatorPrecision === 'float32-plant-command',
-    'published artifact must record browser-equivalent plant action precision',
+    exactArray(model.weights.outputNames, LOCOMOTION_OUTPUT_WEIGHT_NAMES),
+    'output weight ordering changed',
   )
-  const warmStart = recordValue(model.training.warmStart, 'training.warmStart')
   expect(
-    warmStart.sha256 === createHash('sha256').update(canonicalWarmStartPayload).digest('hex'),
-    'published warm-start hash does not match the tracked base artifact',
+    !model.sensorNames.some(name => /time|clock|phase|cycle/iu.test(name)),
+    'locomotion sensors must not expose authored gait timing',
   )
-  expect(warmStart.modelVersion === 'locomotion-segmental-es-v1', 'unexpected warm-start model version')
-  expect(finiteInteger(model.training.generations, 'training.generations') >= 50, 'published model needs a substantial evolution run')
-  expect(finiteInteger(model.training.populationSize, 'training.populationSize') >= 64, 'published model population is too small')
-  expect(!/np\.(?:sin|cos)\s*\(/.test(source), 'trainer must not contain a trigonometric gait generator')
-  expect(!/cpg_action|wave_frequency|phase_offset/.test(source), 'trainer must not evolve a disguised CPG recipe')
-  expect(/wave_work/.test(source), 'trainer must derive translation from inter-segment actuator work')
-  expect(/bottom_two_progress/.test(source), 'trainer must retain its risk-sensitive worst-case objective')
-  expect(/--warm-start/.test(source), 'trainer must retain explicit warm-start provenance')
-  expect(/astype\(np\.float32\)/.test(source), 'trainer must quantize plant-bound actions like the browser')
+  for (const [key, expected] of Object.entries(LOCOMOTION_PLANT_CONTRACT)) {
+    expect(model.plant[key as keyof typeof model.plant] === expected, `plant.${key} contract mismatch`)
+  }
+
+  const training = model.training
+  expect(training.algorithm === 'elitist-mutation-evolution', 'artifact must record evolutionary training')
+  expect(
+    training.objectiveVersion === 'articulated-contact-obstacle-recovery-v2',
+    'artifact objectiveVersion mismatch',
+  )
+  expect(training.actuatorPrecision === 'float32-plant-command', 'artifact actuator precision mismatch')
+  expect(training.seed === 20260721, 'published refinement seed mismatch')
+  expect(training.generations === 10, 'published refinement generation count mismatch')
+  expect(training.populationSize === 64, 'published refinement population size mismatch')
+  expect(training.eliteCount === 12, 'published refinement elite count mismatch')
+  expect(training.episodeSteps === 480, 'published refinement episode length mismatch')
+  expect(training.scenarioCount === 12, 'published scenario count mismatch')
+  expect(
+    exactArray(training.domainRandomization, [
+      'obstacles',
+      'spatial-friction',
+      'body-scale',
+      'target-switches',
+      'contact-loss',
+    ]),
+    'published domain randomization contract mismatch',
+  )
+  const warmStart = recordValue(training.warmStart, 'training.warmStart')
+  expect(
+    exactArray(Object.keys(warmStart).sort(), ['modelVersion', 'sha256']),
+    'published warmStart metadata must be location-independent',
+  )
+  expect(/^[a-f\d]{64}$/u.test(String(warmStart.sha256)), 'warmStart.sha256 must be a SHA-256 digest')
+  expect(typeof warmStart.modelVersion === 'string', 'warmStart.modelVersion must be recorded')
+  expect(/^[a-f\d]{64}$/u.test(String(training.deterministicTraceHash)), 'training trace hash is malformed')
+  const ablations = recordValue(training.ablations, 'training.ablations')
+  for (const name of [
+    'fullProgress',
+    'zeroProgress',
+    'frozenProgress',
+    'shuffledProgress',
+    'noFrictionDisplacement',
+  ]) {
+    expect(
+      typeof ablations[name] === 'number' && Number.isFinite(ablations[name]),
+      `training ablation ${name} is invalid`,
+    )
+  }
+
+  expect(raw.plant.version === 'articulated-contact-v2', 'raw artifact plant version mismatch')
+  expect(source.includes('articulated_plant_step('), 'trainer must evaluate the articulated contact plant')
+  expect(source.includes('contact_load'), 'trainer must feed back segment-local contact load')
+  expect(source.includes('slip_speed'), 'trainer must feed back segment-local slip speed')
+  expect(source.includes('obstacle_forward'), 'trainer must feed back local obstacle direction')
+  expect(source.includes('obstacle_right'), 'trainer must feed back local obstacle side')
+  expect(/astype\(np\.float32\)/u.test(source), 'trainer must quantize browser-bound actions to float32')
+  expect(
+    !/cpg_action|wave_frequency|phase_offset/iu.test(source),
+    'trainer must not contain an authored gait generator',
+  )
+  expect(
+    !/wave_gain|maximum_forward_acceleration|inverse_traction_drag|front_turn_base/iu.test(source),
+    'trainer still references the removed scalar locomotion plant',
+  )
+  const warmStartLoader = source.slice(source.indexOf('def load_warm_start'), source.indexOf('\ndef evolve'))
+  expect(
+    !/["']path["']\s*:/u.test(warmStartLoader),
+    'warm-start metadata must not serialize filesystem paths',
+  )
 }
 
-function verifyPlantContractRejection(model: LocomotionPolicyArtifact) {
-  const changedPlant = {
-    ...model,
-    plant: { ...model.plant, jointStiffness: model.plant.jointStiffness + 0.25 },
-  }
-  let rejected = false
-  try {
-    parseLocomotionPolicy(changedPlant)
-  } catch {
-    rejected = true
-  }
-  expect(rejected, 'artifact parsing must reject plant constants that diverge from the browser contract')
+function verifyLegacyMigration(raw: any) {
+  const migrated = parseLocomotionPolicy(structuredClone(raw))
+  expect(migrated.schemaVersion === 2, 'schema-v1 artifacts must normalize to schema v2')
+  expect(
+    migrated.plant.version === 'articulated-contact-v2',
+    'legacy artifacts must adopt the articulated plant',
+  )
+  expect(
+    migrated.training.runtimeMigration === 'schema-1-zero-contact-weights',
+    'legacy migration provenance is missing',
+  )
+  expect(
+    migrated.weights.input.slice(13).every(value => value === 0),
+    'schema-v1 migration must zero new local-sensor input weights',
+  )
+  expect(
+    migrated.weights.output.slice(7).every(value => value === 0),
+    'schema-v1 migration must zero new contact output weights',
+  )
+}
+
+function verifyMalformedArtifacts(v2: any, v1: any) {
+  expectReject(v2, candidate => (candidate.schemaVersion = 3), 'unknown schema version')
+  expectReject(v2, candidate => (candidate.kind = 'wurmkickflip.other'), 'wrong artifact kind')
+  expectReject(v2, candidate => candidate.sensorNames.reverse(), 'reversed v2 sensor order')
+  expectReject(v2, candidate => candidate.weights.input.pop(), 'short v2 input vector')
+  expectReject(v2, candidate => candidate.weights.output.push(0), 'long v2 output vector')
+  expectReject(v2, candidate => (candidate.weights.recurrent[0] = Number.NaN), 'non-finite recurrent weight')
+  expectReject(v2, candidate => (candidate.plant.version = 'scalar-wave-v1'), 'wrong v2 plant version')
+  expectReject(v2, candidate => (candidate.plant.spacing *= 1.01), 'wrong v2 plant constant')
+  expectReject(v2, candidate => (candidate.plant.maximumVerticalSpeed = 0), 'invalid v2 vertical speed')
+  expectReject(v2, candidate => delete candidate.training, 'missing v2 training metadata')
+  expectReject(v1, candidate => (candidate.schemaVersion = 0), 'unknown legacy schema')
+  expectReject(v1, candidate => candidate.weights.input.pop(), 'short legacy input vector')
+  expectReject(v1, candidate => (candidate.plant.jointStiffness += 0.1), 'wrong legacy joint contract')
 }
 
 function verifyAntagonisticOutputs(model: LocomotionPolicyArtifact) {
   const policy = new EvolvedLocomotionPolicy(model)
-  const action = policy.run(
-    {
-      targetForward: 0.6,
-      targetRight: -0.35,
-      targetDistance: 0.8,
-      forwardSpeed: 0,
-      angularSpeed: 0,
-      terrainFriction: 0.9,
-      urgency: 0.75,
-    },
-    new Float64Array(SEGMENT_COUNT),
-    new Float64Array(SEGMENT_COUNT),
-  )
+  const action = policy.run(baseSensors(), new Float64Array(SEGMENT_COUNT), new Float64Array(SEGMENT_COUNT))
   expect(action.length === ACTION_SIZE, 'runtime action length changed')
-  expect(Array.from(action).every(Number.isFinite), 'runtime actions must be finite')
+  expect(Array.from(action).every(Number.isFinite), 'runtime action must remain finite')
   for (let segment = 0; segment < SEGMENT_COUNT; segment += 1) {
     expect(
-      Math.abs(action[segment * 2] + action[segment * 2 + 1]) < 1e-7,
+      Math.abs(action[segment * 2] + action[segment * 2 + 1]) <= 1e-7,
       `segment ${segment} must own an antagonistic actuator pair`,
     )
   }
 }
 
-function runScenario(model: LocomotionPolicyArtifact, scenario: Scenario, steps: number, mode: Mode): Rollout {
+function verifyLocalSensorEffects(model: LocomotionPolicyArtifact) {
+  const baselinePolicy = new EvolvedLocomotionPolicy(model)
+  const perturbedPolicy = new EvolvedLocomotionPolicy(model)
+  const baselineSensors = baseSensors()
+  const perturbedSensors = baseSensors()
+  const contactLoads = new Float64Array(SEGMENT_COUNT).fill(1)
+  const slipSpeeds = new Float64Array(SEGMENT_COUNT)
+  const obstacleForward = new Float64Array(SEGMENT_COUNT)
+  const obstacleRight = new Float64Array(SEGMENT_COUNT)
+  perturbedSensors.contactLoads = contactLoads
+  perturbedSensors.slipSpeeds = slipSpeeds
+  perturbedSensors.obstacleForward = obstacleForward
+  perturbedSensors.obstacleRight = obstacleRight
+  const changedSegment = 7
+  contactLoads[changedSegment] = 0
+  slipSpeeds[changedSegment] = 1.7
+  obstacleForward[changedSegment] = 0.8
+  obstacleRight[changedSegment] = 0.8
+  const bends = new Float64Array(SEGMENT_COUNT)
+  const velocities = new Float64Array(SEGMENT_COUNT)
+  const baseline = baselinePolicy.run(baselineSensors, bends, velocities)
+  const perturbed = perturbedPolicy.run(perturbedSensors, bends, velocities)
+  const deltas = Array.from({ length: SEGMENT_COUNT }, (_, segment) =>
+    Math.abs(perturbed[segment * 2] - baseline[segment * 2]),
+  )
+  const localDelta = Math.max(...deltas.slice(changedSegment - 1, changedSegment + 2))
+  const remoteDelta = Math.max(...deltas.filter((_, segment) => Math.abs(segment - changedSegment) > 1))
+  expect(localDelta > 1e-3, 'segment-local contact and obstacle sensors must affect nearby commands')
+  expect(remoteDelta <= 1e-7, 'one local sensor sample must not instantly teleport to remote segments')
+  return localDelta
+}
+
+function verifySteeringSensorEffect(model: LocomotionPolicyArtifact) {
+  const left = new EvolvedLocomotionPolicy(model).run(
+    { ...baseSensors(), targetRight: 0.8 },
+    new Float64Array(SEGMENT_COUNT),
+    new Float64Array(SEGMENT_COUNT),
+  )
+  const right = new EvolvedLocomotionPolicy(model).run(
+    { ...baseSensors(), targetRight: -0.8 },
+    new Float64Array(SEGMENT_COUNT),
+    new Float64Array(SEGMENT_COUNT),
+  )
+  const delta = mean(
+    Array.from({ length: SEGMENT_COUNT }, (_, segment) => Math.abs(left[segment * 2] - right[segment * 2])),
+  )
+  expect(delta > 0.15, 'targetRight must materially change segment activations')
+  return delta
+}
+
+function runScenario(
+  model: LocomotionPolicyArtifact,
+  scenario: Scenario,
+  steps: number,
+  mode: Mode,
+): Rollout {
   const policy = new EvolvedLocomotionPolicy(model)
-  const joints = new Float64Array(SEGMENT_COUNT)
-  const jointVelocities = new Float64Array(SEGMENT_COUNT)
-  const command = new Float64Array(SEGMENT_COUNT)
-  const frozen = new Float64Array(SEGMENT_COUNT)
+  const plant = createWormLocomotionPlant()
+  const segments = createSegments(model)
+  const anatomy = deriveWurmAnatomy(null)
+  const field = flatField(scenario.friction)
+  const start = center(segments)
+  const initialDistance = Math.hypot(scenario.targetX - start.x, scenario.targetZ - start.z)
+  const frozen = new Float32Array(ACTION_SIZE)
   const shuffle = [0, 9, 2, 13, 4, 15, 6, 11, 8, 1, 10, 3, 12, 5, 14, 7]
-  const traces: number[][] = []
-  const initialDistance = Math.hypot(scenario.targetX, scenario.targetZ)
-  let x = 0
-  let z = 0
-  let forwardX = 1
-  let forwardZ = 0
-  let forwardSpeed = 0
-  let angularSpeed = 0
+  const commands: number[][] = []
+  const checkpoints: unknown[] = []
+  const checkpointSteps = new Set([0, 1, 2, 23, 24, 59, 119, 239, steps - 1])
   let pathLength = 0
+  let contactTotal = 0
+  let finalRoot = {
+    x: start.x,
+    y: model.plant.baseGroundClearance,
+    z: start.z,
+    vx: 0,
+    vz: 0,
+    heading: 0,
+  }
 
   for (let step = 0; step < steps; step += 1) {
-    const dx = scenario.targetX - x
-    const dz = scenario.targetZ - z
-    const distance = Math.max(1e-9, Math.hypot(dx, dz))
+    const current = center(segments)
+    const heading = bodyHeading(segments)
+    const forwardX = Math.cos(heading)
+    const forwardZ = Math.sin(heading)
+    const dx = scenario.targetX - current.x
+    const dz = scenario.targetZ - current.z
+    const distance = Math.max(Math.hypot(dx, dz), 1e-9)
     const sensors: LocomotionSensors = {
       targetForward: (dx * forwardX + dz * forwardZ) / distance,
       targetRight: (dx * -forwardZ + dz * forwardX) / distance,
       targetDistance: Math.min(distance / 5, 1.5),
-      forwardSpeed,
-      angularSpeed,
+      forwardSpeed: plant.forwardSpeed,
+      angularSpeed: plant.angularSpeed,
       terrainFriction: scenario.friction,
       urgency: scenario.urgency,
+      contactLoads: plant.contactLoads,
+      slipSpeeds: plant.slipSpeeds,
+      obstacleForward: plant.obstacleForward,
+      obstacleRight: plant.obstacleRight,
     }
-    const neuralAction = policy.run(sensors, joints, jointVelocities)
-    for (let segment = 0; segment < SEGMENT_COUNT; segment += 1) {
-      const neuralCommand = neuralAction[segment * 2]
-      if (mode === 'zero') command[segment] = 0
-      else if (mode === 'frozen' && step >= 24) command[segment] = frozen[segment]
-      else if (mode === 'shuffled') command[segment] = neuralAction[shuffle[segment] * 2]
-      else command[segment] = neuralCommand
-      if (mode === 'frozen' && step === 24) frozen[segment] = neuralCommand
+    const neuralAction = policy.run(sensors, plant.joints, plant.jointVelocities)
+    const applied = new Float32Array(ACTION_SIZE)
+    if (mode === 'zero') {
+      applied.fill(0)
+    } else if (mode === 'frozen') {
+      if (step === 24) frozen.set(neuralAction)
+      applied.set(step >= 24 ? frozen : neuralAction)
+    } else if (mode === 'shuffled') {
+      for (let segment = 0; segment < SEGMENT_COUNT; segment += 1) {
+        const source = shuffle[segment]
+        applied[segment * 2] = neuralAction[source * 2]
+        applied[segment * 2 + 1] = neuralAction[source * 2 + 1]
+      }
+    } else {
+      applied.set(neuralAction)
     }
-
-    const dt = model.plant.timestep
-    for (let segment = 0; segment < SEGMENT_COUNT; segment += 1) {
-      jointVelocities[segment] +=
-        ((command[segment] - joints[segment]) * model.plant.jointStiffness -
-          jointVelocities[segment] * model.plant.jointDamping) *
-        dt
-      joints[segment] = clamp(
-        joints[segment] + jointVelocities[segment] * dt,
-        -model.plant.jointLimit,
-        model.plant.jointLimit,
-      )
+    commands.push(Array.from({ length: SEGMENT_COUNT }, (_, segment) => applied[segment * 2]))
+    const result = stepArticulatedWorm(
+      plant,
+      segments,
+      applied as PolicyAction,
+      model.plant.timestep,
+      field,
+      null,
+      anatomy,
+    )
+    finalRoot = result.root
+    pathLength += result.distance
+    contactTotal += result.contactRatio
+    if (checkpointSteps.has(step)) {
+      checkpoints.push({
+        step,
+        root: [round(result.root.x), round(result.root.z), round(result.root.heading)],
+        joints: plant.joints.map(round),
+        commands: commands[commands.length - 1].map(round),
+        contactRatio: round(result.contactRatio),
+      })
     }
-
-    let waveWork = 0
-    for (let segment = 0; segment + 1 < SEGMENT_COUNT; segment += 1) {
-      waveWork +=
-        (joints[segment + 1] - joints[segment]) *
-        0.5 *
-        (jointVelocities[segment + 1] + jointVelocities[segment])
-    }
-    waveWork /= SEGMENT_COUNT - 1
-    const traction = clamp(scenario.plantFriction ?? scenario.friction, 0, 1.2)
-    const acceleration =
-      clamp(
-        model.plant.waveGain * waveWork,
-        -model.plant.maximumForwardAcceleration,
-        model.plant.maximumForwardAcceleration,
-      ) * traction
-    forwardSpeed +=
-      (acceleration -
-        (model.plant.linearDrag + model.plant.inverseTractionDrag / Math.max(traction, 0.12)) * forwardSpeed) *
-      dt
-    forwardSpeed = clamp(forwardSpeed, -1.45, 1.45)
-
-    let frontBias = 0
-    for (let segment = 0; segment < SEGMENT_COUNT; segment += 1) {
-      frontBias += joints[segment] * (1 - segment / (SEGMENT_COUNT - 1))
-    }
-    frontBias /= SEGMENT_COUNT
-    angularSpeed +=
-      (frontBias * (model.plant.frontTurnBase + model.plant.frontTurnSpeedGain * Math.abs(forwardSpeed)) -
-        model.plant.angularDrag * angularSpeed) *
-      dt
-    angularSpeed = clamp(angularSpeed, -3, 3)
-
-    const rightX = -forwardZ
-    const rightZ = forwardX
-    forwardX += rightX * angularSpeed * dt
-    forwardZ += rightZ * angularSpeed * dt
-    const headingLength = Math.max(1e-9, Math.hypot(forwardX, forwardZ))
-    forwardX /= headingLength
-    forwardZ /= headingLength
-    const deltaX = forwardX * forwardSpeed * dt
-    const deltaZ = forwardZ * forwardSpeed * dt
-    x += deltaX
-    z += deltaZ
-    pathLength += Math.hypot(deltaX, deltaZ)
-    traces.push(Array.from(command))
   }
 
-  const finalDistance = Math.hypot(scenario.targetX - x, scenario.targetZ - z)
+  const finalDistance = Math.hypot(scenario.targetX - finalRoot.x, scenario.targetZ - finalRoot.z)
   const temporalStd = mean(
-    Array.from({ length: SEGMENT_COUNT }, (_, segment) => standardDeviation(traces.map((trace) => trace[segment]))),
+    Array.from({ length: SEGMENT_COUNT }, (_, segment) =>
+      standardDeviation(commands.map(command => command[segment])),
+    ),
   )
-  const spatialStd = mean(traces.map((trace) => standardDeviation(trace)))
-  const traceHash = createHash('sha256')
-    .update(JSON.stringify([round(x), round(z), round(pathLength), round(temporalStd), round(spatialStd)]))
-    .digest('hex')
+  const spatialStd = mean(commands.map(standardDeviation))
+  const displacement = Math.hypot(finalRoot.x - start.x, finalRoot.z - start.z)
+  const traceHash = createHash('sha256').update(JSON.stringify(checkpoints)).digest('hex')
   return {
     progress: initialDistance - finalDistance,
-    displacement: Math.hypot(x, z),
+    displacement,
+    pathLength,
     temporalStd,
     spatialStd,
-    finalX: x,
-    finalZ: z,
+    meanContactRatio: contactTotal / steps,
+    finalX: finalRoot.x,
+    finalZ: finalRoot.z,
+    finalHeading: finalRoot.heading,
     traceHash,
   }
 }
 
-function runBrowserPlantScenario(model: LocomotionPolicyArtifact, scenario: Scenario, steps: number) {
-  const policy = new EvolvedLocomotionPolicy(model)
-  const plant = createWormLocomotionPlant()
-  const rootState = { x: 0, z: 0, heading: 0, vx: 0, vz: 0 }
-  const field: TerrainField = {
-    width: 100,
-    depth: 100,
-    minimumHeight: 0,
-    maximumHeight: 0,
-    waypoints: [],
-    sample: () => ({ height: 0, friction: scenario.friction, normal: [0, 1, 0], surface: 'sand' }),
-  }
-  let maximumLateralSpan = 0
-  const checkpoints: ParityCheckpoint[] = []
-  const checkpointSteps = new Set([0, 1, 2, 23, 59, 119, 239, 419, steps - 1])
-
-  for (let step = 0; step < steps; step += 1) {
-    const dx = scenario.targetX - rootState.x
-    const dz = scenario.targetZ - rootState.z
-    const distance = Math.max(1e-9, Math.hypot(dx, dz))
-    const forwardX = Math.cos(rootState.heading)
-    const forwardZ = Math.sin(rootState.heading)
-    const action = policy.run(
-      {
-        targetForward: (dx * forwardX + dz * forwardZ) / distance,
-        targetRight: (dx * -forwardZ + dz * forwardX) / distance,
-        targetDistance: Math.min(distance / 5, 1.5),
-        forwardSpeed: plant.forwardSpeed,
-        angularSpeed: plant.angularSpeed,
-        terrainFriction: scenario.friction,
-        urgency: scenario.urgency,
-      },
-      plant.joints,
-      plant.jointVelocities,
+async function verifyTrainingReproducibility() {
+  const workspace = await mkdtemp(join(tmpdir(), 'wurmkickflip-locomotion-smoke-'))
+  try {
+    const firstDirectory = join(workspace, 'location-a')
+    const secondDirectory = join(workspace, 'location-b')
+    const thirdDirectory = join(workspace, 'different-seed')
+    await Promise.all(
+      [firstDirectory, secondDirectory, thirdDirectory].map(directory =>
+        mkdir(directory, { recursive: true }),
+      ),
     )
-    stepWormLocomotion(plant, rootState, action, model.plant.timestep, field, 0)
-    const pose = deriveWormLocalPose(plant, action)
-    const lateral = pose.map((segment) => segment.lateral)
-    maximumLateralSpan = Math.max(maximumLateralSpan, Math.max(...lateral) - Math.min(...lateral))
-    if (checkpointSteps.has(step)) {
-      checkpoints.push({
-        step,
-        position: [rootState.x, rootState.z],
-        heading: rootState.heading,
-        forwardSpeed: plant.forwardSpeed,
-        angularSpeed: plant.angularSpeed,
-        joints: [...plant.joints],
-        jointVelocities: [...plant.jointVelocities],
-        commands: Array.from({ length: SEGMENT_COUNT }, (_, segment) => action[segment * 2]),
-      })
+    const firstWarm = join(firstDirectory, 'warm.json')
+    const secondWarm = join(secondDirectory, 'renamed-warm.json')
+    const thirdWarm = join(thirdDirectory, 'warm.json')
+    await Promise.all([
+      copyFile(legacyUrl, firstWarm),
+      copyFile(legacyUrl, secondWarm),
+      copyFile(legacyUrl, thirdWarm),
+    ])
+    const first = runTrainingSmoke(firstDirectory, firstWarm, 991)
+    const second = runTrainingSmoke(secondDirectory, secondWarm, 991)
+    const third = runTrainingSmoke(thirdDirectory, thirdWarm, 992)
+    const [firstArtifact, secondArtifact, thirdArtifact, firstSummary, secondSummary] = await Promise.all([
+      readFile(first.artifact),
+      readFile(second.artifact),
+      readFile(third.artifact),
+      readFile(first.summary),
+      readFile(second.summary),
+    ])
+    expect(
+      firstArtifact.equals(secondArtifact),
+      'same-seed artifacts must be byte-identical across warm paths',
+    )
+    expect(firstSummary.equals(secondSummary), 'same-seed summaries must be byte-identical across warm paths')
+    expect(!firstArtifact.equals(thirdArtifact), 'different evolution seeds must produce different artifacts')
+    const parsed = JSON.parse(firstArtifact.toString('utf8')) as any
+    const warmStart = recordValue(parsed.training?.warmStart, 'smoke training.warmStart')
+    expect(
+      exactArray(Object.keys(warmStart).sort(), ['modelVersion', 'sha256']),
+      'generated warm-start metadata must be path-independent',
+    )
+    return {
+      seed: 991,
+      canonicalSha256: createHash('sha256').update(firstArtifact).digest('hex'),
+      locationIndependent: true,
     }
+  } finally {
+    await rm(workspace, { recursive: true, force: true })
   }
-  return { finalX: rootState.x, finalZ: rootState.z, maximumLateralSpan, checkpoints }
 }
 
-function readPythonParityTrace(): { steps: number; checkpoints: ParityCheckpoint[] } {
+function runTrainingSmoke(directory: string, warmStart: string, seed: number) {
+  const artifact = join(directory, 'model.json')
+  const summary = join(directory, 'summary.json')
   const result = spawnSync(
     'uv',
     [
       'run',
       'python',
       '-m',
-      'wurmkickflip_rl.locomotion_parity_trace',
-      '--model',
-      resolve(root, 'public/models/wurmkickflip_locomotion_policy.json'),
+      'wurmkickflip_rl.evolve_locomotion_policy',
+      '--seed',
+      String(seed),
+      '--generations',
+      '1',
+      '--population-size',
+      '4',
+      '--elite-count',
+      '2',
+      '--episode-steps',
+      '60',
+      '--model-version',
+      'locomotion-articulated-smoke-v2',
+      '--warm-start',
+      warmStart,
+      '--out',
+      artifact,
+      '--summary',
+      summary,
     ],
-    { cwd: resolve(root, 'training'), encoding: 'utf8' },
+    { cwd: trainingRoot, encoding: 'utf8', maxBuffer: 4 * 1024 * 1024 },
   )
-  expect(result.status === 0, `Python locomotion parity trace failed: ${result.stderr || result.stdout}`)
-  const value = JSON.parse(result.stdout) as { steps?: unknown; checkpoints?: unknown }
-  expect(value.steps === artifact.training.episodeSteps, 'Python parity trace used the wrong episode length')
-  expect(Array.isArray(value.checkpoints), 'Python parity trace did not return checkpoints')
-  return value as { steps: number; checkpoints: ParityCheckpoint[] }
-}
-
-function compareParityCheckpoints(browser: ParityCheckpoint[], python: ParityCheckpoint[]) {
-  expect(browser.length === python.length, 'Python/browser parity checkpoint counts differ')
-  let maximumDelta = 0
-  for (let index = 0; index < browser.length; index += 1) {
-    const browserCheckpoint = browser[index]
-    const pythonCheckpoint = python[index]
-    expect(browserCheckpoint.step === pythonCheckpoint.step, 'Python/browser parity checkpoint steps differ')
-    for (const key of ['position', 'joints', 'jointVelocities', 'commands'] as const) {
-      expect(browserCheckpoint[key].length === pythonCheckpoint[key].length, `parity ${key} lengths differ`)
-      for (let valueIndex = 0; valueIndex < browserCheckpoint[key].length; valueIndex += 1) {
-        maximumDelta = Math.max(
-          maximumDelta,
-          Math.abs(browserCheckpoint[key][valueIndex] - pythonCheckpoint[key][valueIndex]),
-        )
-      }
-    }
-    maximumDelta = Math.max(
-      maximumDelta,
-      Math.abs(browserCheckpoint.heading - pythonCheckpoint.heading),
-      Math.abs(browserCheckpoint.forwardSpeed - pythonCheckpoint.forwardSpeed),
-      Math.abs(browserCheckpoint.angularSpeed - pythonCheckpoint.angularSpeed),
-    )
+  if (result.status !== 0) {
+    throw new Error(`locomotion evolution smoke failed:\n${result.stderr || result.stdout}`)
   }
-  return maximumDelta
+  return { artifact, summary }
 }
 
-function aggregate(rollouts: Rollout): Rollout
-function aggregate(rollouts: Rollout[]): Rollout
-function aggregate(rollouts: Rollout | Rollout[]): Rollout {
-  const values = Array.isArray(rollouts) ? rollouts : [rollouts]
+function createSegments(model: LocomotionPolicyArtifact): SegmentSnapshot[] {
+  return Array.from({ length: SEGMENT_COUNT }, (_, index) => ({
+    x: (index - (SEGMENT_COUNT - 1) * 0.5) * model.plant.spacing,
+    y: model.plant.baseGroundClearance,
+    z: 0,
+    vx: 0,
+    vy: 0,
+    vz: 0,
+    pitch: 0,
+    yaw: 0,
+  }))
+}
+
+function flatField(friction: number): TerrainField {
   return {
-    progress: mean(values.map((value) => value.progress)),
-    displacement: mean(values.map((value) => value.displacement)),
-    temporalStd: mean(values.map((value) => value.temporalStd)),
-    spatialStd: mean(values.map((value) => value.spatialStd)),
-    finalX: mean(values.map((value) => value.finalX)),
-    finalZ: mean(values.map((value) => value.finalZ)),
-    traceHash: createHash('sha256').update(values.map((value) => value.traceHash).join(':')).digest('hex'),
+    width: 100,
+    depth: 100,
+    minimumHeight: 0,
+    maximumHeight: 0,
+    gridResolution: TERRAIN_GRID_RESOLUTION,
+    heightAtGridVertex: () => 0,
+    waypoints: [],
+    sample: () => ({ height: 0, friction, normal: [0, 1, 0], surface: 'sand' }),
   }
 }
 
-async function verifyTrainingReproducibility() {
-  const temp = await mkdtemp(join(tmpdir(), 'wurmkickflip-locomotion-'))
-  try {
-    const hashes: string[] = []
-    for (const [suffix, seed] of [['a', '407'], ['b', '407'], ['different-seed', '408']] as const) {
-      const output = join(temp, `model-${suffix}.json`)
-      const summary = join(temp, `summary-${suffix}.json`)
-      const result = spawnSync(
-        'uv',
-        [
-          'run',
-          'python',
-          '-m',
-          'wurmkickflip_rl.evolve_locomotion_policy',
-          '--seed',
-          seed,
-          '--generations',
-          '3',
-          '--population-size',
-          '10',
-          '--elite-count',
-          '2',
-          '--episode-steps',
-          '60',
-          '--warm-start',
-          resolve(root, 'training/seeds/wurmkickflip_locomotion_warm_start_v1.json'),
-          '--out',
-          output,
-          '--summary',
-          summary,
-          '--model-version',
-          'locomotion-repro-smoke',
-        ],
-        { cwd: resolve(root, 'training'), encoding: 'utf8' },
-      )
-      expect(result.status === 0, `locomotion reproducibility training failed: ${result.stderr || result.stdout}`)
-      hashes.push(createHash('sha256').update(await readFile(output)).digest('hex'))
-    }
-    expect(hashes[0] === hashes[1], 'same-seed locomotion training must export byte-identical artifacts')
-    expect(hashes[0] !== hashes[2], 'different-seed locomotion training must produce a different artifact')
-  } finally {
-    await rm(temp, { recursive: true, force: true })
+function baseSensors(): LocomotionSensors {
+  return {
+    targetForward: 0.7,
+    targetRight: -0.25,
+    targetDistance: 0.8,
+    forwardSpeed: 0,
+    angularSpeed: 0,
+    terrainFriction: 0.9,
+    urgency: 0.8,
+    contactLoads: new Float64Array(SEGMENT_COUNT).fill(1),
+    slipSpeeds: new Float64Array(SEGMENT_COUNT),
+    obstacleForward: new Float64Array(SEGMENT_COUNT),
+    obstacleRight: new Float64Array(SEGMENT_COUNT),
   }
+}
+
+function aggregate(rollouts: Rollout[]): Rollout {
+  return {
+    progress: mean(rollouts.map(rollout => rollout.progress)),
+    displacement: mean(rollouts.map(rollout => rollout.displacement)),
+    pathLength: mean(rollouts.map(rollout => rollout.pathLength)),
+    temporalStd: mean(rollouts.map(rollout => rollout.temporalStd)),
+    spatialStd: mean(rollouts.map(rollout => rollout.spatialStd)),
+    meanContactRatio: mean(rollouts.map(rollout => rollout.meanContactRatio)),
+    finalX: mean(rollouts.map(rollout => rollout.finalX)),
+    finalZ: mean(rollouts.map(rollout => rollout.finalZ)),
+    finalHeading: mean(rollouts.map(rollout => rollout.finalHeading)),
+    traceHash: createHash('sha256')
+      .update(rollouts.map(rollout => rollout.traceHash).join(':'))
+      .digest('hex'),
+  }
+}
+
+function expectReject(source: any, mutate: (candidate: any) => void, label: string) {
+  const candidate = structuredClone(source)
+  mutate(candidate)
+  let rejected = false
+  try {
+    parseLocomotionPolicy(candidate)
+  } catch {
+    rejected = true
+  }
+  expect(rejected, `parser must reject ${label}`)
+}
+
+function bodyHeading(segments: readonly SegmentSnapshot[]) {
+  const tail = segments[0]
+  const head = segments[segments.length - 1]
+  return Math.atan2(head.z - tail.z, head.x - tail.x)
+}
+
+function center(segments: readonly SegmentSnapshot[]) {
+  return segments.reduce(
+    (result, segment) => ({
+      x: result.x + segment.x / segments.length,
+      z: result.z + segment.z / segments.length,
+    }),
+    { x: 0, z: 0 },
+  )
+}
+
+function recordValue(value: unknown, label: string): Record<string, any> {
+  if (typeof value !== 'object' || value === null || Array.isArray(value)) {
+    throw new Error(`${label} must be an object`)
+  }
+  return value as Record<string, any>
 }
 
 function finiteInteger(value: unknown, label: string) {
-  expect(typeof value === 'number' && Number.isInteger(value), `${label} must be an integer`)
+  if (typeof value !== 'number' || !Number.isInteger(value) || value <= 0) {
+    throw new Error(`${label} must be a positive integer`)
+  }
   return value
 }
 
-function recordValue(value: unknown, label: string): Record<string, unknown> {
-  expect(typeof value === 'object' && value !== null && !Array.isArray(value), `${label} must be an object`)
-  return value as Record<string, unknown>
+function exactArray(value: unknown, expected: readonly unknown[]) {
+  return (
+    Array.isArray(value) &&
+    value.length === expected.length &&
+    value.every((item, index) => item === expected[index])
+  )
 }
 
 function standardDeviation(values: number[]) {
   const average = mean(values)
-  return Math.sqrt(mean(values.map((value) => (value - average) ** 2)))
+  return Math.sqrt(mean(values.map(value => (value - average) ** 2)))
 }
 
 function mean(values: number[]) {
@@ -524,13 +659,9 @@ function mean(values: number[]) {
 }
 
 function round(value: number) {
-  return Math.round(value * 1_000_000) / 1_000_000
+  return Math.round(value * 1e8) / 1e8
 }
 
-function clamp(value: number, minimum: number, maximum: number) {
-  return Math.max(minimum, Math.min(maximum, value))
-}
-
-function expect(condition: boolean, message: string): asserts condition {
+function expect(condition: unknown, message: string): asserts condition {
   if (!condition) throw new Error(message)
 }

@@ -43,7 +43,10 @@ try {
 
 check(policy.schemaVersion === 1, 'schemaVersion must equal 1.')
 check(policy.kind === 'wurmkickflip.stuntPolicy', 'kind must equal wurmkickflip.stuntPolicy.')
-check(typeof policy.modelVersion === 'string' && policy.modelVersion.length > 0, 'modelVersion must be non-empty.')
+check(
+  typeof policy.modelVersion === 'string' && policy.modelVersion.length > 0,
+  'modelVersion must be non-empty.',
+)
 check(policy.inputSize === OBSERVATION_SIZE, `inputSize must equal ${OBSERVATION_SIZE}.`)
 check(policy.outputSize === ACTION_SIZE, `outputSize must equal ${ACTION_SIZE}.`)
 check(Number.isInteger(policy.hiddenSize) && policy.hiddenSize > 0, 'hiddenSize must be a positive integer.')
@@ -113,7 +116,10 @@ function checkTraining(value: unknown) {
   check(typeof value.seed === 'number' && Number.isInteger(value.seed), 'training.seed must be an integer.')
   check(isPositiveInteger(value.samples), 'training.samples must be a positive integer.')
   check(isPositiveInteger(value.epochs), 'training.epochs must be a positive integer.')
-  check(isNonNegativeFinite(value.validationMse), 'training.validationMse must be a non-negative finite number.')
+  check(
+    isNonNegativeFinite(value.validationMse),
+    'training.validationMse must be a non-negative finite number.',
+  )
   check(
     typeof value.teacherAgreement === 'number' &&
       Number.isFinite(value.teacherAgreement) &&
@@ -143,7 +149,10 @@ function checkIgnoredColumns(value: unknown) {
       maximum = Math.max(maximum, Math.abs(row[column]))
     }
   }
-  check(maximum === 0, `ignored observation columns must be exactly zero; max absolute weight was ${maximum}.`)
+  check(
+    maximum === 0,
+    `ignored observation columns must be exactly zero; max absolute weight was ${maximum}.`,
+  )
 }
 
 function check(condition: boolean, message: string) {

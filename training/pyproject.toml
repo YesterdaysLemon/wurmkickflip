@@ -12,8 +12,47 @@ dependencies = [
   "torch>=2.5.0",
 ]
 
+[dependency-groups]
+dev = [
+  "pyright>=1.1.400",
+  "pytest>=8.3.0",
+  "ruff>=0.11.0",
+]
+
 [tool.uv]
 package = true
+required-version = "==0.11.8"
 
 [tool.setuptools.packages.find]
 where = ["."]
+
+[tool.ruff]
+target-version = "py311"
+line-length = 120
+extend-exclude = [".venv", "runs"]
+
+[tool.ruff.lint]
+select = ["E4", "E7", "E9", "F"]
+
+[tool.ruff.format]
+quote-style = "double"
+indent-style = "space"
+
+[tool.pyright]
+pythonVersion = "3.11"
+typeCheckingMode = "basic"
+include = [
+  "wurmkickflip_rl/contracts.py",
+  "wurmkickflip_rl/env.py",
+  "wurmkickflip_rl/evolve_locomotion_policy.py",
+  "wurmkickflip_rl/fixture_observation.py",
+  "wurmkickflip_rl/locomotion_parity_trace.py",
+  "wurmkickflip_rl/replay_schema.py",
+  "wurmkickflip_rl/validate_onnx.py",
+]
+exclude = [".venv", "runs"]
+reportMissingTypeStubs = false
+
+[tool.pytest.ini_options]
+addopts = ["--strict-config", "--strict-markers", "-ra"]
+testpaths = ["tests"]

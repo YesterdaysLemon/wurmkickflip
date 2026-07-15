@@ -63,9 +63,10 @@ export class LocomotionPolicyRunner {
       this.status = {
         loaded: false,
         modelVersion: 'locomotion-unavailable',
-        message: error instanceof Error
-          ? `Locomotion artifact unavailable: ${error.message}`
-          : 'Locomotion artifact unavailable.',
+        message:
+          error instanceof Error
+            ? `Locomotion artifact unavailable: ${error.message}`
+            : 'Locomotion artifact unavailable.',
       }
     }
     return this.status

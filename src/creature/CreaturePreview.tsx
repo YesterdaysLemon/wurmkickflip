@@ -12,19 +12,13 @@ export function CreaturePreview({ genome, offset = [0, 0, -0.95] }: CreaturePrev
 
   return (
     <group position={offset}>
-      {genome.morphology.bodyParts.map((part) => (
-        <mesh
-          castShadow
-          key={part.id}
-          position={part.position}
-          rotation={part.rotation}
-          scale={part.size}
-        >
+      {genome.morphology.bodyParts.map(part => (
+        <mesh castShadow key={part.id} position={part.position} rotation={part.rotation} scale={part.size}>
           <CreatureGeometry shape={part.shape} />
           <meshStandardMaterial color={part.visual.color} roughness={0.72} />
         </mesh>
       ))}
-      {genome.morphology.joints.map((joint) => (
+      {genome.morphology.joints.map(joint => (
         <mesh castShadow key={joint.id} position={joint.anchor}>
           <sphereGeometry args={[0.035, 12, 12]} />
           <meshStandardMaterial color="#25332d" roughness={0.5} />

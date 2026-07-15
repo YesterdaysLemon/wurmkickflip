@@ -13,7 +13,6 @@ Keep these files aligned:
 - `training/wurmkickflip_rl/train_stunt_policy.py`
 - `training/wurmkickflip_rl/validate_stunt_policy.py`
 - `public/models/wurmkickflip_stunt_policy.json`
-- `public/models/wurmkickflip_policy.meta.json`
 
 Any change to segment count, observation size, action size, or timestep must update every applicable contract, artifact, validator, and observation/action implementation in the same change.
 
@@ -95,42 +94,36 @@ Future physics may convert these activations into Rapier joint motors, soft-body
 
 The JavaScript runtime validates this shape before inference. `npm run verify:stunt-policy` also runs held-out canonical behavior checks for coil, release, kick, airborne tuck, traveling waves, roll feedback, exact-zero ignored input columns, and ignored-feature perturbation invariance. The model is behavior-distilled imitation from a deterministic state-aware teacher; it is not PPO/RL and its passing signals are not proof of transfer in a high-fidelity physics simulator.
 
-## Optional ONNX Metadata Contract
+## Retired Browser ONNX Backend
 
-`public/models/wurmkickflip_policy.meta.json` must include:
-
-- `modelVersion`
-- `modelPath`
-- `observationSize`
-- `actionSize`
-- `timestep`
-- `trainingReward`
-- `observationMean`
-- `observationStd`
-
-The runtime validates `observationSize` and `actionSize` before loading ONNX. ONNX is an explicit optional backend, not the default. Old local `ppo-smoke-v1` files with 118-float inputs are stale and must be retrained and re-exported for the 174-float contract.
+The browser no longer ships ONNX Runtime, generated WASM binaries, or `wurmkickflip_policy.meta.json`. The older Python PPO/ONNX exporter remains an offline experiment, but its artifacts are not a supported exhibit backend. Historical replay artifacts may retain ONNX backend labels as provenance.
 
 ## Evolved Locomotion Contract
 
 `public/models/wurmkickflip_locomotion_policy.json` is the tracked detached-crawl controller. Keep it aligned with:
 
+- `contracts/locomotion-v2.json`
 - `src/policy/locomotionPolicy.ts`
 - `src/policy/locomotionRunner.ts`
 - `src/scene/wormLocomotion.ts`
+- `src/scene/wormDynamics.ts`
+- `training/wurmkickflip_rl/articulated_locomotion.py`
 - `training/wurmkickflip_rl/evolve_locomotion_policy.py`
 - `scripts/verify-locomotion-policy.ts`
 
-The artifact has 16 recurrent `tanh` neurons, one per segment, and emits the same 32-value dorsal/ventral action shape. Seven global sensors are `targetForward`, `targetRight`, `targetDistance`, `forwardSpeed`, `angularSpeed`, `terrainFriction`, and `urgency`. Each neuron also receives its anatomical position, bend, bend velocity, previous command, recurrent state, and immediate anterior/posterior neighbor state.
+The schema-v2 artifact has 16 recurrent `tanh` neurons, one per segment, and emits the same 32-value dorsal/ventral action shape. Seven global sensors are `targetForward`, `targetRight`, `targetDistance`, `forwardSpeed`, `angularSpeed`, `terrainFriction`, and `urgency`. Each neuron also receives its anatomical position, bend, bend velocity, previous command, recurrent state, immediate anterior/posterior neighbor state, and segment-local `contactLoad`, `slipSpeed`, `obstacleForward`, and `obstacleRight` feedback.
 
-The 39-number evolved genome consists of 16 initial recurrent states, 13 shared input weights, three shared recurrent weights, and seven shared output weights. It must not gain time, clock, cycle, gait-phase, or trigonometric teacher inputs without an explicit redesign. Its trainer must not contain a disguised sinusoidal CPG recipe.
+The 45-number evolved genome consists of 16 initial recurrent states, 17 shared input weights, three shared recurrent weights, and nine shared output weights. Schema-v1 artifacts migrate by appending zero weights for the new local-contact channels. The controller must not gain time, clock, cycle, gait-phase, or trigonometric teacher inputs without an explicit redesign. Its trainer must not contain a disguised sinusoidal CPG recipe.
 
-The locomotion plant is part of the causal contract: target data can affect neural outputs but cannot directly alter root pose. Root thrust comes from adjacent-joint traveling work and terrain traction; steering comes from front-weighted joint shape. The artifact enumerates joint gains/limits, traction cap and inverse-traction floor, propulsion/drag gains, steering gains, and linear/angular speed clamps; the parser rejects any drift from the shared browser contract. `npm run verify:locomotion` requires the evolved controller to beat zero-action, frozen-pose, and deterministic segment-shuffle ablations, requires zero-friction displacement from rest to remain zero, and executes a Python-versus-browser checkpoint trace across positions, heading, speeds, joint states, and segment commands.
+The `articulated-contact-v2` plant is part of the causal contract: target data can affect neural outputs but cannot directly alter root pose. Mean-free internal shape forces and equal/opposite distance constraints move a free 16-segment chain; net translation emerges only through anisotropic per-segment ground contact or obstacle impulses. The canonical JSON enumerates joint gains, spacing, actuator gains, constraint compliance, longitudinal/lateral friction, velocity limits, radii, and ground clearance. The parser rejects drift from that contract; its `maximumVerticalSpeed` default exists only to read earlier schema-v2 artifacts that predate that field.
+
+`npm run verify:locomotion` requires deterministic active-contact travel, steering and local-sensor effects, stronger progress than zero/frozen/shuffled recurrent interventions, and obstacle-free zero-friction center-of-mass conservation below `1e-12`. It also checks malformed schema-v1/v2 rejection and byte-identical same-seed smoke exports when identical warm-start bytes are staged at different paths. The long `npm run verify:locomotion:published` lane repeats the exact two-stage public recipe in a unique temporary directory. Warm-start metadata contains only the source SHA-256 and model version; filesystem paths are not artifact identity.
 
 The kickflip is outside this locomotion contract. The browser scripts its pop, board rotation, landing window, and lifecycle.
 
 ### Runtime Ownership Boundary
 
-The evolved artifact owns only the recurrent segment commands produced during `crawling` and `seeking`. The deterministic needs selector supplies a goal; it is not a learned planner. Downstream joint integration, adjacent-joint-work propulsion, shape steering, and terrain traction are derived plant dynamics. `terrariumCollisions.ts` then derives swept wall/prop contact and frictional sliding, while per-segment contact anchors derive stick-slip grip from joint speed, terrain friction, and strain. None of those downstream rules should be presented as additional neural outputs or evidence that evolution learned contact physics.
+The evolved artifact owns only the recurrent segment commands produced during `crawling` and `seeking`. The deterministic needs selector supplies a goal; it is not a learned planner. Joint servos, mean-free articulated shape forces, constraints, anisotropic ground damping, and obstacle impulses are plant dynamics. They return measured root motion and segment-local contact feedback, but none should be presented as extra neural outputs or evidence that evolution learned a general contact solver.
 
 The scene authors target-aware tangent reorientation after blocked contact and all resource/stunt transitions. `wormInteractionAnimation.ts` scripts head-to-tail mounting, head-first dismounting, and face-only eating/drinking; the scene also scripts board routing, pop, aerial rotation, and landing. A food or water approach can therefore be neural while the visible contact cycle is scripted. Run `npm run verify:collisions` for the derived contact layer, `npm run verify:interactions` for authored contact choreography, and `npm run verify:motion` for their integration with the evolved controller and resource lifecycle.
 
@@ -140,9 +133,8 @@ The scene authors target-aware tangent reorientation after blocked contact and a
 - Do not train against a Python layout that differs from the browser layout.
 - Do not accept a learned JSON artifact whose matrix dimensions or behavior checks fail.
 - Keep the distilled teacher mask, exported `teacherFeatureIndices`, zeroed unused weights, and validators aligned when retraining the tracked JSON artifact.
-- Do not export ONNX with input/output names that future browser code cannot discover or map.
-- Keep scripted fallback working when a requested mounted-stunt JSON or ONNX artifact is absent or invalid. A missing crawl artifact must instead hold detached actuators at zero and report the unavailable brain.
-- Keep the locomotion artifact, browser recurrence, Python evolution equations, causal joint-work plant, and ablation thresholds aligned.
+- Keep the scripted mounted fallback working when the tracked stunt JSON is absent or invalid. A missing crawl artifact must instead hold detached actuators at zero and report the unavailable brain.
+- Keep the locomotion artifact, browser recurrence, Python evolution equations, articulated contact plant, and ablation thresholds aligned.
 - Do not add authored oscillator time/phase or sine/cosine gait outputs to the evolved locomotion path.
-- Do not describe collision solving, stick-slip anchors, need selection, feeding/mounting choreography, board routing, or the kickflip as learned by the detached locomotion artifact.
+- Do not describe collision solving, anisotropic friction, need selection, feeding/mounting choreography, board routing, or the kickflip as learned by the detached locomotion artifact.
 - Add parity tests before any contract expansion.

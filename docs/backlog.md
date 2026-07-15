@@ -1,76 +1,59 @@
 # Backlog
 
-## P0 - Policy Integration And Contract Safety
+## P0 — Contract And Regression Safety
 
-No open P0 tasks. Keep contract and runtime verification green before longer training runs.
+No open P0 implementation task. Keep these invariants green before promoting another model:
 
-- Add typed creature genome and dynamic skateboard environment config layer. Done for first sample configs.
-- Validate creature and environment config JSON before runtime use. Done in `npm run verify:configs`.
-- Add automated policy contract verification for TypeScript, Python, metadata, and docs. Done in `npm run verify:contract`.
-- Repair the observation contract to the complete 174-float layout and prove the tail segment plus all 32 previous actions survive. Done in `npm run verify:parity`.
-- Wire scene observations through `PolicyRunner.run` and fail verification if the live scene silently bypasses the selected policy. Done in `npm run verify:runtime`.
-- Track a reproducible 174-to-hidden-to-32 distilled JSON policy and validate held-out stunt signals. Done in `npm run verify:stunt-policy`.
-- Track a reproducible 39-parameter segmental recurrent locomotion policy with no gait clock or trigonometric teacher. Done in `npm run verify:locomotion`.
-- Train a short PPO smoke-test policy and export `wurmkickflip_policy.onnx`. Historical 118-input artifacts exist locally but are stale after the contract repair.
-- Retrain and revalidate optional ONNX inference with both WebGPU and WASM against the 174-float contract.
-- Add a policy output sanity check: length 32, finite values, clipped to `[-1, 1]`. Done in `npm run verify:runtime`.
-- Record a deterministic scripted rollout fixture for regression checks. Done in `npm run verify:runtime`.
+- one canonical `articulated-contact-v2` contract across TypeScript and Python;
+- exactly 16 segment owners and 32 dorsal/ventral channels;
+- no gait clock/phase/trigonometric teacher or direct root-motion action;
+- obstacle-free zero-friction horizontal center-of-mass conservation;
+- reproducible public model bytes from an isolated two-stage run;
+- real mouth contact and nonempty inventory required for food/water restoration;
+- scripted kickflip and lifecycle layers labeled honestly.
 
-## P1 - Training Quality And Simulation Fidelity
+## P1 — Learning And Physics Fidelity
 
-- Add Python evolution scaffold that reads creature/environment configs and emits generation summaries. Done in `npm run verify:evolution`.
-- Export best evolved CPG controller as a browser-loadable generated creature config. Done in `npm run verify:evolution`; this is now a legacy morphology/CPG experiment, not the live crawl brain.
-- Make Python surrogate dynamics consume creature morphology and environment config fields. Done in `npm run verify:env`.
-- Add replay artifact schema for skateboard discovery/contact/rolling metrics. Done in `npm run verify:replay`.
-- Improve reward shaping for true board balance and forward progress.
-- Replace or supplement the authored browser stunt plant with a physically faithful skateboard environment that can train and evaluate genuine kickflip transfer.
-- Add episode metrics: fall reason, average contact ratio, energy use, distance, and survival time. Done in `npm run verify:env`.
-- Add a replay recorder that can save browser rollout JSON for later inspection.
-- Extend the legacy CPG experiment into calibrated morphology mutation. Done for first body-scale/material/joint-scale pass.
-- Extend the new segmental recurrent evolution into morphology co-evolution without losing browser-plant parity or causal ablations.
-- Calibrate or replace the Python surrogate against the intended high-fidelity physics plant; do not calibrate training claims solely to the authored showcase.
-- Evaluate adding MuJoCo for offline training while preserving the same policy contract.
-- Evaluate Rapier, MuJoCo, or another rigid-body backend for trainable board/worm contacts and articulated constraints.
-- Add wheel/truck tuning controls for friction, stiffness, mass, and deck dimensions.
-- Add a manual-control/debug mode for muscle activations.
-- Add a training summary panel for model version, reward, and export timestamp.
+- Move resource discovery, mouth contact, finite consumption, board approach, mounting, and rolling outcomes into a contact-rich training environment. Today the approach is neural but transitions are authored.
+- Train a genuine skateboard-contact objective before claiming that mounting, balance, rolling, or kickflips were learned.
+- Compare MuJoCo, Brax, and a custom vectorized contact plant using held-out seeds, throughput, determinism, and browser-contract parity.
+- Co-evolve morphology and control without silently projecting every genome onto the fixed 16-segment lattice. Version the actuator/sensor topology when it changes.
+- Add actuator delay/noise, partial sensor loss, board mass/wheel friction, restitution, and stronger obstacle-layout randomization to evaluation.
+- Calibrate compact plant distributions against the chosen higher-fidelity backend rather than against authored browser choreography.
+- Add generation comparison and held-out evaluation views using the existing replay/metric contracts.
+- Add an explicit manual muscle debugger with per-segment commands, contacts, slip, and obstacle normals.
+- Move expensive simulation or lightweight evolution into a worker only if interactive workloads outgrow the current measured frame budget.
 
-## P2 - Visual Fidelity And OpenWorm Alignment
+## P2 — Presentation And Inspection
 
-- Add branching morphology rendering for non-worm creatures. Done for first primitive creature pool.
-- Add skateboard discovery visual markers and contact/rolling overlays.
-- Add optional neuron/muscle activity overlays. Done for the default neural showcase.
-- Add terrarium visual details such as scale references and better glass edge highlights. Seeded height variation and friction-colored substrate regions are done.
-- Code-split ONNX Runtime so initial browser bundle size is smaller before a model is loaded.
-- Add WebGPU capability diagnostics to the policy status panel.
-- Add mobile layout verification for the training viewer.
-- Add documentation links to OpenWorm/c302/Sibernetic references in a future research notes file.
+- Add optional segment force/contact vectors and neuron/recurrent-state overlays.
+- Add skateboard discovery, mouth-contact, inventory/refill, and rolling markers to replay inspection.
+- Add a scrubber with frame/time labels and side-by-side replay comparison.
+- Improve bowl eating/drinking art, board trucks/wheels, glass highlights, scale references, and terrain material transitions.
+- Add explicit mobile and keyboard-navigation visual regression coverage.
+- Expand genuinely branching morphology rendering once the runtime supports non-fixed control topologies.
+- Add research notes comparing the compact plant with OpenWorm/c302/Sibernetic and modern articulated simulation backends without implying biological equivalence.
 
-## Done
+## Completed Foundation
 
-- Greenfield React + TypeScript + Vite app.
-- Three/R3F/Drei terrarium and stunt scene shell.
-- Procedural terrarium, skateboard, trucks, wheels, and worm visual rig.
-- First creature genome and adaptive skateboard environment JSON configs.
-- Scripted muscle-wave fallback controller.
-- Tracked behavior-distilled `neural-js` stunt policy with reproducible training and behavioral validation.
-- Deterministic 60 Hz browser composition with scripted kickflip/landing and evolved Free crawl modes.
-- Larger seeded square terrain shared by rendering and dynamics, with hills, mounds, microrelief, surface normals, and sand/moss/clay friction regions.
-- Smooth two-dimensional board routes and bounded arena steering without wraparound teleporting.
-- Independent worm-root lifecycle for riding, dismounting, crawling, explicit feeding, seeking the board, mounting, and continuous remounting.
-- Food and water bowls plus skateboard well-being resource, deterministic urgency selection, contact-gated need restoration, resource-release cooldowns, and live homeostasis telemetry.
-- Clock-free `locomotion-segmental-es-quality-robust-v1` recurrent controller: 16 segment-owned neurons, 39 evolved parameters, an 80-generation risk-sensitive refinement from the preserved 110-generation base, population 128.
-- Causal joint-work locomotion plant with zero-action, frozen-pose, segment-shuffle, and zero-friction ablations.
-- Deterministic swept planar collisions for glass bounds, tree/rock trunks, resources, board deck probes, the worm root, and every rendered segment, including tangent sliding and overlap/wedge recovery.
-- Derived per-segment stick-slip ground anchors whose grip follows terrain friction, joint speed, and bounded strain without adding an authored crawl oscillator.
-- Deterministic additive interaction choreography with head-to-tail mounting, head-first terrain-braced dismounting, face-only eating/drinking, mouth/swallow cues, and bowl reactions.
-- Masked `stunt-distilled-v2` controller with zero ignored-feature weights and perturbation-invariance validation.
-- Deterministic terrain, collision, interaction, needs, recurrent locomotion, and integrated motion verifiers in `verify:terrain`, `verify:collisions`, `verify:interactions`, `verify:needs`, `verify:locomotion`, and `verify:motion`.
-- ONNX Runtime WebGPU/WASM policy loader path.
-- Python 3.11 `uv` training scaffold with Gymnasium + Stable Baselines3.
-- Initial local Git commit.
+- Vite/React/TypeScript/Three.js terrarium with config-derived creatures and seeded environments.
+- Resource-granular config loading, strict validation, failure preservation, retry UI, and a fixed-runtime compatibility adapter.
+- Shared render/physics triangle heightfield with deterministic normals, surfaces, and friction.
+- Pure headless terrarium simulation separated from React/Three rendering.
+- Free 16-particle articulated body with mean-free muscle forces, equal/opposite constraints, anisotropic ground friction, height-aware swept contacts, and measured root state.
+- Clock-free 45-value recurrent controller: 16 segment owners, local contact/slip/obstacle feedback, 32 antagonistic channels, deterministic two-stage evolution, and exact reproduction lane.
+- Zero, frozen, segment-deranged, steering/locality, deterministic-trace, and zero-friction COM checks.
+- Finite food/water inventories, deterministic refill, exact 3D mouth-to-contents restoration, skateboard well-being, urgency/hysteresis, and repeated autonomous resource cycles.
+- Solid glass, trees, rocks, annular bowl rims, skateboard probes, and tapered body segments with anti-tunneling, overlap recovery, tangent motion, and collision property tests.
+- Scripted head-to-tail mounting, head-first dismounting, feeding poses, board routing, kickflip/pop/landing, and an honestly labeled distilled mounted pose prior.
+- Versioned checksummed replay recorder/player with strict timing, all muscle channels, deterministic interpolation, import/export UI, and tamper rejection.
+- Reduced-motion simulation pause with explicit user override.
+- Static analysis, Python checks, bundle budget and retired-ONNX assertion, collision/dynamics/performance verifiers, long integrated lifecycle rollout, and Playwright flows.
+- Browser ONNX Runtime/WASM payloads removed; older PPO/ONNX and sinusoidal CPG/morphology paths retained only as offline legacy experiments.
 
 ## Guardrails
 
-- Fix any mismatch between Python observation semantics and browser observation semantics before longer training runs.
-- Keep ownership claims explicit: recurrent segment commands are evolved; joint work, grip, and swept contact are derived; resource/mount/stunt choreography and post-collision tangent steering are scripted.
+- Fix browser/Python semantic drift before longer training.
+- Treat checksums as corruption detection, not authentication.
+- Never describe deterministic homeostasis, constraints, friction, collision response, contact choreography, route planning, or stunt timing as network outputs.
+- Promote generated artifacts only with stable provenance and reproduction instructions.
