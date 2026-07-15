@@ -1,0 +1,121 @@
+# Evolved locomotion controller
+
+The detached worm uses a clock-free segmental recurrent neural controller. It is
+separate from the mounted exhibition path because the two jobs have different
+contracts: the kickflip is scripted, while ordinary locomotion must emerge from
+segment actuator work.
+
+## Neural architecture
+
+There are 16 recurrent `tanh` neurons, one per body segment. A neuron receives the
+current target direction, target distance, root speed, angular speed, terrain
+friction, need urgency, its own joint state and command, and the previous states of
+its immediate anterior and posterior neighbors. It emits one bend command which is
+expanded into the antagonistic pair `[command, -command]`.
+
+Controller/plant indices run anterior-to-posterior so segment 0 supplies the
+front-weighted steering torque. The Three.js rig is stored tail-to-face, so the
+forward-kinematics adapter reverses that indexing when it maps plant joints onto
+visible segments; controller segment 0 therefore owns the rendered head.
+
+There is deliberately no time, clock, cycle, gait phase, sine, or cosine input. The
+only recurrence is neural state and neighbor coupling. The controller can therefore
+settle, reverse, steer, or form an emergent limit cycle in response to its body and
+environment rather than reading an authored animation phase.
+
+The tracked browser artifact is
+`public/models/wurmkickflip_locomotion_policy.json`, and its dependency-free browser
+runtime is `src/policy/locomotionPolicy.ts`.
+
+This controller is the live detached-crawl brain. It is not the older sinusoidal CPG
+in `wurmkickflip_rl.evolve`, and it is not the 174-input distilled stunt prior. The
+mounted pop and aerial kickflip remain scripted.
+
+## Actuator plant
+
+For segment `i`, the two policy outputs become a joint command:
+
+```text
+command[i] = clamp((dorsal[i] - ventral[i]) / 2, -1, 1)
+jointVelocity[i] += ((command[i] - joint[i]) * 22 - jointVelocity[i] * 7) * dt
+joint[i] = clamp(joint[i] + jointVelocity[i] * dt, -1.15, 1.15)
+```
+
+Root thrust is caused only by non-reciprocal work traveling across adjacent joints:
+
+```text
+waveWork = mean((joint[i+1] - joint[i]) *
+                (jointVelocity[i+1] + jointVelocity[i]) / 2)
+traction = clamp(terrainFriction, 0, 1.2)
+forwardAcceleration = clamp(-1.35 * waveWork, -2.4, 2.4) * traction
+```
+
+Steering torque comes from the front-weighted joint shape. Target coordinates never
+enter the plant; they can affect motion only by changing neural actuator outputs.
+Zero commands from a reset state remain exactly stationary, and zero traction gives
+exactly zero displacement from rest.
+
+## Reproduce the published evolution
+
+From `training/`:
+
+```powershell
+uv run python -m wurmkickflip_rl.evolve_locomotion_policy `
+  --seed 20260719 `
+  --generations 80 `
+  --population-size 128 `
+  --elite-count 18 `
+  --episode-steps 420 `
+  --model-version locomotion-segmental-es-quality-robust-v1 `
+  --warm-start seeds/wurmkickflip_locomotion_warm_start_v1.json `
+  --out ../public/models/wurmkickflip_locomotion_policy.json `
+  --summary runs/locomotion_evolution/latest-summary.json
+```
+
+The normal verifier uses short deterministic smoke evolutions. Run
+`npm run verify:locomotion:published` from the repository root to repeat this full
+refinement and require canonical artifact equality.
+
+The published run is a risk-sensitive refinement of the preserved 110-generation
+base artifact in `training/seeds/`. One third of its initial population is the base
+genome plus local mutations; metadata records that artifact's path, SHA-256, and
+model version. Its objective emphasizes the bottom two approach scenarios and
+staged approach/close/reached distances. The search evaluates eight
+approach/friction scenarios spanning traction values from 0.33 to 1.12 and mutates
+a 39-number genome containing initial recurrent state, shared sensor/recurrent
+weights, and shared output weights. Only the plant-bound action is quantized to
+Float32, matching the browser while recurrent state remains Float64. No
+demonstration gait or trigonometric teacher is used.
+
+## Homeostasis composition
+
+The browser places a food bowl, a water bowl, and the moving skateboard in the
+terrarium. Hunger, thirst, and well-being are urgency values in `[0, 1]`. A
+deterministic urgency selector with mild target hysteresis chooses one resource;
+food and water restore their needs by proximity, while the skateboard restores
+well-being only while mounted. The selected target is converted to local
+forward/right/distance sensors for the recurrent controller. Need selection does
+not choose segment poses and never writes root position, so the evolved actuators
+must still produce the movement.
+
+Run `npm run verify:needs` to validate deterministic resource placement, urgency
+selection, restoration, the diagnostic homeostasis vector, and a complete
+three-resource loop.
+Run `npm run verify:locomotion` to validate the artifact, browser runtime,
+deterministic same-seed export, an executable Python-versus-browser checkpoint
+trace, steering, and causal ablations. `npm run
+verify:motion` exercises the integrated needs, crawl, mount, and scripted-kickflip
+lifecycle across the three tracked terrarium presets, including full-scene
+zero/frozen/shuffled/no-traction interventions.
+The published browser-equivalent rollout records 1.617159 m mean target progress,
+versus 0 m for zero action, 0.009296 m for a frozen pose, and 0.549072 m after a
+deterministic segment shuffle. Zero-friction displacement is exactly 0 m.
+
+The artifact's training metadata records closed-loop ablations: an intervened
+command is also fed back through the controller's `previousCommand` input. The
+TypeScript verifier reports actuator-only ablations instead, leaving neural
+recurrence intact while changing only what reaches the plant. Those shuffled
+numbers answer different questions and should not be compared directly. The full
+rollouts differ slightly because the artifact rounds parameters to eight decimal
+places and browser actuator actions pass through Float32, while evolutionary
+candidate state and parameters are evaluated in Float64.

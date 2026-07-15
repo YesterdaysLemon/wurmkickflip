@@ -1,9 +1,11 @@
 import {
   Activity,
+  Apple,
   Brain,
   Cpu,
   Gauge,
   Hand,
+  HeartPulse,
   Mountain,
   Pause,
   Play,
@@ -11,6 +13,7 @@ import {
   Sparkles,
   Timer,
   Trophy,
+  Droplets,
   Zap,
 } from 'lucide-react'
 import type { CSSProperties, ReactNode } from 'react'
@@ -58,12 +61,18 @@ const initialMetrics: StuntMetrics = {
   speed: 0,
   landingQuality: 0,
   attempt: 1,
-  stuntName: 'Neural kickflip',
+  stuntName: 'Scripted kickflip',
   bodySpeed: 0,
   mounted: true,
   distanceToBoard: 0,
   terrainFriction: 0.9,
   crawlDistance: 0,
+  hunger: 0.38,
+  thirst: 0.34,
+  wellbeing: 0.42,
+  activeNeed: null,
+  needTarget: null,
+  needTargetDistance: 0,
 }
 
 export function App() {
@@ -107,6 +116,7 @@ export function App() {
   const stuntName = displayedMetrics.stuntName || (showcaseMode === 'kickflip' ? 'Kickflip' : 'Free terrarium crawl')
   const neural = getNeuralStatus(policyStatus.backend)
   const sceneInteractionProps = { interactionNonce, showcaseMode }
+  const needTargetLabel = formatNeedTarget(displayedMetrics.needTarget)
 
   const restartSimulation = (mode: ShowcaseMode = showcaseMode) => {
     setRunning(true)
@@ -114,7 +124,7 @@ export function App() {
       ...initialMetrics,
       backend: policyStatus.backend,
       message: policyStatus.message,
-      stuntName: mode === 'kickflip' ? 'Neural kickflip' : 'Free terrarium crawl',
+      stuntName: mode === 'kickflip' ? 'Scripted kickflip' : 'Evolved free crawl',
     })
     policyRunner.reset()
     setResetNonce((value) => value + 1)
@@ -184,7 +194,7 @@ export function App() {
               onClick={() => chooseMode('kickflip')}
             >
               <Zap size={20} aria-hidden="true" />
-              <span><strong>Do a kickflip</strong><small>Neural stunt loop</small></span>
+              <span><strong>Autonomous life</strong><small>Needs + scripted kickflip</small></span>
             </button>
             <button
               className={`mode-button${showcaseMode === 'freestyle' ? ' is-active' : ''}`}
@@ -193,7 +203,7 @@ export function App() {
               onClick={() => chooseMode('freestyle')}
             >
               <Activity size={20} aria-hidden="true" />
-              <span><strong>Free crawl</strong><small>Board optional. Wurm mobile.</small></span>
+              <span><strong>Free crawl</strong><small>Evolved locomotion lab</small></span>
             </button>
           </div>
         </section>
@@ -241,6 +251,38 @@ export function App() {
             meter={landingPercent}
           />
         </dl>
+
+        <section className="needs-panel" aria-labelledby="needs-heading">
+          <div className="section-kicker">
+            <HeartPulse size={15} aria-hidden="true" />
+            <h2 id="needs-heading">Homeostasis</h2>
+            <span>{needTargetLabel}</span>
+          </div>
+          <div className="needs-grid" aria-label="Live worm needs">
+            <NeedMeter
+              active={displayedMetrics.activeNeed === 'hunger'}
+              icon={<Apple size={15} />}
+              label="Hunger"
+              urgency={displayedMetrics.hunger}
+            />
+            <NeedMeter
+              active={displayedMetrics.activeNeed === 'thirst'}
+              icon={<Droplets size={15} />}
+              label="Thirst"
+              urgency={displayedMetrics.thirst}
+            />
+            <NeedMeter
+              active={displayedMetrics.activeNeed === 'wellbeing'}
+              icon={<HeartPulse size={15} />}
+              label="Well-being"
+              urgency={displayedMetrics.wellbeing}
+            />
+          </div>
+          <p className="needs-target">
+            Selected goal <strong>{needTargetLabel}</strong>
+            {displayedMetrics.needTarget ? ` · ${fixed(displayedMetrics.needTargetDistance, 1)} m away` : ''}
+          </p>
+        </section>
 
         <div className="utility-actions">
           <button
@@ -348,7 +390,10 @@ export function App() {
 
         <div className="lab-tape" aria-label="Rollout diagnostics">
           <span>RWD <b>{fixed(displayedMetrics.reward, 1)}</b></span>
-          <span>RUN <b>{fixed(displayedMetrics.distance, 1)}m</b></span>
+          <span>
+            {displayedMetrics.mounted ? 'RIDE' : 'CRAWL'}{' '}
+            <b>{fixed(displayedMetrics.mounted ? displayedMetrics.distance : displayedMetrics.crawlDistance, 1)}m</b>
+          </span>
           <span>GRIP <b>{toPercent(displayedMetrics.contactRatio)}%</b></span>
           <span>BODY <b>{fixed(displayedMetrics.bodySpeed, 1)}</b></span>
           <span>T <b>{fixed(displayedMetrics.time, 1)}s</b></span>
@@ -357,7 +402,7 @@ export function App() {
         <details className="policy-note">
           <summary><Cpu size={14} aria-hidden="true" /> Brain note · {policyStatus.modelVersion}</summary>
           <p>{displayedMetrics.message}</p>
-          <code>174 observations → 32 muscles @ 60 Hz</code>
+          <code>Crawl: goal sensors + proprioception → 32 muscles @ 60 Hz</code>
         </details>
       </aside>
     </main>
@@ -369,6 +414,26 @@ type TelemetryProps = {
   label: string
   value: string
   meter?: number
+}
+
+type NeedMeterProps = {
+  active: boolean
+  icon: ReactNode
+  label: string
+  urgency: number
+}
+
+function NeedMeter({ active, icon, label, urgency }: NeedMeterProps) {
+  const level = clamp01(urgency)
+  const percent = toPercent(level)
+  return (
+    <div className={`need-meter${active ? ' is-active' : ''}`}>
+      <span>{icon}<b>{label}</b></span>
+      <strong>{percent}%</strong>
+      <i aria-hidden="true"><b style={{ width: `${percent}%` }} /></i>
+      <span className="sr-only" role="meter" aria-label={`${label} urgency`} aria-valuemin={0} aria-valuemax={100} aria-valuenow={percent} />
+    </div>
+  )
 }
 
 function Telemetry({ icon, label, value, meter }: TelemetryProps) {
@@ -385,6 +450,7 @@ function Telemetry({ icon, label, value, meter }: TelemetryProps) {
 
 function getNeuralStatus(backend: PolicyBackend) {
   if (backend === 'loading') return { label: 'Waking', tone: 'loading' }
+  if (backend === 'unavailable') return { label: 'Offline', tone: 'fallback' }
   if (backend === 'neural-js' || backend === 'onnx-webgpu' || backend === 'onnx-wasm') {
     return { label: 'Online', tone: 'online' }
   }
@@ -392,10 +458,11 @@ function getNeuralStatus(backend: PolicyBackend) {
 }
 
 function formatBackend(backend: PolicyBackend) {
-  if (backend === 'neural-js') return 'Neural JS / 39,552 synapses'
+  if (backend === 'neural-js') return 'Evolved recurrent gait / Neural JS'
   if (backend === 'onnx-webgpu') return 'ONNX / WebGPU'
   if (backend === 'onnx-wasm') return 'ONNX / WASM'
   if (backend === 'scripted') return 'Scripted cortex'
+  if (backend === 'unavailable') return 'Locomotion brain unavailable'
   return 'Neural cortex warming'
 }
 
@@ -407,6 +474,10 @@ function phaseMessage(phase: string, mode: ShowcaseMode) {
   const normalized = slugify(phase)
   if (normalized.includes('dismount')) return 'Board break. Tiny feet on terrain.'
   if (normalized.includes('finding-board')) return 'Sniffing out the ride.'
+  if (normalized.includes('seeking-food')) return 'The little brain has selected lunch.'
+  if (normalized.includes('seeking-water')) return 'Hydration waypoint acquired.'
+  if (normalized.includes('eating')) return 'Pellet contact. Hunger falling.'
+  if (normalized.includes('drinking')) return 'Tiny sips, serious science.'
   if (normalized.includes('mounting')) return 'Climb aboard, long athlete.'
   if (normalized.includes('crawl')) return 'Independent worm transportation.'
   if (normalized.includes('landed')) return 'Four wheels down. Maximum glory.'
@@ -415,7 +486,14 @@ function phaseMessage(phase: string, mode: ShowcaseMode) {
   if (normalized.includes('pop') || normalized.includes('launch')) return 'Tail down. Wurm up.'
   if (normalized.includes('flop') || normalized.includes('tumble')) return 'That absolutely counts as research.'
   if (normalized.includes('coil') || normalized.includes('setup')) return 'Coiling the little athlete.'
-  return mode === 'kickflip' ? 'Brain linked. Board ready. Believe in wurm.' : 'No objectives. Excellent.'
+  return mode === 'kickflip' ? 'Brain linked. Needs online. Believe in wurm.' : 'Clock-free gait under observation.'
+}
+
+function formatNeedTarget(target: ViewerMetrics['needTarget']) {
+  if (target === 'food-bowl') return 'Food bowl'
+  if (target === 'water-bowl') return 'Water bowl'
+  if (target === 'skateboard') return 'Skateboard'
+  return 'Choosing'
 }
 
 function slugify(value: string) {

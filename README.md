@@ -2,11 +2,15 @@
 
 # Wurmkickflip
 
-A React and Three.js virtual terrarium where a segmented worm uses a tracked neural controller to cruise, kickflip, land, dismount, crawl, find its board, and mount again. ONNX remains available as an experimental policy path; a trainable rigid-body plant is future work rather than an unused browser dependency.
+A React and Three.js virtual terrarium where a segmented worm develops hunger, thirst, and well-being, then travels between food, water, and its skateboard. Detached movement comes from a tracked, evolved recurrent neural controller whose 16 neurons each own one body segment. The kickflip remains deliberately scripted because reliable aerial board physics is outside the current plant.
 
-The app boots with the `stunt-distilled-v2` artifact in `public/models/wurmkickflip_stunt_policy.json` through the `neural-js` backend. It is a 174-input, one-hidden-layer tanh network behavior-distilled from a deterministic state-aware stunt teacher. Its explicit 37-feature teacher mask and zeroed unused input weights prevent unsupported position and velocity channels from creating feedback jitter. It is learned imitation behavior, not PPO/RL and not evidence of transfer from a high-fidelity physics trainer.
+The ordinary crawl brain is `locomotion-segmental-es-quality-robust-v1` in `public/models/wurmkickflip_locomotion_policy.json`. It is a clock-free chain of 16 locally coupled recurrent `tanh` neurons. The published brain is an 80-generation, population-128 risk-sensitive refinement warm-started from the preserved 110-generation base model. Its 39 evolved parameters contain recurrent state and shared sensor, neighbor, and output weights; it receives body feedback, target direction, terrain friction, and need urgency, but no time, clock, cycle, phase, sine, cosine, or demonstration gait. Each neuron emits the antagonistic actuator pair for its own segment.
 
-The viewer includes creature and terrain presets, a repeatable kickflip exhibition, Free crawl mode, live neural activity, phase telemetry, landing quality, and terrarium camera controls. The browser plant moves the board along smooth, bounded two-dimensional routes across a larger square seeded terrain with hills, mounds, microrelief, and sand/moss/clay friction regions; it steers back from the walls instead of wrapping or teleporting. Fixed-step action, pose, rotation, and render smoothing keep the learned muscle waves legible while the worm transitions through riding, dismounting, crawling, seeking, and mounting. It is intentionally a responsive showcase rather than rigid-body transfer physics.
+The fixed-step locomotion plant turns joint commands into segment bend and joint velocity, then derives root thrust only from non-reciprocal work traveling across adjacent joints. Target coordinates never directly move the root. Causal verification shows that zero actions stay still, a frozen pose cannot substitute for traveling joint work, shuffling segment activations damages progress, and zero terrain friction prevents displacement from rest. This is still a compact authored plant, not rigid-body or soft-body transfer physics.
+
+The terrarium includes deterministic food and water bowls plus the live skateboard as a third resource. Need urgencies accumulate over time; a deterministic urgency selector with target hysteresis chooses where to go. Proximity restores hunger or thirst, while well-being is restored only when the worm reaches and mounts the skateboard. The neural crawl controller steers toward the selected resource; the selector does not prescribe a gait or translate the creature.
+
+The older `stunt-distilled-v2` artifact remains the mounted pose prior inside the exhibition path. The browser scripts the pop, aerial rotation, landing window, and ride lifecycle. Its imitation-learning signals are not the source of detached crawling and are not evidence that a kickflip was learned in physics.
 
 ## Web App
 
@@ -27,13 +31,31 @@ Full verification:
 npm run check
 ```
 
-The full check includes deterministic terrain sampling (`verify:terrain`) and motion/lifecycle regression coverage (`verify:motion`) in addition to policy, runtime, training, replay, and build verification.
+The full check includes deterministic terrain and homeostasis sampling (`verify:terrain`, `verify:needs`), evolved-controller contract and causal ablations (`verify:locomotion`), and complete motion/lifecycle coverage (`verify:motion`) in addition to policy, runtime, training, replay, and build verification.
 
-## Training Scaffold
+## Evolved Locomotion
 
 The Python workspace is under `training/` and is intended to be run with Python 3.11 through `uv`.
 
-Reproduce and validate the tracked browser policy:
+Reproduce the tracked crawl controller:
+
+```powershell
+cd training
+uv sync
+uv run python -m wurmkickflip_rl.evolve_locomotion_policy --seed 20260719 --generations 80 --population-size 128 --elite-count 18 --episode-steps 420 --model-version locomotion-segmental-es-quality-robust-v1 --warm-start seeds/wurmkickflip_locomotion_warm_start_v1.json --out ../public/models/wurmkickflip_locomotion_policy.json --summary runs/locomotion_evolution/latest-summary.json
+cd ..
+npm run verify:locomotion
+```
+
+`npm run verify:locomotion:published` reruns the full 80-generation refinement
+and requires the tracked artifact to match its canonical JSON exactly. It is kept
+out of the fast `npm run check` path because it takes about a minute on this machine.
+
+The evolutionary search scores target progress and steering across eight approach/friction scenarios. It has no trigonometric gait teacher or CPG recipe. See [`training/LOCOMOTION_POLICY.md`](training/LOCOMOTION_POLICY.md) for the neuron, genome, plant, reproduction, and ablation details.
+
+## Stunt And Legacy Training Scaffold
+
+Reproduce and validate the separate mounted stunt prior:
 
 ```powershell
 cd training
@@ -42,9 +64,9 @@ uv run python -m wurmkickflip_rl.train_stunt_policy
 uv run python -m wurmkickflip_rl.validate_stunt_policy
 ```
 
-The generated `public/models/wurmkickflip_stunt_policy.json` is intentionally tracked and is the default browser brain. Training folds input normalization into the exported weights and records the teacher feature mask in the artifact. `npm run verify:stunt-policy` checks its schema, exact 174-to-hidden-to-32 matrix dimensions, finite parameters, held-out stunt signals, zeroed ignored-feature columns, and invariance to large ignored-feature perturbations. See [`training/STUNT_POLICY.md`](training/STUNT_POLICY.md) for the imitation-learning and physics limitations.
+The generated `public/models/wurmkickflip_stunt_policy.json` is intentionally tracked as the mounted exhibition prior, not the autonomous crawl brain. Training folds input normalization into the exported weights and records the teacher feature mask in the artifact. `npm run verify:stunt-policy` checks its schema, exact 174-to-hidden-to-32 matrix dimensions, finite parameters, held-out stunt signals, zeroed ignored-feature columns, and invariance to large ignored-feature perturbations. The browser still scripts the actual pop and aerial kickflip. See [`training/STUNT_POLICY.md`](training/STUNT_POLICY.md) for its imitation-learning and physics limitations.
 
-The older PPO surrogate, ONNX export, and CPG evolution experiments remain available:
+The older PPO surrogate, ONNX export, and morphology-plus-CPG evolution experiments remain available as legacy experiments:
 
 ```powershell
 cd training
@@ -63,7 +85,7 @@ The optional PPO export writes:
 
 The ONNX file and training checkpoints are local generated artifacts and are ignored by Git. Any local `ppo-smoke-v1` ONNX file created before the 174-observation contract repair has a stale 118-float input and must be retrained and re-exported before use.
 
-The evolution scaffold reads the browser creature/environment configs and writes a local generation summary JSON under `training/runs/`. The Python surrogate consumes creature morphology, joint, material, skateboard, terrain, and randomization fields so evolved controller/body scales affect rollout fitness before export.
+That legacy evolution scaffold reads the browser creature/environment configs and writes a local generation summary JSON under `training/runs/`. The Python surrogate consumes creature morphology, joint, material, skateboard, terrain, and randomization fields so evolved controller/body scales affect rollout fitness before export. Its sinusoidal CPG is not the tracked recurrent locomotion model used for browser crawling.
 To publish the current best evolved controller back into the local browser exhibit, export a generated creature config and manifest:
 
 ```powershell
@@ -89,16 +111,16 @@ When a newly exported 174-input ONNX artifact exists, force the optional provide
 
 Runtime modes:
 
-- `neural-js` is the default tracked distilled stunt brain. Use `?policyBackend=neural` to request it explicitly.
-- `scripted` is the deterministic diagnostic wave selected with `?policyBackend=scripted` or used as a safe fallback when a requested learned artifact fails.
+- `neural-js` reports the tracked evolved locomotion brain used whenever the worm is detached. Mounted exhibition poses may also use the separate distilled stunt prior.
+- `scripted` is the mounted diagnostic wave selected with `?policyBackend=scripted` or used as a safe stunt fallback when a requested stunt artifact fails. A missing locomotion artifact instead yields zero detached actuator commands and a clear unavailable status.
 - `ONNX + wasm` and `ONNX + webgpu` are optional legacy/retraining paths selected explicitly with query parameters. They require a current 174-input export.
 
 ## Architecture
 
-- Browser scene: seeded square heightfield terrarium plus a deterministic fixed-step, two-dimensional stunt/crawl plant and worm/skateboard visual rig.
-- Policy contract: 174 float observations to 32 dorsal/ventral muscle activations at 60 Hz.
-- Runtime: tracked JSON neural policy by default, scripted diagnostic fallback, and explicit optional ONNX providers.
-- Training: behavior-distilled JSON showcase policy plus separate Gymnasium/PPO and CPG-evolution surrogate experiments. None is currently a high-fidelity transfer-physics trainer.
+- Browser scene: seeded square heightfield terrarium, three-resource homeostasis loop, causal joint-work crawl plant, scripted stunt plant, and worm/skateboard visual rig.
+- Locomotion contract: seven global sensors plus per-segment joint feedback feed 16 locally coupled recurrent neurons and 32 antagonistic activations at 60 Hz.
+- Stunt contract: a separate 174-float observation to 32-activation mounted pose prior; pop and aerial board motion remain scripted.
+- Training: tracked 39-parameter evolved locomotion model, behavior-distilled stunt prior, and separate legacy Gymnasium/PPO/CPG experiments. None is currently a high-fidelity transfer-physics trainer.
 
 ## Documentation
 

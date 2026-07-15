@@ -4,7 +4,7 @@ export const OBSERVATION_SIZE = 174
 export const ACTION_SIZE = MUSCLE_COUNT
 export const POLICY_TIMESTEP = 1 / 60
 
-export type PolicyBackend = 'loading' | 'neural-js' | 'onnx-webgpu' | 'onnx-wasm' | 'scripted'
+export type PolicyBackend = 'loading' | 'neural-js' | 'onnx-webgpu' | 'onnx-wasm' | 'scripted' | 'unavailable'
 
 export type PolicyStatus = {
   backend: PolicyBackend
@@ -81,4 +81,10 @@ export type ViewerMetrics = {
   distanceToBoard: number
   terrainFriction: number
   crawlDistance: number
+  hunger: number
+  thirst: number
+  wellbeing: number
+  activeNeed: 'hunger' | 'thirst' | 'wellbeing' | null
+  needTarget: 'food-bowl' | 'water-bowl' | 'skateboard' | null
+  needTargetDistance: number
 }

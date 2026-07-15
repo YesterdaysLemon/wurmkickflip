@@ -1,8 +1,8 @@
 # Distilled Stunt Policy
 
-`wurmkickflip_rl.train_stunt_policy` trains a small PyTorch behavior-cloning model and exports it as browser-readable JSON. This is supervised behavior distillation from a deterministic state-aware expert; it is not PPO and it does not claim that a physics rollout has learned a kickflip.
+`wurmkickflip_rl.train_stunt_policy` trains a small PyTorch behavior-cloning model and exports it as browser-readable JSON. This is supervised behavior distillation from a deterministic state-aware expert; it is not PPO and it does not claim that a physics rollout has learned a kickflip. In the current browser it is a mounted exhibition pose prior. The pop, aerial board rotation, landing window, and lifecycle are scripted explicitly.
 
-The teacher runs a 7.2-second loop with a traveling bend wave, a positive co-contraction coil from roughly 2.2-2.65 seconds, a negative co-contraction release from roughly 2.65-2.85 seconds, a left/right kick signal during release and early air, a moderate air tuck, a damped landing, and a return to flopping locomotion. Board roll and segment state perturbations teach corrective feedback instead of a time-only open-loop sequence.
+The teacher runs a 7.2-second loop with a traveling bend wave, a positive co-contraction coil from roughly 2.2-2.65 seconds, a negative co-contraction release from roughly 2.65-2.85 seconds, a left/right kick signal during release and early air, a moderate air tuck, and a damped landing. Board roll and segment state perturbations teach corrective feedback instead of a time-only open-loop sequence. This cycle is not used for detached locomotion: ordinary crawling uses the separate clock-free recurrent controller described in [`LOCOMOTION_POLICY.md`](LOCOMOTION_POLICY.md).
 
 Train and export reproducibly from `training/`:
 
@@ -17,4 +17,4 @@ The expert's input mask is deliberately narrower than the shared observation con
 
 The action semantics are two values per segment. For segment `i`, `bend = (dorsal - ventral) / 2` and `coContraction = (dorsal + ventral) / 2`. The kick signal is the mean of `bend * sideWeight`, where segments 0-7 have weight -1 and segments 8-15 have weight +1.
 
-This model is an integration-ready stunt prior. A physics-trained controller still requires a simulator with real articulated contacts, airborne rotation and landing metrics, and held-out rollout evaluation.
+This model is an integration-ready stunt prior, not the worm's autonomous locomotion brain. A learned kickflip still requires a simulator with real articulated contacts, airborne rotation and landing metrics, and held-out rollout evaluation.

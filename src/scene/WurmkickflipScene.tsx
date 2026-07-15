@@ -6,8 +6,26 @@ import { BufferAttribute, BufferGeometry, Color, MathUtils, Quaternion, Vector3 
 import { deriveWurmAnatomy, type GenomeAppendage, type WurmAnatomy } from '../creature/anatomy'
 import type { CreatureGenome, EnvironmentConfig, Vec3 } from '../creature/types'
 import { PolicyRunner } from '../policy/policyRunner'
+import { LocomotionPolicyRunner } from '../policy/locomotionRunner'
+import type { LocomotionSensors } from '../policy/locomotionPolicy'
 import { makeInitialAction, snapshotToObservation } from '../policy/simulationAdapter'
 import { createTerrainField, TERRAIN_GRID_RESOLUTION, type TerrainField } from './terrainField'
+import {
+  advanceNeeds,
+  createNeedsState,
+  createTerrariumResources,
+  readNeedsMetrics,
+  syncSkateboardResource,
+  type NeedsState,
+  type TerrariumResource,
+} from './terrariumNeeds'
+import {
+  createWormLocomotionPlant,
+  deriveWormLocalPose,
+  resetWormLocomotionPlant,
+  stepWormLocomotion,
+  type WormLocomotionPlant,
+} from './wormLocomotion'
 import {
   POLICY_TIMESTEP,
   SEGMENT_COUNT,
@@ -41,6 +59,10 @@ type StuntPhase =
   | 'victory wiggle'
   | 'dismount'
   | 'ground crawl'
+  | 'seeking food'
+  | 'seeking water'
+  | 'eating'
+  | 'drinking'
   | 'finding board'
   | 'mounting up'
   | 'free crawl'
@@ -89,9 +111,11 @@ export type StuntState = {
   wormHeading: number
   wormDistance: number
   boardWaypointIndex: number
-  crawlWaypointIndex: number
   terrainFriction: number
   distanceToBoard: number
+  needs: NeedsState
+  resources: TerrariumResource[]
+  locomotionPlant: WormLocomotionPlant
   phase: StuntPhase
   segments: SegmentSnapshot[]
   previousAction: PolicyAction
@@ -110,7 +134,6 @@ type DecodedAction = {
 const CYCLE_SECONDS = 7.2
 const BOARD_CLEARANCE = 0.28
 const DISMOUNT_SECONDS = 1.2
-const CRAWL_SECONDS = 6.8
 const MOUNT_SECONDS = 1.8
 const ARENA_MARGIN = 0.82
 const SEGMENT_SMOOTHING = 9
@@ -133,15 +156,23 @@ export function WurmkickflipScene({
   onMetrics,
   onPolicyStatus,
 }: SceneProps) {
+  const locomotionRunner = useMemo(() => new LocomotionPolicyRunner(), [])
   useEffect(() => {
     let mounted = true
-    void policyRunner.load().then((status) => {
-      if (mounted) onPolicyStatus(status)
+    void Promise.all([policyRunner.load(), locomotionRunner.load()]).then(([stuntStatus, locomotionStatus]) => {
+      if (!mounted) return
+      onPolicyStatus({
+        backend: locomotionStatus.loaded ? 'neural-js' : 'unavailable',
+        message: `${locomotionStatus.message} Mounted stunt rig: ${stuntStatus.modelVersion}.`,
+        modelVersion: locomotionStatus.loaded
+          ? `${locomotionStatus.modelVersion} + scripted-kickflip`
+          : `${locomotionStatus.modelVersion} + mounted-${stuntStatus.modelVersion}`,
+      })
     })
     return () => {
       mounted = false
     }
-  }, [onPolicyStatus, policyRunner])
+  }, [locomotionRunner, onPolicyStatus, policyRunner])
 
   const sceneKey = `${creature?.id ?? 'wurm'}-${environmentConfig?.id ?? 'terrarium'}-${resetNonce}`
   const arenaSpan = Math.max(environmentConfig?.world.size[0] ?? 11.5, environmentConfig?.world.size[2] ?? 11.5)
@@ -172,6 +203,7 @@ export function WurmkickflipScene({
         key={sceneKey}
         onMetrics={onMetrics}
         policyRunner={policyRunner}
+        locomotionRunner={locomotionRunner}
         running={running}
         showcaseMode={showcaseMode}
       />
@@ -191,6 +223,7 @@ export function WurmkickflipScene({
 
 type TerrariumWorldProps = {
   policyRunner: PolicyRunner
+  locomotionRunner: LocomotionPolicyRunner
   running: boolean
   interactionNonce: number
   showcaseMode: ShowcaseMode
@@ -201,6 +234,7 @@ type TerrariumWorldProps = {
 
 function TerrariumWorld({
   policyRunner,
+  locomotionRunner,
   running,
   interactionNonce,
   showcaseMode,
@@ -209,7 +243,7 @@ function TerrariumWorld({
   onMetrics,
 }: TerrariumWorldProps) {
   const terrainField = useMemo(() => createTerrainField(environmentConfig), [environmentConfig])
-  const state = useRef(createStuntState(terrainField))
+  const state = useRef(createStuntState(terrainField, environmentConfig))
   const latestAction = useRef<PolicyAction>(makeInitialAction())
   const appliedAction = useRef<PolicyAction>(makeInitialAction())
   const inferencePending = useRef(false)
@@ -223,6 +257,10 @@ function TerrariumWorld({
   const segmentMaterialRefs = useRef<Array<MeshStandardMaterial | null>>([])
   const connectorRefs = useRef<Array<Mesh | null>>([])
   const burstRefs = useRef<Array<Mesh | null>>([])
+
+  useEffect(() => {
+    locomotionRunner.reset()
+  }, [locomotionRunner])
 
   const gravity = Math.abs(environmentConfig?.world.gravity[1] ?? -9.81)
   const palette = useMemo(() => makeWurmPalette(creature), [creature])
@@ -248,7 +286,20 @@ function TerrariumWorld({
 
       let steps = 0
       while (physicsAccumulator.current >= POLICY_TIMESTEP && steps < 5) {
-        smoothAction(appliedAction.current, latestAction.current, POLICY_TIMESTEP)
+        const wasRiding = state.current.locomotionState === 'riding'
+        const locomotionOwnsBody =
+          state.current.locomotionState === 'crawling' || state.current.locomotionState === 'seeking'
+        if (state.current.locomotionState === 'riding') {
+          smoothAction(appliedAction.current, latestAction.current, POLICY_TIMESTEP)
+        } else if (locomotionOwnsBody) {
+          appliedAction.current.set(locomotionRunner.run(
+            locomotionSensorsFor(state.current, terrainField),
+            state.current.locomotionPlant.joints,
+            state.current.locomotionPlant.jointVelocities,
+          ))
+        } else {
+          appliedAction.current.fill(0)
+        }
         advanceStunt(
           state.current,
           appliedAction.current,
@@ -258,11 +309,19 @@ function TerrariumWorld({
           terrainField,
           environmentConfig,
         )
+        if (wasRiding && state.current.locomotionState !== 'riding') {
+          locomotionRunner.reset()
+          appliedAction.current.fill(0)
+        }
         physicsAccumulator.current -= POLICY_TIMESTEP
         steps += 1
       }
 
-      if (inferenceAccumulator.current >= POLICY_TIMESTEP && !inferencePending.current) {
+      if (
+        state.current.locomotionState === 'riding' &&
+        inferenceAccumulator.current >= POLICY_TIMESTEP &&
+        !inferencePending.current
+      ) {
         inferenceAccumulator.current %= POLICY_TIMESTEP
         inferencePending.current = true
         const observation = snapshotToObservation(toSnapshot(state.current))
@@ -282,6 +341,11 @@ function TerrariumWorld({
         metricsAccumulator.current %= 0.1
         const status = policyRunner.getStatus()
         const current = state.current
+        const needsMetrics = readNeedsMetrics(
+          current.needs,
+          current.resources,
+          [current.wormX, current.wormY, current.wormZ],
+        )
         const rootVx = current.mountBlend > 0.5 ? current.boardVx : current.wormVx
         const rootVz = current.mountBlend > 0.5 ? current.boardVz : current.wormVz
         const bodySpeed = current.segments.reduce(
@@ -318,6 +382,12 @@ function TerrariumWorld({
           distanceToBoard: current.distanceToBoard,
           terrainFriction: current.terrainFriction,
           crawlDistance: current.wormDistance,
+          hunger: needsMetrics.hunger,
+          thirst: needsMetrics.thirst,
+          wellbeing: needsMetrics.wellbeing,
+          activeNeed: needsMetrics.activeNeed,
+          needTarget: needsMetrics.targetResourceId,
+          needTargetDistance: needsMetrics.targetDistance,
         })
       }
     }
@@ -340,6 +410,7 @@ function TerrariumWorld({
   return (
     <group>
       <Terrarium terrain={terrain} environmentConfig={environmentConfig} field={terrainField} />
+      <TerrariumResources resources={state.current.resources} />
       <BoardVisual boardRef={boardRef} environmentConfig={environmentConfig} wheelRefs={wheelRefs} />
       <WurmVisual
         anatomy={anatomy}
@@ -353,11 +424,12 @@ function TerrariumWorld({
   )
 }
 
-export function createStuntState(field: TerrainField): StuntState {
+export function createStuntState(field: TerrainField, environmentConfig: EnvironmentConfig | null = null): StuntState {
   const start = field.waypoints[0] ?? [-2.8, -1.8]
   const next = field.waypoints[1] ?? [2.4, -1.5]
   const boardHeading = Math.atan2(next[1] - start[1], next[0] - start[0])
   const boardY = boardGroundY(field, start[0], start[1])
+  const resources = createTerrariumResources(field, environmentConfig?.seed ?? 1337, [start[0], boardY, start[1]])
   return {
     time: 0,
     cycleTime: 0,
@@ -400,9 +472,11 @@ export function createStuntState(field: TerrainField): StuntState {
     wormHeading: boardHeading,
     wormDistance: 0,
     boardWaypointIndex: Math.min(1, Math.max(0, field.waypoints.length - 1)),
-    crawlWaypointIndex: Math.min(2, Math.max(0, field.waypoints.length - 1)),
     terrainFriction: field.sample(start[0], start[1]).friction,
     distanceToBoard: 0,
+    needs: createNeedsState(environmentConfig?.seed ?? 1337),
+    resources,
+    locomotionPlant: createWormLocomotionPlant(),
     phase: 'terrarium cruise',
     segments: Array.from({ length: SEGMENT_COUNT }, (_, index) =>
       makeSegment(index, start[0], boardY, start[1], boardHeading),
@@ -447,6 +521,18 @@ export function advanceStunt(
   state.poke = Math.max(0, state.poke - delta * 0.58)
   state.landingFlash = Math.max(0, state.landingFlash - delta * 1.35)
 
+  state.resources = syncSkateboardResource(state.resources, field, [state.boardX, state.boardY, state.boardZ])
+  const head = state.segments.at(-1)
+  const needResources = mode === 'freestyle'
+    ? state.resources.filter((resource) => resource.id !== 'skateboard')
+    : state.resources
+  const needsStep = advanceNeeds(state.needs, delta, {
+    resources: needResources,
+    wormPosition: [head?.x ?? state.wormX, head?.y ?? state.wormY, head?.z ?? state.wormZ],
+    mounted: state.mountBlend > 0.92,
+  })
+  state.needs = needsStep.state
+
   updateLocomotionLifecycle(state, mode, environmentConfig)
 
   if (state.locomotionState === 'riding') {
@@ -458,13 +544,13 @@ export function advanceStunt(
       if (!state.grounded) settleBoard(state, field)
     }
   } else {
-    // Keep the distilled controller inside its travel-wave curriculum while the
-    // worm roams. Kickflip semantics are gated on a complete mount below.
-    state.cycleTime = 0.18 + (state.locomotionTime * 0.24) % 1.72
+    // The authored stunt clock is inactive while the evolved crawl brain owns
+    // the body. Detached motion has no gait phase or animation clock.
+    state.cycleTime = 0
   }
 
   updateBoardPlanar(state, decoded, delta, field, environmentConfig)
-  updateWormRoot(state, decoded, delta, mode, field)
+  updateWormRoot(state, action, delta, field)
   const groundY = boardGroundY(field, state.boardX, state.boardZ)
   const terrain = field.sample(state.boardX, state.boardZ)
 
@@ -486,19 +572,16 @@ export function advanceStunt(
     state.contactRatio =
       state.locomotionState === 'riding'
         ? MathUtils.clamp(semanticContact - state.poke * 0.2 - decoded.coil * 0.025, 0.08, 0.9)
-        : MathUtils.clamp(0.82 - state.poke * 0.22, 0.48, 0.9)
+        : state.locomotionPlant.contactRatio
 
-    const learnedPop =
+    const scriptedPop =
       mode === 'kickflip' &&
       state.locomotionState === 'riding' &&
       state.mountBlend > 0.985 &&
-      state.cycleTime > 2.45 &&
-      state.cycleTime < 3.2 &&
-      state.coilMemory > 0.28 &&
-      decoded.release > 0.22 &&
-      Math.abs(decoded.kick) > 0.055
+      state.cycleTime > 2.72 &&
+      state.cycleTime < 2.82
 
-    if (learnedPop) launchKickflip(state, decoded, gravity)
+    if (scriptedPop) launchKickflip(state, gravity)
   } else {
     state.currentAirtime += delta
     state.boardVy -= gravity * delta
@@ -514,7 +597,7 @@ export function advanceStunt(
     if (state.boardY <= groundY && state.boardVy < 0) landKickflip(state, field)
   }
 
-  updateSegments(state, decoded, delta, mode, field)
+  updateSegments(state, decoded, delta, field)
   state.phase = phaseFor(state, mode)
   state.reward =
     state.distance * 0.62 +
@@ -532,7 +615,7 @@ function updateLocomotionLifecycle(
 ) {
   if (state.locomotionState === 'riding') {
     state.mountBlend = 1
-    if (mode === 'freestyle' || (state.rideLandings > 0 && state.cycleTime > 5.55)) {
+    if (mode === 'freestyle' || (state.rideLandings > 0 && state.cycleTime > 5.55 && state.needs.wellbeing < 0.08)) {
       transitionLocomotion(state, 'dismounting')
     }
     return
@@ -549,21 +632,20 @@ function updateLocomotionLifecycle(
 
   if (state.locomotionState === 'crawling') {
     state.mountBlend = 0
-    if (state.locomotionTime >= CRAWL_SECONDS) {
-      if (mode === 'freestyle') {
-        state.locomotionTime = 0
-        state.crawlWaypointIndex += 1
-      } else {
-        transitionLocomotion(state, 'seeking')
-      }
+    if (mode === 'kickflip' && state.needs.targetResourceId === 'skateboard') {
+      transitionLocomotion(state, 'seeking')
     }
     return
   }
 
   if (state.locomotionState === 'seeking') {
     state.mountBlend = 0
+    if (state.needs.targetResourceId !== 'skateboard') {
+      transitionLocomotion(state, 'crawling')
+      return
+    }
     const discoveryRadius = environmentConfig?.skateboard.discoveryRadius ?? 1.35
-    if (state.distanceToBoard < Math.max(0.48, discoveryRadius * 0.55) || state.locomotionTime > 8.5) {
+    if (state.distanceToBoard < Math.max(0.48, discoveryRadius * 0.55)) {
       transitionLocomotion(state, 'mounting')
     }
     return
@@ -590,6 +672,7 @@ function transitionLocomotion(state: StuntState, next: LocomotionState) {
     state.flipProgress = 0
     state.currentAirtime = 0
   }
+  if (next === 'riding') resetWormLocomotionPlant(state.locomotionPlant)
 }
 
 function updateBoardPlanar(
@@ -663,14 +746,10 @@ function updateBoardPlanar(
 
 function updateWormRoot(
   state: StuntState,
-  decoded: DecodedAction,
+  action: PolicyAction,
   delta: number,
-  mode: ShowcaseMode,
   field: TerrainField,
 ) {
-  const halfWidth = field.width * 0.5 - ARENA_MARGIN
-  const halfDepth = field.depth * 0.5 - ARENA_MARGIN
-
   if (state.locomotionState === 'riding') {
     state.wormX = MathUtils.damp(state.wormX, state.boardX, 18, delta)
     state.wormZ = MathUtils.damp(state.wormZ, state.boardZ, 18, delta)
@@ -698,42 +777,21 @@ function updateWormRoot(
     state.wormVx = (state.wormX - oldX) / delta
     state.wormVz = (state.wormZ - oldZ) / delta
   } else {
-    let targetX = state.boardX
-    let targetZ = state.boardZ
-    if (state.locomotionState === 'crawling') {
-      const waypoint = field.waypoints[state.crawlWaypointIndex % field.waypoints.length] ?? [0, 0]
-      targetX = waypoint[0]
-      targetZ = waypoint[1]
-      if (Math.hypot(targetX - state.wormX, targetZ - state.wormZ) < 0.58) {
-        state.crawlWaypointIndex = (state.crawlWaypointIndex + 1) % field.waypoints.length
-      }
+    const root = {
+      x: state.wormX,
+      z: state.wormZ,
+      heading: state.wormHeading,
+      vx: state.wormVx,
+      vz: state.wormVz,
     }
-
-    let desiredHeading = Math.atan2(targetZ - state.wormZ, targetX - state.wormX)
-    const edgeX = Math.max(0, Math.abs(state.wormX) - (halfWidth - 0.9))
-    const edgeZ = Math.max(0, Math.abs(state.wormZ) - (halfDepth - 0.9))
-    const edgeBlend = MathUtils.clamp(Math.max(edgeX, edgeZ) / 0.9, 0, 1)
-    if (edgeBlend > 0) desiredHeading = lerpAngle(desiredHeading, Math.atan2(-state.wormZ, -state.wormX), edgeBlend)
-    state.wormHeading = dampAngle(state.wormHeading, desiredHeading, 1.45, delta)
-
-    const terrain = field.sample(state.wormX, state.wormZ)
-    state.terrainFriction = terrain.friction
-    const uphill = Math.max(
-      0,
-      -(terrain.normal[0] * Math.cos(state.wormHeading) + terrain.normal[2] * Math.sin(state.wormHeading)),
-    )
-    const crawlSpeed = (0.34 + decoded.propulsion * 0.34) * (1 / (0.78 + terrain.friction * 0.18)) * (1 - uphill * 0.32)
-    const lateralPoke = state.poke * 0.18
-    const targetVx = Math.cos(state.wormHeading) * crawlSpeed - Math.sin(state.wormHeading) * lateralPoke
-    const targetVz = Math.sin(state.wormHeading) * crawlSpeed + Math.cos(state.wormHeading) * lateralPoke
-    const response = 2.8 + terrain.friction * 1.7
-    state.wormVx = MathUtils.damp(state.wormVx, targetVx, response, delta)
-    state.wormVz = MathUtils.damp(state.wormVz, targetVz, response, delta)
-    state.wormX = MathUtils.clamp(state.wormX + state.wormVx * delta, -halfWidth, halfWidth)
-    state.wormZ = MathUtils.clamp(state.wormZ + state.wormVz * delta, -halfDepth, halfDepth)
-    state.wormDistance += Math.hypot(state.wormVx, state.wormVz) * delta
-
-    if (mode === 'freestyle' && state.locomotionState === 'seeking') transitionLocomotion(state, 'crawling')
+    const movement = stepWormLocomotion(state.locomotionPlant, root, action, delta, field, ARENA_MARGIN)
+    state.wormX = root.x
+    state.wormZ = root.z
+    state.wormHeading = root.heading
+    state.wormVx = root.vx
+    state.wormVz = root.vz
+    state.wormDistance += movement.distance
+    state.terrainFriction = movement.friction
   }
 
   const wormTerrain = field.sample(state.wormX, state.wormZ)
@@ -741,16 +799,15 @@ function updateWormRoot(
   state.distanceToBoard = Math.hypot(state.boardX - state.wormX, state.boardZ - state.wormZ)
 }
 
-function launchKickflip(state: StuntState, decoded: DecodedAction, gravity: number) {
-  const popStrength = MathUtils.clamp((state.coilMemory + decoded.release) * 0.72, 0.72, 1.12)
+function launchKickflip(state: StuntState, gravity: number) {
   state.grounded = false
   state.attempt += 1
   state.boardY += 0.015
-  state.boardVy = 4.48 * popStrength
+  state.boardVy = 4.18
   const predictedFlight = (state.boardVy * 2) / Math.max(1, gravity)
-  // Once the learned kick clears its semantic threshold, scale angular speed to
-  // the learned pop height so one turn finishes at the substrate, not mid-air.
-  state.rollVelocity = (decoded.kick >= 0 ? 1 : -1) * ((Math.PI * 2 * 1.035) / predictedFlight)
+  // The aerial stunt is intentionally authored; detached travel is the evolved,
+  // causal behavior under test. Finish one turn at the sampled substrate.
+  state.rollVelocity = (Math.PI * 2 * 1.035) / predictedFlight
   state.currentAirtime = 0
   state.lastAirtime = 0
   state.maxHeight = 0
@@ -798,14 +855,11 @@ function updateSegments(
   state: StuntState,
   decoded: DecodedAction,
   delta: number,
-  mode: ShowcaseMode,
   field: TerrainField,
 ) {
   const airborneTuck = state.grounded ? 0 : MathUtils.clamp(Math.sin((state.currentAirtime / 0.92) * Math.PI), 0, 1)
   const victoryProgress = MathUtils.clamp((state.cycleTime - 4.1) / (5.25 - 4.1), 0, 1)
   const victory = state.cycleTime > 4.1 && state.cycleTime < 5.25 ? Math.sin(victoryProgress * Math.PI) : 0
-  const detached = 1 - smoothStep(state.mountBlend)
-  const freeFlop = mode === 'freestyle' ? 0.5 + Math.sin(state.time * 0.82) * 0.12 : 0
   const poke = state.poke
   const lengthScale = 1 - airborneTuck * 0.3 - decoded.coil * 0.1
   const centerY = state.boardY + 0.18 + airborneTuck * 0.18 + victory * 0.07
@@ -820,6 +874,7 @@ function updateSegments(
   const wormRightZ = wormForwardX
   const poseSmoothing =
     state.locomotionState === 'mounting' || state.locomotionState === 'dismounting' ? 4.5 : SEGMENT_SMOOTHING
+  const locomotionPose = deriveWormLocalPose(state.locomotionPlant, state.previousAction)
 
   for (let index = 0; index < SEGMENT_COUNT; index += 1) {
     const segment = state.segments[index]
@@ -829,15 +884,11 @@ function updateSegments(
     const u = index / (SEGMENT_COUNT - 1)
     const centered = u - 0.5
     const bend = decoded.bends[index] ?? 0
-    const bodyEnvelope = Math.sin(u * Math.PI)
-    const flopWave = Math.sin(state.time * (2.15 + freeFlop * 0.9) - index * 0.62)
-    const crawlWave = Math.sin(state.time * 3.05 - index * 0.68)
-    const pokeWave = Math.sin(state.time * 5.2 - index * 0.72) * poke
+    const pokeCurve = centered * poke
     const mountedAxial = centered * 1.42 * lengthScale
     const mountedLateral =
-      bend * (0.15 + freeFlop * 0.08) +
-      flopWave * (0.012 + freeFlop * 0.035) +
-      pokeWave * 0.06 +
+      bend * 0.15 +
+      pokeCurve * 0.1 +
       victory * Math.sin(index * 0.82) * 0.048
     const mountedX = state.boardX + boardForwardX * mountedAxial + boardRightX * mountedLateral
     const mountedZ = state.boardZ + boardForwardZ * mountedAxial + boardRightZ * mountedLateral
@@ -845,15 +896,13 @@ function updateSegments(
       centerY +
       Math.abs(bend) * 0.035 +
       airborneTuck * Math.cos(centered * Math.PI) * 0.08 +
-      (freeFlop * flopWave + pokeWave) * 0.032 * Math.cos(centered * Math.PI * 0.65)
+      Math.abs(pokeCurve) * 0.025
 
-    const crawlAxial = centered * (1.48 - Math.max(0, decoded.contractions[index] ?? 0) * 0.08)
-    const crawlLateral =
-      (crawlWave * (0.12 + freeFlop * 0.08) + bend * 0.07 + pokeWave * 0.045) * bodyEnvelope
-    const crawlX = state.wormX + wormForwardX * crawlAxial + wormRightX * crawlLateral
-    const crawlZ = state.wormZ + wormForwardZ * crawlAxial + wormRightZ * crawlLateral
+    const localPose = locomotionPose[index]
+    const crawlX = state.wormX + wormForwardX * localPose.forward + wormRightX * localPose.lateral
+    const crawlZ = state.wormZ + wormForwardZ * localPose.forward + wormRightZ * localPose.lateral
     const crawlTerrain = field.sample(crawlX, crawlZ)
-    const crawlY = crawlTerrain.height + 0.105 + Math.abs(crawlWave) * 0.018 * bodyEnvelope
+    const crawlY = crawlTerrain.height + 0.105 + localPose.lift
 
     const targetX = MathUtils.lerp(crawlX, mountedX, mount)
     const targetY = MathUtils.lerp(crawlY, mountedY, mount)
@@ -864,10 +913,13 @@ function updateSegments(
     segment.vx = (segment.x - oldX) / delta
     segment.vy = (segment.y - oldY) / delta
     segment.vz = (segment.z - oldZ) / delta
-    const targetPitch = bend * 0.19 + airborneTuck * centered * 0.78 + detached * crawlWave * 0.055
+    const plantSegment = SEGMENT_COUNT - 1 - index
+    const crawlPitch = -(state.locomotionPlant.jointVelocities[plantSegment] ?? 0) * 0.028
+    const mountedPitch = bend * 0.19 + airborneTuck * centered * 0.78
+    const targetPitch = MathUtils.lerp(crawlPitch, mountedPitch, mount)
     const targetYaw = lerpAngle(
-      state.wormHeading + crawlWave * 0.2 * bodyEnvelope,
-      state.boardHeading + bend * 0.28 + pokeWave * 0.1,
+      state.wormHeading + localPose.yaw,
+      state.boardHeading + bend * 0.28 + pokeCurve * 0.12,
       mount,
     )
     segment.pitch = MathUtils.damp(segment.pitch, targetPitch, ROTATION_SMOOTHING, delta)
@@ -945,9 +997,50 @@ export function toSnapshot(state: StuntState): SimulationSnapshot {
   }
 }
 
+export function locomotionSensorsFor(state: StuntState, field: TerrainField): LocomotionSensors {
+  const target = state.resources.find((resource) => resource.id === state.needs.targetResourceId)
+  if (!target) {
+    return {
+      targetForward: 1,
+      targetRight: 0,
+      targetDistance: 0,
+      forwardSpeed: state.locomotionPlant.forwardSpeed,
+      angularSpeed: state.locomotionPlant.angularSpeed,
+      terrainFriction: field.sample(state.wormX, state.wormZ).friction,
+      urgency: 0,
+    }
+  }
+
+  const dx = target.position[0] - state.wormX
+  const dz = target.position[2] - state.wormZ
+  const distance = Math.hypot(dx, dz)
+  const inverseDistance = distance > 1e-9 ? 1 / distance : 0
+  const forwardX = Math.cos(state.wormHeading)
+  const forwardZ = Math.sin(state.wormHeading)
+  const rightX = -forwardZ
+  const rightZ = forwardX
+  return {
+    targetForward: (dx * forwardX + dz * forwardZ) * inverseDistance,
+    targetRight: (dx * rightX + dz * rightZ) * inverseDistance,
+    targetDistance: MathUtils.clamp(distance / 5, 0, 1.5),
+    forwardSpeed: state.locomotionPlant.forwardSpeed,
+    angularSpeed: state.locomotionPlant.angularSpeed,
+    terrainFriction: field.sample(state.wormX, state.wormZ).friction,
+    urgency: state.needs[target.need],
+  }
+}
+
 function phaseFor(state: StuntState, mode: ShowcaseMode): StuntPhase {
   if (state.locomotionState === 'dismounting') return 'dismount'
-  if (state.locomotionState === 'crawling') return mode === 'freestyle' ? 'free crawl' : 'ground crawl'
+  if (state.locomotionState === 'crawling') {
+    if (state.needs.lastInteraction === 'hunger') return 'eating'
+    if (state.needs.lastInteraction === 'thirst') return 'drinking'
+    const target = state.resources.find((resource) => resource.id === state.needs.targetResourceId)
+    if (target?.need === 'hunger') return 'seeking food'
+    if (target?.need === 'thirst') return 'seeking water'
+    if (target?.need === 'wellbeing') return 'finding board'
+    return mode === 'freestyle' ? 'free crawl' : 'ground crawl'
+  }
   if (state.locomotionState === 'seeking') return 'finding board'
   if (state.locomotionState === 'mounting') return 'mounting up'
   if (!state.grounded) return 'kickflip'
@@ -962,10 +1055,17 @@ function phaseFor(state: StuntState, mode: ShowcaseMode): StuntPhase {
 
 function stuntNameFor(state: StuntState, mode: ShowcaseMode) {
   if (state.locomotionState === 'dismounting') return 'Board dismount'
-  if (state.locomotionState === 'crawling') return mode === 'freestyle' ? 'Free terrarium crawl' : 'Terrain crawl'
+  if (state.locomotionState === 'crawling') {
+    if (state.needs.lastInteraction === 'hunger') return 'Eating at the food bowl'
+    if (state.needs.lastInteraction === 'thirst') return 'Drinking at the water bowl'
+    const target = state.resources.find((resource) => resource.id === state.needs.targetResourceId)
+    if (target?.need === 'hunger') return 'Hunting for food'
+    if (target?.need === 'thirst') return 'Looking for water'
+    return mode === 'freestyle' ? 'Evolved free crawl' : 'Needs-driven crawl'
+  }
   if (state.locomotionState === 'seeking') return 'Finding the board'
   if (state.locomotionState === 'mounting') return 'Mounting up'
-  return 'Neural kickflip'
+  return 'Scripted kickflip'
 }
 
 function renderStunt(
@@ -1002,6 +1102,7 @@ function renderStunt(
   const forwardZ = Math.sin(heading)
   const rightX = -forwardZ
   const rightZ = forwardX
+  const plantOwnsBody = state.locomotionState === 'crawling' || state.locomotionState === 'seeking'
   segments.forEach((segmentGroup, index) => {
     if (!segmentGroup) return
     const pose = state.segments[index]
@@ -1018,7 +1119,8 @@ function renderStunt(
     segmentGroup.rotation.x = MathUtils.damp(segmentGroup.rotation.x, 0, 20, delta)
     segmentGroup.rotation.y = dampAngle(segmentGroup.rotation.y, -pose.yaw, 18, delta)
     segmentGroup.rotation.z = MathUtils.damp(segmentGroup.rotation.z, Math.PI / 2 + pose.pitch, 18, delta)
-    const squeeze = 1 - Math.abs(decoded.contractions[index] ?? 0) * 0.12
+    const muscleIndex = plantOwnsBody ? SEGMENT_COUNT - 1 - index : index
+    const squeeze = 1 - Math.abs(decoded.contractions[muscleIndex] ?? 0) * 0.12
     const taper = 0.74 + Math.sin((index / (SEGMENT_COUNT - 1)) * Math.PI) * 0.28
     segmentGroup.scale.x = MathUtils.damp(
       segmentGroup.scale.x,
@@ -1035,7 +1137,7 @@ function renderStunt(
     segmentGroup.scale.z = MathUtils.damp(segmentGroup.scale.z, taper * anatomy.thicknessScale, 16, delta)
     const material = materials[index]
     if (material) {
-      material.emissiveIntensity = 0.06 + Math.abs(decoded.bends[index] ?? 0) * 0.28
+      material.emissiveIntensity = 0.06 + Math.abs(decoded.bends[muscleIndex] ?? 0) * 0.28
     }
   })
 
@@ -1072,6 +1174,80 @@ function renderStunt(
     burst.scale.setScalar(scale)
     burst.rotation.x += delta * 4
   })
+}
+
+function TerrariumResources({ resources }: { resources: readonly TerrariumResource[] }) {
+  return (
+    <group>
+      {resources
+        .filter((resource) => resource.presentation === 'bowl')
+        .map((resource) => <ResourceBowl key={resource.id} resource={resource} />)}
+    </group>
+  )
+}
+
+function ResourceBowl({ resource }: { resource: TerrariumResource }) {
+  const { radius, height, vesselColor, contentsColor } = resource.appearance
+  const food = resource.id === 'food-bowl'
+  return (
+    <group position={[resource.position[0], resource.groundHeight, resource.position[2]]}>
+      <mesh position={[0, 0.018, 0]} rotation={[Math.PI / 2, 0, 0]}>
+        <torusGeometry args={[radius * 1.38, 0.025, 7, 32]} />
+        <meshStandardMaterial
+          color={contentsColor}
+          emissive={contentsColor}
+          emissiveIntensity={0.42}
+          opacity={0.62}
+          transparent
+        />
+      </mesh>
+      <mesh castShadow position={[0, height * 0.48, 0]}>
+        <cylinderGeometry args={[radius, radius * 0.78, height, 28]} />
+        <meshStandardMaterial color={vesselColor} roughness={0.68} />
+      </mesh>
+      <mesh position={[0, height * 0.84, 0]}>
+        <cylinderGeometry args={[radius * 0.76, radius * 0.76, 0.035, 28]} />
+        <meshStandardMaterial
+          color={contentsColor}
+          emissive={contentsColor}
+          emissiveIntensity={food ? 0.05 : 0.14}
+          metalness={food ? 0 : 0.12}
+          opacity={food ? 1 : 0.82}
+          roughness={food ? 0.82 : 0.18}
+          transparent={!food}
+        />
+      </mesh>
+      <mesh position={[0, height * 0.92, 0]} rotation={[Math.PI / 2, 0, 0]}>
+        <torusGeometry args={[radius * 0.83, radius * 0.075, 8, 28]} />
+        <meshStandardMaterial color={vesselColor} roughness={0.58} />
+      </mesh>
+      <mesh castShadow position={[radius * 0.92, 0.24, 0]}>
+        <cylinderGeometry args={[0.018, 0.025, 0.38, 8]} />
+        <meshStandardMaterial color={vesselColor} roughness={0.72} />
+      </mesh>
+      <mesh castShadow position={[radius * 0.92, 0.46, 0]} rotation={[0, 0, Math.PI / 4]}>
+        <boxGeometry args={[0.14, 0.14, 0.055]} />
+        <meshStandardMaterial color={contentsColor} emissive={contentsColor} emissiveIntensity={0.25} roughness={0.4} />
+      </mesh>
+      {food
+        ? Array.from({ length: 9 }, (_, index) => {
+          const angle = index * 2.399
+          const pelletRadius = radius * (0.18 + (index % 3) * 0.13)
+          return (
+            <mesh
+              castShadow
+              key={index}
+              position={[Math.cos(angle) * pelletRadius, height * 1.02, Math.sin(angle) * pelletRadius]}
+              scale={0.72 + (index % 2) * 0.2}
+            >
+              <dodecahedronGeometry args={[0.055, 0]} />
+              <meshStandardMaterial color={index % 2 === 0 ? '#d59a43' : '#b87531'} roughness={0.9} />
+            </mesh>
+          )
+        })
+        : null}
+    </group>
+  )
 }
 
 function BoardVisual({

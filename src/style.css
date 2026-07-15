@@ -703,6 +703,108 @@ h1 {
   background: linear-gradient(90deg, var(--signal), var(--acid));
 }
 
+.needs-panel {
+  display: grid;
+  gap: 7px;
+  padding: 9px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background:
+    radial-gradient(circle at 85% 0, rgba(88, 214, 174, 0.09), transparent 42%),
+    rgba(255, 255, 255, 0.028);
+}
+
+.needs-panel .section-kicker {
+  margin: 0;
+}
+
+.needs-panel .section-kicker > span {
+  margin-left: auto;
+  color: var(--acid);
+  font-size: 7px;
+  font-weight: 900;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.needs-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 6px;
+}
+
+.need-meter {
+  min-width: 0;
+  padding: 7px;
+  border: 1px solid rgba(244, 239, 221, 0.08);
+  border-radius: 7px;
+  background: rgba(0, 0, 0, 0.12);
+  transition: border-color 140ms ease, background 140ms ease;
+}
+
+.need-meter.is-active {
+  border-color: rgba(201, 244, 91, 0.62);
+  background: rgba(201, 244, 91, 0.07);
+}
+
+.need-meter > span:first-child {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  gap: 4px;
+  color: rgba(244, 239, 221, 0.5);
+}
+
+.need-meter svg {
+  flex: 0 0 auto;
+  color: var(--mint);
+}
+
+.need-meter span b {
+  min-width: 0;
+  font-size: 7px;
+  letter-spacing: 0.04em;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+.need-meter > strong {
+  display: block;
+  margin-top: 5px;
+  color: var(--paper);
+  font-family: "Arial Black", Impact, ui-sans-serif, sans-serif;
+  font-size: 12px;
+}
+
+.need-meter > i {
+  display: block;
+  height: 3px;
+  margin-top: 5px;
+  border-radius: 999px;
+  background: rgba(244, 239, 221, 0.08);
+  overflow: hidden;
+}
+
+.need-meter > i > b {
+  display: block;
+  height: 100%;
+  border-radius: inherit;
+  background: linear-gradient(90deg, var(--mint), var(--signal));
+}
+
+.needs-target {
+  margin: 0;
+  color: rgba(244, 239, 221, 0.46);
+  font-size: 8px;
+  letter-spacing: 0.025em;
+}
+
+.needs-target strong {
+  color: rgba(244, 239, 221, 0.84);
+}
+
 .utility-actions {
   display: grid;
   grid-template-columns: 1.28fr 1fr 0.9fr;
@@ -1057,6 +1159,7 @@ h1 {
   .mode-section,
   .stunt-card,
   .telemetry-grid,
+  .needs-panel,
   .terrarium-controls,
   .utility-actions,
   .muscle-readout {

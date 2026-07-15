@@ -1,6 +1,6 @@
 # Policy Contract
 
-This document describes the browser/training interface that future agents must preserve.
+This document describes the 174-input mounted stunt interface that future agents must preserve. Detached crawling has a deliberately separate recurrent contract described below and in `training/LOCOMOTION_POLICY.md`; do not feed a gait clock into it or conflate it with this stunt observation.
 
 ## Source Files
 
@@ -74,13 +74,13 @@ For segment `i`:
 - `action[i * 2 + 1]` is ventral activation.
 - Bend is currently interpreted as `(dorsal - ventral) * 0.5`, clamped to `[-1, 1]`.
 - Co-contraction is interpreted as `(dorsal + ventral) * 0.5`.
-- The browser stunt plant combines per-segment bend, co-contraction, and left/right asymmetry into locomotion, coil, pop, tuck, and kick signals.
+- The browser stunt plant combines per-segment bend, co-contraction, and left/right asymmetry into mounted cruise and pose cues. The current kickflip launch and board rotation are scripted rather than caused by those outputs.
 
 Future physics may convert these activations into Rapier joint motors, soft-body approximations, or MuJoCo actuator controls. Do not change the exported action shape unless there is a deliberate contract migration.
 
 ## Default Learned JSON Contract
 
-`public/models/wurmkickflip_stunt_policy.json` is the tracked default browser policy. It must include:
+`public/models/wurmkickflip_stunt_policy.json` is the tracked mounted exhibition policy. It must include:
 
 - `schemaVersion = 1`
 - `kind = "wurmkickflip.stuntPolicy"`
@@ -110,6 +110,24 @@ The JavaScript runtime validates this shape before inference. `npm run verify:st
 
 The runtime validates `observationSize` and `actionSize` before loading ONNX. ONNX is an explicit optional backend, not the default. Old local `ppo-smoke-v1` files with 118-float inputs are stale and must be retrained and re-exported for the 174-float contract.
 
+## Evolved Locomotion Contract
+
+`public/models/wurmkickflip_locomotion_policy.json` is the tracked detached-crawl controller. Keep it aligned with:
+
+- `src/policy/locomotionPolicy.ts`
+- `src/policy/locomotionRunner.ts`
+- `src/scene/wormLocomotion.ts`
+- `training/wurmkickflip_rl/evolve_locomotion_policy.py`
+- `scripts/verify-locomotion-policy.ts`
+
+The artifact has 16 recurrent `tanh` neurons, one per segment, and emits the same 32-value dorsal/ventral action shape. Seven global sensors are `targetForward`, `targetRight`, `targetDistance`, `forwardSpeed`, `angularSpeed`, `terrainFriction`, and `urgency`. Each neuron also receives its anatomical position, bend, bend velocity, previous command, recurrent state, and immediate anterior/posterior neighbor state.
+
+The 39-number evolved genome consists of 16 initial recurrent states, 13 shared input weights, three shared recurrent weights, and seven shared output weights. It must not gain time, clock, cycle, gait-phase, or trigonometric teacher inputs without an explicit redesign. Its trainer must not contain a disguised sinusoidal CPG recipe.
+
+The locomotion plant is part of the causal contract: target data can affect neural outputs but cannot directly alter root pose. Root thrust comes from adjacent-joint traveling work and terrain traction; steering comes from front-weighted joint shape. The artifact enumerates joint gains/limits, traction cap and inverse-traction floor, propulsion/drag gains, steering gains, and linear/angular speed clamps; the parser rejects any drift from the shared browser contract. `npm run verify:locomotion` requires the evolved controller to beat zero-action, frozen-pose, and deterministic segment-shuffle ablations, requires zero-friction displacement from rest to remain zero, and executes a Python-versus-browser checkpoint trace across positions, heading, speeds, joint states, and segment commands.
+
+The kickflip is outside this locomotion contract. The browser scripts its pop, board rotation, landing window, and lifecycle.
+
 ## Compatibility Rules
 
 - Do not silently change observation order.
@@ -117,5 +135,7 @@ The runtime validates `observationSize` and `actionSize` before loading ONNX. ON
 - Do not accept a learned JSON artifact whose matrix dimensions or behavior checks fail.
 - Keep the distilled teacher mask, exported `teacherFeatureIndices`, zeroed unused weights, and validators aligned when retraining the tracked JSON artifact.
 - Do not export ONNX with input/output names that future browser code cannot discover or map.
-- Keep scripted fallback working when a requested learned JSON or ONNX artifact is absent or invalid.
+- Keep scripted fallback working when a requested mounted-stunt JSON or ONNX artifact is absent or invalid. A missing crawl artifact must instead hold detached actuators at zero and report the unavailable brain.
+- Keep the locomotion artifact, browser recurrence, Python evolution equations, causal joint-work plant, and ablation thresholds aligned.
+- Do not add authored oscillator time/phase or sine/cosine gait outputs to the evolved locomotion path.
 - Add parity tests before any contract expansion.

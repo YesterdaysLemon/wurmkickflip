@@ -41,15 +41,23 @@ Start with a simple genetic algorithm before adding complex RL:
 5. Mutate dimensions, joints, masses, and controller parameters.
 6. Repeat and save generation summaries.
 
-The first controller can be a central pattern generator with sinusoidal motor outputs. Later versions can train neural controllers per morphology or co-evolve policy weights.
+The live browser crawl controller has moved beyond the original CPG proposal. It is a clock-free, segmental recurrent neural controller evolved directly against a causal joint-work locomotion plant. Its 16 neurons own the 16 body segments; a shared 39-parameter genome covers initial recurrent state plus sensor, neighbor, and output weights. No gait clock, authored phase, sine/cosine teacher, or demonstration trajectory is available to evolution.
 
-## Current Export Path
+The published `locomotion-segmental-es-quality-robust-v1` refinement uses seed `20260719`, 80 generations, population 128, 18 elites, 420-step episodes, and eight approach/friction scenarios spanning traction values from 0.33 to 1.12. It warm-starts from the preserved 110-generation base artifact. Its risk-sensitive objective emphasizes the bottom two scenarios plus approach, close, and reached thresholds, and plant-bound actions are quantized like the browser. Verification compares the full controller with zero-action, frozen-pose, deterministic segment-shuffle, and zero-friction ablations. These tests show causal actuator work in the compact plant; they do not establish transfer to real soft-body physics.
 
-The current Python genetic algorithm mutates CPG controller parameters plus morphology scales for part size, mass, material friction, body spread, joint stiffness, joint damping, and motor strength. The surrogate environment derives rollout dynamics from the same creature and environment JSON fields that the browser uses, so morphology is part of fitness rather than only display metadata.
+## Current Recurrent Locomotion Path
+
+`training/wurmkickflip_rl/evolve_locomotion_policy.py` writes `public/models/wurmkickflip_locomotion_policy.json`. The dependency-free browser runtime consumes the same update equations and plant constants. Food, water, and skateboard well-being are not gait teachers: the urgency selector chooses a resource, and its local direction/distance plus current urgency become sensors. The evolved network must turn those sensors and body feedback into segment work that moves and steers the worm.
+
+The kickflip is a separate authored exhibition. Pop, aerial rotation, landing timing, and the ride lifecycle are scripted; the older distilled stunt model may shape mounted segments but does not control detached locomotion.
+
+## Legacy CPG Export Path
+
+The older `wurmkickflip_rl.evolve` genetic algorithm mutates sinusoidal CPG controller parameters plus morphology scales for part size, mass, material friction, body spread, joint stiffness, joint damping, and motor strength. The surrogate environment derives rollout dynamics from browser creature and environment JSON fields, so morphology is part of that experiment's fitness rather than only display metadata.
 
 When run with `--export-creature` and `--export-manifest`, the GA writes the best controller and mutated morphology back into a browser-readable creature genome. The browser treats `public/configs/evolved/manifest.json` as optional and appends generated creatures to the exhibit selector when the file exists.
 
-This is still a transfer surrogate, not the browser's authored stunt plant. Keep improving calibration by comparing Python fitness trends against browser behavior before trusting long evolution runs.
+This legacy CPG/morphology path remains useful experimentation, but it is not the new browser crawl brain. Its generated creature configs and fitness summaries must not be presented as provenance for `locomotion-segmental-es-quality-robust-v1`.
 
 ## Frontend Role
 

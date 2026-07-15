@@ -10,6 +10,7 @@ No open P0 tasks. Keep contract and runtime verification green before longer tra
 - Repair the observation contract to the complete 174-float layout and prove the tail segment plus all 32 previous actions survive. Done in `npm run verify:parity`.
 - Wire scene observations through `PolicyRunner.run` and fail verification if the live scene silently bypasses the selected policy. Done in `npm run verify:runtime`.
 - Track a reproducible 174-to-hidden-to-32 distilled JSON policy and validate held-out stunt signals. Done in `npm run verify:stunt-policy`.
+- Track a reproducible 39-parameter segmental recurrent locomotion policy with no gait clock or trigonometric teacher. Done in `npm run verify:locomotion`.
 - Train a short PPO smoke-test policy and export `wurmkickflip_policy.onnx`. Historical 118-input artifacts exist locally but are stale after the contract repair.
 - Retrain and revalidate optional ONNX inference with both WebGPU and WASM against the 174-float contract.
 - Add a policy output sanity check: length 32, finite values, clipped to `[-1, 1]`. Done in `npm run verify:runtime`.
@@ -18,14 +19,15 @@ No open P0 tasks. Keep contract and runtime verification green before longer tra
 ## P1 - Training Quality And Simulation Fidelity
 
 - Add Python evolution scaffold that reads creature/environment configs and emits generation summaries. Done in `npm run verify:evolution`.
-- Export best evolved CPG controller as a browser-loadable generated creature config. Done in `npm run verify:evolution`.
+- Export best evolved CPG controller as a browser-loadable generated creature config. Done in `npm run verify:evolution`; this is now a legacy morphology/CPG experiment, not the live crawl brain.
 - Make Python surrogate dynamics consume creature morphology and environment config fields. Done in `npm run verify:env`.
 - Add replay artifact schema for skateboard discovery/contact/rolling metrics. Done in `npm run verify:replay`.
 - Improve reward shaping for true board balance and forward progress.
 - Replace or supplement the authored browser stunt plant with a physically faithful skateboard environment that can train and evaluate genuine kickflip transfer.
 - Add episode metrics: fall reason, average contact ratio, energy use, distance, and survival time. Done in `npm run verify:env`.
 - Add a replay recorder that can save browser rollout JSON for later inspection.
-- Extend evolution beyond CPG controller parameters into calibrated morphology mutation. Done for first body-scale/material/joint-scale pass.
+- Extend the legacy CPG experiment into calibrated morphology mutation. Done for first body-scale/material/joint-scale pass.
+- Extend the new segmental recurrent evolution into morphology co-evolution without losing browser-plant parity or causal ablations.
 - Calibrate or replace the Python surrogate against the intended high-fidelity physics plant; do not calibrate training claims solely to the authored showcase.
 - Evaluate adding MuJoCo for offline training while preserving the same policy contract.
 - Evaluate Rapier, MuJoCo, or another rigid-body backend for trainable board/worm contacts and articulated constraints.
@@ -52,12 +54,15 @@ No open P0 tasks. Keep contract and runtime verification green before longer tra
 - First creature genome and adaptive skateboard environment JSON configs.
 - Scripted muscle-wave fallback controller.
 - Tracked behavior-distilled `neural-js` stunt policy with reproducible training and behavioral validation.
-- Deterministic 60 Hz browser stunt plant with smoothed kickflip, landing, recovery, and Free crawl modes.
+- Deterministic 60 Hz browser composition with scripted kickflip/landing and evolved Free crawl modes.
 - Larger seeded square terrain shared by rendering and dynamics, with hills, mounds, microrelief, surface normals, and sand/moss/clay friction regions.
 - Smooth two-dimensional board routes and bounded arena steering without wraparound teleporting.
 - Independent worm-root lifecycle for riding, dismounting, crawling, seeking the board, and continuous remounting.
+- Food and water bowls plus skateboard well-being resource, deterministic urgency selection, need restoration, and live homeostasis telemetry.
+- Clock-free `locomotion-segmental-es-quality-robust-v1` recurrent controller: 16 segment-owned neurons, 39 evolved parameters, an 80-generation risk-sensitive refinement from the preserved 110-generation base, population 128.
+- Causal joint-work locomotion plant with zero-action, frozen-pose, segment-shuffle, and zero-friction ablations.
 - Masked `stunt-distilled-v2` controller with zero ignored-feature weights and perturbation-invariance validation.
-- Deterministic terrain and motion regression verifiers in `npm run verify:terrain` and `npm run verify:motion`.
+- Deterministic terrain, needs, recurrent locomotion, and integrated motion verifiers in `verify:terrain`, `verify:needs`, `verify:locomotion`, and `verify:motion`.
 - ONNX Runtime WebGPU/WASM policy loader path.
 - Python 3.11 `uv` training scaffold with Gymnasium + Stable Baselines3.
 - Initial local Git commit.
