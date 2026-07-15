@@ -229,6 +229,7 @@ def load_warm_start(path: Path | None) -> tuple[np.ndarray | None, dict[str, str
     if path is None:
         return None, None
     payload = path.read_bytes()
+    canonical_payload = payload.replace(b"\r\n", b"\n").replace(b"\r", b"\n")
     artifact = json.loads(payload)
     try:
         genome = np.asarray(
@@ -244,7 +245,7 @@ def load_warm_start(path: Path | None) -> tuple[np.ndarray | None, dict[str, str
         raise SystemExit(f"--warm-start must contain {GENOME_SIZE} finite genome values")
     return bound_genome(genome), {
         "path": path.as_posix(),
-        "sha256": hashlib.sha256(payload).hexdigest(),
+        "sha256": hashlib.sha256(canonical_payload).hexdigest(),
         "modelVersion": str(artifact.get("modelVersion", "unknown")),
     }
 

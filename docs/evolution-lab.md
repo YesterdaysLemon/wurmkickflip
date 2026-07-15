@@ -49,7 +49,9 @@ The published `locomotion-segmental-es-quality-robust-v1` refinement uses seed `
 
 `training/wurmkickflip_rl/evolve_locomotion_policy.py` writes `public/models/wurmkickflip_locomotion_policy.json`. The dependency-free browser runtime consumes the same update equations and plant constants. Food, water, and skateboard well-being are not gait teachers: the urgency selector chooses a resource, and its local direction/distance plus current urgency become sensors. The evolved network must turn those sensors and body feedback into segment work that moves and steers the worm.
 
-The kickflip is a separate authored exhibition. Pop, aerial rotation, landing timing, and the ride lifecycle are scripted; the older distilled stunt model may shape mounted segments but does not control detached locomotion.
+The live exhibit composes that evolved output with deterministic browser-only layers that were not part of evolution. Joint integration and traveling-work propulsion are derived plant physics; per-segment stick-slip anchors and swept wall/tree/rock/resource contacts are derived contact handling. Target-aware collision reorientation, timed eating/drinking after bowl contact, staged mounting/dismounting, board routing, and bowl/mouth effects are scripted. These layers make the terrarium lifecycle coherent, but they are not evidence that the 39-parameter genome learned collision physics, resource manipulation, or board contact.
+
+The kickflip is a separate authored exhibition. Pop, aerial rotation, landing timing, and the ride lifecycle are scripted; the older distilled stunt model may shape mounted segments but does not control detached locomotion. A future contact-rich training backend should move collision, grip, resource contact, and mounting outcomes into the evaluated plant before any of those behaviors are claimed as evolved.
 
 ## Legacy CPG Export Path
 

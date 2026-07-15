@@ -19,7 +19,10 @@ For docs-only changes:
 - Run `npm run verify:contract` after docs that mention policy constants.
 - Run `npm run verify:parity` after docs that describe observation layout.
 - Run `npm run verify:needs` after docs that describe homeostasis/resource semantics.
+- Run `npm run verify:collisions` after docs that describe arena bounds, solid props/resources, sweep response, friction, or contact telemetry.
+- Run `npm run verify:interactions` after docs that describe segment ordering or mount/dismount/eat/drink choreography.
 - Run `npm run verify:locomotion` after docs that describe the recurrent controller, evolved parameters, or joint-work plant.
+- Run `npm run verify:motion` after docs that describe integrated collision, grip, feeding, resource release, or board/worm lifecycle behavior.
 - Run `npm run build` when docs reference source paths or when any code changed.
 - Run `git status --short` before committing.
 
@@ -28,9 +31,11 @@ For app/runtime changes:
 - Run `npm run verify:contract` after policy contract changes.
 - Run `npm run verify:parity` after changing observation construction.
 - Run `npm run verify:terrain` after changing the terrain field, environment dimensions, terrain rendering, or terrain-dependent motion.
+- Run `npm run verify:collisions` after changing `terrariumCollisions.ts`, arena bounds, decor/resource collision geometry, friction/restitution response, or collision telemetry.
+- Run `npm run verify:interactions` after changing `wormInteractionAnimation.ts`, scene segment order, contact weights, locomotion handoffs, or mouth/bowl cues.
 - Run `npm run verify:needs` after changing food/water/board resources, need growth/restoration, target selection, or homeostasis observations.
 - Run `npm run verify:locomotion` after changing the segmental recurrent artifact/runtime, neural sensors, joint-work plant, or locomotion evolution.
-- Run `npm run verify:motion` after changing board travel, worm-root locomotion, resource visits, mount transitions, action smoothing, or segment pose updates.
+- Run `npm run verify:motion` after changing board travel, worm-root locomotion, segment grip/collisions, resource visits/releases, feeding, mount transitions, action smoothing, or segment pose updates.
 - Run `npm run build`.
 - Start or reuse the dev server.
 - Verify the app renders a nonblank canvas.
@@ -53,7 +58,8 @@ For training changes:
 - The browser simulation is a deterministic, physically inspired stunt showcase, not a physically faithful RL environment.
 - The current board/worm plants are authored fixed-step state dynamics, not Rapier rigid-body or soft-body physics.
 - Detached locomotion uses a genuinely evolved segmental recurrent controller, but only in the compact joint-work plant; this is not evidence of transfer to physical worm locomotion.
-- The kickflip pop, aerial board rotation, landing window, and lifecycle are scripted. The separate stunt JSON is behavior-distilled imitation, not PPO/RL.
+- Root propulsion/steering, terrain traction, per-segment stick-slip anchors, and swept contact are derived deterministic browser dynamics. The controller did not evolve the collision solver or grip rules.
+- Feeding, mounting/dismounting, board routing, post-collision tangent steering, kickflip pop, aerial board rotation, landing window, and lifecycle are scripted. The separate stunt JSON is behavior-distilled imitation, not PPO/RL.
 - The tracked version 2 JSON policy deliberately masks unsupported observation channels; do not restore nonzero ignored-feature weights without a teacher and verifier that use those features.
 - The older sinusoidal CPG/morphology evolution and Gymnasium environment are legacy experiments, not the browser's recurrent crawl brain. They should eventually be replaced or calibrated against high-fidelity trainable physics, not treated as validated transfer from the showcase.
 - The project is no longer worm-only; the existing segmented body is a starter morphology.

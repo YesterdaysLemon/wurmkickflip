@@ -15,11 +15,13 @@
     "verify:runtime": "tsx scripts/verify-policy-runtime.ts",
     "verify:stunt-policy": "tsx scripts/verify-stunt-policy.ts",
     "verify:terrain": "tsx scripts/verify-terrain-field.ts",
+    "verify:collisions": "tsx scripts/verify-terrarium-collisions.ts",
+    "verify:interactions": "tsx scripts/verify-worm-interaction-animation.ts",
     "verify:needs": "tsx scripts/verify-terrarium-needs.ts",
     "verify:locomotion": "tsx scripts/verify-locomotion-policy.ts",
     "verify:locomotion:published": "tsx scripts/verify-published-locomotion.ts",
     "verify:motion": "tsx scripts/verify-stunt-motion.ts",
-    "check": "npm run verify:configs && npm run verify:terrain && npm run verify:needs && npm run verify:locomotion && npm run verify:contract && npm run verify:parity && npm run verify:stunt-policy && npm run verify:motion && npm run verify:runtime && npm run verify:env && npm run verify:evolution && npm run verify:replay && npm run build",
+    "check": "npm run verify:configs && npm run verify:terrain && npm run verify:collisions && npm run verify:interactions && npm run verify:needs && npm run verify:locomotion && npm run verify:contract && npm run verify:parity && npm run verify:stunt-policy && npm run verify:motion && npm run verify:runtime && npm run verify:env && npm run verify:evolution && npm run verify:replay && npm run build",
     "preview": "vite preview"
   },
   "devDependencies": {

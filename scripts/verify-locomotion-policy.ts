@@ -51,6 +51,7 @@ const warmStartUrl = new URL('../training/seeds/wurmkickflip_locomotion_warm_sta
 const artifact = parseLocomotionPolicy(JSON.parse(await readFile(artifactUrl, 'utf8')))
 const trainingSource = await readFile(sourceUrl, 'utf8')
 const warmStartPayload = await readFile(warmStartUrl)
+const canonicalWarmStartPayload = Buffer.from(warmStartPayload.toString('utf8').replace(/\r\n?/g, '\n'))
 
 const scenarios: Scenario[] = [
   { targetX: 4.2, targetZ: 0, friction: 0.95, urgency: 0.72 },
@@ -170,7 +171,7 @@ function verifyContract(model: LocomotionPolicyArtifact, source: string) {
   )
   const warmStart = recordValue(model.training.warmStart, 'training.warmStart')
   expect(
-    warmStart.sha256 === createHash('sha256').update(warmStartPayload).digest('hex'),
+    warmStart.sha256 === createHash('sha256').update(canonicalWarmStartPayload).digest('hex'),
     'published warm-start hash does not match the tracked base artifact',
   )
   expect(warmStart.modelVersion === 'locomotion-segmental-es-v1', 'unexpected warm-start model version')

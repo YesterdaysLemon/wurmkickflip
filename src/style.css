@@ -1087,6 +1087,11 @@ h1 {
   font-size: 8px;
 }
 
+.policy-note code span {
+  display: block;
+  line-height: 1.55;
+}
+
 .sr-only {
   position: absolute !important;
   width: 1px !important;

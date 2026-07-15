@@ -8,9 +8,15 @@ The ordinary crawl brain is `locomotion-segmental-es-quality-robust-v1` in `publ
 
 The fixed-step locomotion plant turns joint commands into segment bend and joint velocity, then derives root thrust only from non-reciprocal work traveling across adjacent joints. Target coordinates never directly move the root. Causal verification shows that zero actions stay still, a frozen pose cannot substitute for traveling joint work, shuffling segment activations damages progress, and zero terrain friction prevents displacement from rest. This is still a compact authored plant, not rigid-body or soft-body transfer physics.
 
-The terrarium includes deterministic food and water bowls plus the live skateboard as a third resource. Need urgencies accumulate over time; a deterministic urgency selector with target hysteresis chooses where to go. Proximity restores hunger or thirst, while well-being is restored only when the worm reaches and mounts the skateboard. The neural crawl controller steers toward the selected resource; the selector does not prescribe a gait or translate the creature.
+The terrarium includes deterministic food and water bowls plus the live skateboard as a third resource. Need urgencies accumulate over time; a deterministic urgency selector with target hysteresis chooses where to go. A substantial head-to-bowl contact starts an authored eating or drinking cycle, while well-being is restored only after the worm reaches and mounts the skateboard. The active bowl is released from anterior collision only during the contact pose, then a short release cooldown lets the worm clear it without snapping back or immediately retriggering. The neural crawl controller steers toward the selected resource; the selector and lifecycle do not prescribe a gait or translate the creature.
 
 The older `stunt-distilled-v2` artifact remains the mounted pose prior inside the exhibition path. The browser scripts the pop, aerial rotation, landing window, and ride lifecycle. Its imitation-learning signals are not the source of detached crawling and are not evidence that a kickflip was learned in physics.
+
+## Behavior Ownership
+
+- **Evolved neural output:** during `crawling` and `seeking`, the 16-neuron recurrent controller turns goal sensors and proprioception into 32 segment muscle activations. The needs selector chooses the goal; it is deterministic homeostasis, not another learned policy.
+- **Derived scene physics:** damped joints turn those activations into poses, adjacent-joint work creates root thrust and steering, terrain friction supplies traction, and quiet ground segments establish stick-slip anchors that release under joint motion or strain. Deterministic swept contacts constrain the worm root, every rendered segment, and board deck probes against glass bounds, trees, rocks, bowls, and the skateboard, preserving frictional tangent motion without tunneling.
+- **Scripted choreography:** board routing, collision tangent reorientation, staged head-to-tail mounting, head-first dismounting, eating/drinking poses and bowl effects, and the pop/aerial flip/landing sequence are authored. These layers make resource contact and the kickflip readable; they are not outputs learned by the crawl model.
 
 ## Web App
 
@@ -31,7 +37,7 @@ Full verification:
 npm run check
 ```
 
-The full check includes deterministic terrain and homeostasis sampling (`verify:terrain`, `verify:needs`), evolved-controller contract and causal ablations (`verify:locomotion`), and complete motion/lifecycle coverage (`verify:motion`) in addition to policy, runtime, training, replay, and build verification.
+The full check includes deterministic terrain and homeostasis sampling (`verify:terrain`, `verify:needs`), swept collision/traction checks (`verify:collisions`), mount/feed pose continuity (`verify:interactions`), evolved-controller contract and causal ablations (`verify:locomotion`), and complete integrated motion/lifecycle coverage (`verify:motion`) in addition to policy, runtime, training, replay, and build verification.
 
 ## Evolved Locomotion
 
@@ -117,7 +123,7 @@ Runtime modes:
 
 ## Architecture
 
-- Browser scene: seeded square heightfield terrarium, three-resource homeostasis loop, causal joint-work crawl plant, scripted stunt plant, and worm/skateboard visual rig.
+- Browser scene: seeded square heightfield terrarium, solid swept-contact props and glass bounds, three-resource homeostasis loop, causal joint-work crawl plant with segment stick-slip grip, scripted resource/mount choreography, scripted stunt plant, and worm/skateboard visual rig.
 - Locomotion contract: seven global sensors plus per-segment joint feedback feed 16 locally coupled recurrent neurons and 32 antagonistic activations at 60 Hz.
 - Stunt contract: a separate 174-float observation to 32-activation mounted pose prior; pop and aerial board motion remain scripted.
 - Training: tracked 39-parameter evolved locomotion model, behavior-distilled stunt prior, and separate legacy Gymnasium/PPO/CPG experiments. None is currently a high-fidelity transfer-physics trainer.

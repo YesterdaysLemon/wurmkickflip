@@ -128,6 +128,12 @@ The locomotion plant is part of the causal contract: target data can affect neur
 
 The kickflip is outside this locomotion contract. The browser scripts its pop, board rotation, landing window, and lifecycle.
 
+### Runtime Ownership Boundary
+
+The evolved artifact owns only the recurrent segment commands produced during `crawling` and `seeking`. The deterministic needs selector supplies a goal; it is not a learned planner. Downstream joint integration, adjacent-joint-work propulsion, shape steering, and terrain traction are derived plant dynamics. `terrariumCollisions.ts` then derives swept wall/prop contact and frictional sliding, while per-segment contact anchors derive stick-slip grip from joint speed, terrain friction, and strain. None of those downstream rules should be presented as additional neural outputs or evidence that evolution learned contact physics.
+
+The scene authors target-aware tangent reorientation after blocked contact and all resource/stunt transitions. `wormInteractionAnimation.ts` scripts head-to-tail mounting, head-first dismounting, and face-only eating/drinking; the scene also scripts board routing, pop, aerial rotation, and landing. A food or water approach can therefore be neural while the visible contact cycle is scripted. Run `npm run verify:collisions` for the derived contact layer, `npm run verify:interactions` for authored contact choreography, and `npm run verify:motion` for their integration with the evolved controller and resource lifecycle.
+
 ## Compatibility Rules
 
 - Do not silently change observation order.
@@ -138,4 +144,5 @@ The kickflip is outside this locomotion contract. The browser scripts its pop, b
 - Keep scripted fallback working when a requested mounted-stunt JSON or ONNX artifact is absent or invalid. A missing crawl artifact must instead hold detached actuators at zero and report the unavailable brain.
 - Keep the locomotion artifact, browser recurrence, Python evolution equations, causal joint-work plant, and ablation thresholds aligned.
 - Do not add authored oscillator time/phase or sine/cosine gait outputs to the evolved locomotion path.
+- Do not describe collision solving, stick-slip anchors, need selection, feeding/mounting choreography, board routing, or the kickflip as learned by the detached locomotion artifact.
 - Add parity tests before any contract expansion.

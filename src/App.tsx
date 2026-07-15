@@ -402,7 +402,11 @@ export function App() {
         <details className="policy-note">
           <summary><Cpu size={14} aria-hidden="true" /> Brain note · {policyStatus.modelVersion}</summary>
           <p>{displayedMetrics.message}</p>
-          <code>Crawl: goal sensors + proprioception → 32 muscles @ 60 Hz</code>
+          <code>
+            <span>LEARNED · goal sensors + proprioception → 32 segment muscles @ 60 Hz</span>
+            <span>DERIVED · joint work, terrain grip, swept tree/rock contacts</span>
+            <span>SCRIPTED · mount/feed choreography + aerial kickflip</span>
+          </code>
         </details>
       </aside>
     </main>

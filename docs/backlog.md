@@ -57,12 +57,15 @@ No open P0 tasks. Keep contract and runtime verification green before longer tra
 - Deterministic 60 Hz browser composition with scripted kickflip/landing and evolved Free crawl modes.
 - Larger seeded square terrain shared by rendering and dynamics, with hills, mounds, microrelief, surface normals, and sand/moss/clay friction regions.
 - Smooth two-dimensional board routes and bounded arena steering without wraparound teleporting.
-- Independent worm-root lifecycle for riding, dismounting, crawling, seeking the board, and continuous remounting.
-- Food and water bowls plus skateboard well-being resource, deterministic urgency selection, need restoration, and live homeostasis telemetry.
+- Independent worm-root lifecycle for riding, dismounting, crawling, explicit feeding, seeking the board, mounting, and continuous remounting.
+- Food and water bowls plus skateboard well-being resource, deterministic urgency selection, contact-gated need restoration, resource-release cooldowns, and live homeostasis telemetry.
 - Clock-free `locomotion-segmental-es-quality-robust-v1` recurrent controller: 16 segment-owned neurons, 39 evolved parameters, an 80-generation risk-sensitive refinement from the preserved 110-generation base, population 128.
 - Causal joint-work locomotion plant with zero-action, frozen-pose, segment-shuffle, and zero-friction ablations.
+- Deterministic swept planar collisions for glass bounds, tree/rock trunks, resources, board deck probes, the worm root, and every rendered segment, including tangent sliding and overlap/wedge recovery.
+- Derived per-segment stick-slip ground anchors whose grip follows terrain friction, joint speed, and bounded strain without adding an authored crawl oscillator.
+- Deterministic additive interaction choreography with head-to-tail mounting, head-first terrain-braced dismounting, face-only eating/drinking, mouth/swallow cues, and bowl reactions.
 - Masked `stunt-distilled-v2` controller with zero ignored-feature weights and perturbation-invariance validation.
-- Deterministic terrain, needs, recurrent locomotion, and integrated motion verifiers in `verify:terrain`, `verify:needs`, `verify:locomotion`, and `verify:motion`.
+- Deterministic terrain, collision, interaction, needs, recurrent locomotion, and integrated motion verifiers in `verify:terrain`, `verify:collisions`, `verify:interactions`, `verify:needs`, `verify:locomotion`, and `verify:motion`.
 - ONNX Runtime WebGPU/WASM policy loader path.
 - Python 3.11 `uv` training scaffold with Gymnasium + Stable Baselines3.
 - Initial local Git commit.
@@ -70,3 +73,4 @@ No open P0 tasks. Keep contract and runtime verification green before longer tra
 ## Guardrails
 
 - Fix any mismatch between Python observation semantics and browser observation semantics before longer training runs.
+- Keep ownership claims explicit: recurrent segment commands are evolved; joint work, grip, and swept contact are derived; resource/mount/stunt choreography and post-collision tangent steering are scripted.

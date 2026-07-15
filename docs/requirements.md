@@ -51,10 +51,14 @@ The first implementation can use a simple segmented creature. Future implementat
 - Load an environment JSON and show key environment parameters in the viewer.
 - Keep the existing worm/skateboard policy demo working as the first skateboard scenario.
 - Keep board and creature travel continuous, bounded, and genuinely two-dimensional in the current square terrarium; do not wrap or teleport at arena edges.
+- Treat glass bounds, tree/rock trunks, bowls, and the skateboard as solid scene geometry. Sweep the board and worm body through each fixed step so fast motion and leading segments cannot tunnel through obstacles; preserve deterministic frictional tangent sliding and recover safely from initial overlap or wedged contacts.
 - Let the current worm detach, crawl independently over terrain, seek the skateboard, and remount through a continuous transition.
 - Give the terrarium deterministic food and water bowls, treat the skateboard as the well-being resource, and expose hunger, thirst, well-being, current target, and fulfillment in the viewer.
 - Select resource targets by need urgency with enough hysteresis to prevent rapid target flicker.
 - Drive ordinary detached movement through the tracked evolved segmental recurrent controller. Its segment actuators must cause root movement through the locomotion plant; resource coordinates must never directly translate the worm.
+- Derive segment ground grip from joint motion, terrain friction, and bounded contact strain so planted segments can stick and active/overloaded segments can slip. Do not replace neural joint commands with an authored gait phase.
+- Enter explicit feeding only after substantial head-to-bowl contact, pause learned translation during the contact pose, keep the posterior body out of the bowl, and clear the active resource before it can collide or retrigger again.
+- Script and label contact choreography honestly: mounting progresses head to tail, dismounting releases the head to terrain first, eating/drinking animate the face and bowl, and collision tangent steering remains an authored environment response.
 - Keep time, clock, cycle, authored phase, and trigonometric gait generators out of the evolved crawl-controller inputs and trainer.
 - Keep the kickflip scripted and label the distilled stunt JSON accurately as an imitation-learned mounted pose prior rather than a learned physics stunt.
 - Run safely without the locomotion artifact by holding detached actuator commands at zero and reporting the unavailable brain.
@@ -72,7 +76,7 @@ The completed browser/config milestone is:
 - The docs describe Python evolution/training as the source of generated artifacts.
 - The existing smoke policy path and verification commands still pass.
 
-The current refinement baseline additionally includes a shared seeded heightfield with surface-dependent friction, bounded two-dimensional travel, and a three-resource homeostasis loop. Detached crawling is controlled by a 39-parameter, 16-neuron recurrent policy refined for 80 risk-sensitive generations at population 128 from a preserved 110-generation base model. Causal joint-work propulsion and zero/frozen/shuffled/no-friction ablations establish that its segment activations matter in the compact plant. The kickflip remains scripted. The next training-fidelity milestone is contact-rich articulated physics rather than treating either authored plant as transfer evidence.
+The current refinement baseline additionally includes a shared seeded heightfield with surface-dependent friction, bounded two-dimensional travel, solid swept collisions, per-segment stick-slip grip, and a three-resource homeostasis loop with explicit feeding/mount lifecycle states. Detached crawling is controlled by a 39-parameter, 16-neuron recurrent policy refined for 80 risk-sensitive generations at population 128 from a preserved 110-generation base model. Causal joint-work propulsion and zero/frozen/shuffled/no-friction ablations establish that its segment activations matter in the compact plant. Collision response and grip are derived browser dynamics; feeding, mounting, dismounting, board routing, and the kickflip are scripted. The next training-fidelity milestone is contact-rich articulated physics rather than treating any of these authored layers as transfer evidence.
 
 Longer-term success:
 
@@ -106,9 +110,11 @@ Longer-term success:
 - With the tracked locomotion JSON present, detached crawling reports the evolved model and uses segment-local recurrence without a gait clock.
 - With the tracked stunt JSON present, mounted pose inference uses the 174-float observation; kickflip launch and board rotation remain scripted.
 - `npm run verify:terrain` confirms deterministic height, normal, surface, friction, and waypoint sampling.
+- `npm run verify:collisions` confirms high-speed anti-tunneling, long-body leading-probe contact, glass-wall/corner response, initial-overlap and wedged-prop recovery, frictional tangent sliding/support telemetry, determinism, and obstacle-order independence.
+- `npm run verify:interactions` confirms deterministic, finite, bounded, phase-continuous mount/dismount/eat/drink poses; staged head/midbody/tail contact; face-only bowl contact; distinct bite/sip cues; neutral boundaries; and locomotion ownership handoffs.
 - `npm run verify:needs` confirms deterministic bowls/resources, urgency selection, restoration semantics, stable observation order, and all three need interactions.
 - `npm run verify:locomotion` confirms evolved artifact provenance, deterministic reproduction, steering, segment-owned antagonistic outputs, browser-plant parity, and causal ablations.
-- `npm run verify:motion` confirms deterministic two-axis travel, bounded positions, scripted kickflip landings, neural detached crawling, food/water visits across all three terrarium presets, board seeking, remounting, integrated zero/frozen/shuffled/no-traction interventions, and segment/root motion budgets.
+- `npm run verify:motion` confirms deterministic two-axis travel, bounded and non-penetrating board/root/segment motion, scripted kickflip landings, neural detached crawling, explicit feeding, food/water visits across all three terrarium presets, tree and rock contacts, board seeking, remounting, post-remount well-being restoration, integrated zero/frozen/shuffled/no-traction interventions, and segment/root motion budgets.
 - With the locomotion JSON absent or invalid, detached actions stay at zero and status clearly reports the unavailable brain.
 - With the stunt JSON absent or invalid, the mounted action request falls back to `scripted` with a clear message.
 - With an explicitly requested ONNX model present, metadata shape validation passes before inference starts.
