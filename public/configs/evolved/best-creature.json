@@ -10,21 +10,9 @@
         "id": "head",
         "shape": "capsule",
         "parentId": null,
-        "position": [
-          -0.75,
-          0.62,
-          0.0
-        ],
-        "rotation": [
-          0,
-          0,
-          1.5708
-        ],
-        "size": [
-          0.132944,
-          0.265887,
-          0.132944
-        ],
+        "position": [-0.75, 0.62, 0.0],
+        "rotation": [0, 0, 1.5708],
+        "size": [0.132944, 0.265887, 0.132944],
         "mass": 0.120666,
         "material": {
           "friction": 1.25405,
@@ -38,21 +26,9 @@
         "id": "mid-1",
         "shape": "capsule",
         "parentId": "head",
-        "position": [
-          -0.5267,
-          0.612557,
-          0.0
-        ],
-        "rotation": [
-          0,
-          0,
-          1.5708
-        ],
-        "size": [
-          0.124635,
-          0.282505,
-          0.124635
-        ],
+        "position": [-0.5267, 0.612557, 0.0],
+        "rotation": [0, 0, 1.5708],
+        "size": [0.124635, 0.282505, 0.124635],
         "mass": 0.135749,
         "material": {
           "friction": 1.25405,
@@ -66,21 +42,9 @@
         "id": "mid-2",
         "shape": "capsule",
         "parentId": "mid-1",
-        "position": [
-          -0.3034,
-          0.605113,
-          0.0
-        ],
-        "rotation": [
-          0,
-          0,
-          1.5708
-        ],
-        "size": [
-          0.124635,
-          0.282505,
-          0.124635
-        ],
+        "position": [-0.3034, 0.605113, 0.0],
+        "rotation": [0, 0, 1.5708],
+        "size": [0.124635, 0.282505, 0.124635],
         "mass": 0.135749,
         "material": {
           "friction": 1.25405,
@@ -94,21 +58,9 @@
         "id": "mid-3",
         "shape": "capsule",
         "parentId": "mid-2",
-        "position": [
-          -0.0801,
-          0.605113,
-          0.0
-        ],
-        "rotation": [
-          0,
-          0,
-          1.5708
-        ],
-        "size": [
-          0.124635,
-          0.282505,
-          0.124635
-        ],
+        "position": [-0.0801, 0.605113, 0.0],
+        "rotation": [0, 0, 1.5708],
+        "size": [0.124635, 0.282505, 0.124635],
         "mass": 0.135749,
         "material": {
           "friction": 1.25405,
@@ -122,21 +74,9 @@
         "id": "mid-4",
         "shape": "capsule",
         "parentId": "mid-3",
-        "position": [
-          0.143201,
-          0.612557,
-          0.0
-        ],
-        "rotation": [
-          0,
-          0,
-          1.5708
-        ],
-        "size": [
-          0.116326,
-          0.265887,
-          0.116326
-        ],
+        "position": [0.143201, 0.612557, 0.0],
+        "rotation": [0, 0, 1.5708],
+        "size": [0.116326, 0.265887, 0.116326],
         "mass": 0.113124,
         "material": {
           "friction": 1.25405,
@@ -150,21 +90,9 @@
         "id": "tail",
         "shape": "capsule",
         "parentId": "mid-4",
-        "position": [
-          0.344171,
-          0.62,
-          0.0
-        ],
-        "rotation": [
-          0,
-          0,
-          1.5708
-        ],
-        "size": [
-          0.099708,
-          0.232651,
-          0.099708
-        ],
+        "position": [0.344171, 0.62, 0.0],
+        "rotation": [0, 0, 1.5708],
+        "size": [0.099708, 0.232651, 0.099708],
         "mass": 0.090499,
         "material": {
           "friction": 1.25405,
@@ -181,20 +109,9 @@
         "parentId": "head",
         "childId": "mid-1",
         "type": "hinge",
-        "axis": [
-          0,
-          1,
-          0
-        ],
-        "anchor": [
-          -0.6,
-          0.61,
-          0.0
-        ],
-        "limits": [
-          -0.65,
-          0.65
-        ],
+        "axis": [0, 1, 0],
+        "anchor": [-0.6, 0.61, 0.0],
+        "limits": [-0.65, 0.65],
         "stiffness": 12.931247,
         "damping": 1.960597,
         "motorStrength": 7.573813
@@ -204,20 +121,9 @@
         "parentId": "mid-1",
         "childId": "mid-2",
         "type": "hinge",
-        "axis": [
-          0,
-          1,
-          0
-        ],
-        "anchor": [
-          -0.3767,
-          0.602557,
-          0.0
-        ],
-        "limits": [
-          -0.7,
-          0.7
-        ],
+        "axis": [0, 1, 0],
+        "anchor": [-0.3767, 0.602557, 0.0],
+        "limits": [-0.7, 0.7],
         "stiffness": 11.494442,
         "damping": 1.782361,
         "motorStrength": 7.573813
@@ -227,20 +133,9 @@
         "parentId": "mid-2",
         "childId": "mid-3",
         "type": "hinge",
-        "axis": [
-          0,
-          1,
-          0
-        ],
-        "anchor": [
-          -0.1534,
-          0.602557,
-          0.0
-        ],
-        "limits": [
-          -0.7,
-          0.7
-        ],
+        "axis": [0, 1, 0],
+        "anchor": [-0.1534, 0.602557, 0.0],
+        "limits": [-0.7, 0.7],
         "stiffness": 11.494442,
         "damping": 1.782361,
         "motorStrength": 7.573813
@@ -250,20 +145,9 @@
         "parentId": "mid-3",
         "childId": "mid-4",
         "type": "hinge",
-        "axis": [
-          0,
-          1,
-          0
-        ],
-        "anchor": [
-          0.0699,
-          0.602557,
-          0.0
-        ],
-        "limits": [
-          -0.7,
-          0.7
-        ],
+        "axis": [0, 1, 0],
+        "anchor": [0.0699, 0.602557, 0.0],
+        "limits": [-0.7, 0.7],
         "stiffness": 11.494442,
         "damping": 1.782361,
         "motorStrength": 7.573813
@@ -273,20 +157,9 @@
         "parentId": "mid-4",
         "childId": "tail",
         "type": "hinge",
-        "axis": [
-          0,
-          1,
-          0
-        ],
-        "anchor": [
-          0.282036,
-          0.61,
-          0.0
-        ],
-        "limits": [
-          -0.65,
-          0.65
-        ],
+        "axis": [0, 1, 0],
+        "anchor": [0.282036, 0.61, 0.0],
+        "limits": [-0.65, 0.65],
         "stiffness": 12.931247,
         "damping": 1.960597,
         "motorStrength": 7.573813
@@ -323,14 +196,8 @@
   ],
   "mutation": {
     "enabled": true,
-    "partScaleRange": [
-      0.75,
-      1.35
-    ],
-    "massScaleRange": [
-      0.65,
-      1.5
-    ],
+    "partScaleRange": [0.75, 1.35],
+    "massScaleRange": [0.65, 1.5],
     "jointLimitJitter": 0.18,
     "controllerJitter": 0.25
   }
