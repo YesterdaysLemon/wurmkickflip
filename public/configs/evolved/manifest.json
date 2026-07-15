@@ -1,0 +1,7 @@
+{
+  "schemaVersion": 1,
+  "kind": "wurmkickflip.generatedCreatureManifest",
+  "creatures": [
+    "/configs/evolved/best-creature.json"
+  ]
+}

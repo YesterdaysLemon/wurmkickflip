@@ -16,7 +16,9 @@ __pycache__
 .ruff_cache
 *.egg-info
 training/runs
-public/configs/evolved
+public/configs/evolved/*
+!public/configs/evolved/manifest.json
+!public/configs/evolved/best-creature.json
 public/models/*.onnx
 playwright-report
 test-results
