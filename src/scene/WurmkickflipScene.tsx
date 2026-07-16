@@ -1,7 +1,7 @@
 import { OrbitControls, PerspectiveCamera, RoundedBox } from '@react-three/drei'
 import { Canvas, useFrame } from '@react-three/fiber'
 import { useEffect, useMemo, useRef } from 'react'
-import type { Group, Mesh, MeshStandardMaterial } from 'three'
+import type { Group, Mesh, MeshStandardMaterial, Object3D } from 'three'
 import { BufferAttribute, BufferGeometry, Color, MathUtils, Quaternion, Vector3 } from 'three'
 import { deriveWurmAnatomy, type GenomeAppendage, type WurmAnatomy } from '../creature/anatomy'
 import type { CreatureGenome, EnvironmentConfig, Vec3 } from '../creature/types'
@@ -102,7 +102,9 @@ export function WurmkickflipScene({
           backend: locomotionStatus.loaded ? 'neural-js' : 'unavailable',
           message:
             `${locomotionStatus.message} Detached segment motion is the evolved controller driving the causal plant. ` +
-            `Obstacle response, mounting, feeding, and the aerial kickflip are authored environment choreography. ` +
+            `Neural obstacle sensing and segment actuation drive traversal; collision projection is plant physics. ` +
+            `Skateboard approach and mounting are neural, contact-driven motion. ` +
+            `Feeding, dismounting, and the aerial kickflip are authored environment choreography. ` +
             `Mounted stunt rig: ${stuntStatus.modelVersion}.`,
           modelVersion: locomotionStatus.loaded
             ? `${locomotionStatus.modelVersion} + scripted-kickflip`
@@ -156,6 +158,7 @@ export function WurmkickflipScene({
         running={running}
         showcaseMode={showcaseMode}
       />
+      <SceneIntegrityProbe />
       <OrbitControls
         enableDamping
         enablePan={false}
@@ -201,7 +204,8 @@ function TerrariumWorld({
   replaySample,
 }: TerrariumWorldProps) {
   const terrainField = useMemo(() => createTerrainField(environmentConfig), [environmentConfig])
-  const state = useRef(createStuntState(terrainField, environmentConfig))
+  const anatomy = useMemo(() => deriveWurmAnatomy(creature), [creature])
+  const state = useRef(createStuntState(terrainField, environmentConfig, anatomy))
   const latestAction = useRef<PolicyAction>(makeInitialAction())
   const appliedAction = useRef<PolicyAction>(makeInitialAction())
   const inferencePending = useRef(false)
@@ -250,7 +254,6 @@ function TerrariumWorld({
 
   const gravity = Math.abs(environmentConfig?.world.gravity[1] ?? -9.81)
   const palette = useMemo(() => makeWurmPalette(creature), [creature])
-  const anatomy = useMemo(() => deriveWurmAnatomy(creature), [creature])
   const environmentSeed = environmentConfig?.seed ?? 1337
   const obstacleDensity = environmentConfig?.terrain.obstacleDensity ?? 0.08
   const terrain = useMemo(
@@ -662,11 +665,9 @@ function renderStunt(
   const forwardZ = Math.sin(heading)
   const rightX = -forwardZ
   const rightZ = forwardX
-  const plantOwnsBody = state.locomotionState === 'crawling' || state.locomotionState === 'seeking'
+  const plantOwnsBody = gaitControllerOwnsBody(state)
   const interaction =
-    state.locomotionState === 'mounting' ||
-    state.locomotionState === 'dismounting' ||
-    state.locomotionState === 'feeding'
+    state.locomotionState === 'dismounting' || state.locomotionState === 'feeding'
       ? interactionSampleFor(state)
       : null
   segments.forEach((segmentGroup, index) => {
@@ -1008,6 +1009,86 @@ function BoardVisual({
   )
 }
 
+/**
+ * Runtime scene-graph invariant exposed on the canvas for browser regression
+ * tests. Keeping this probe outside the keyed world lets its high-water marks
+ * catch even a one-frame stale/new rig overlap during resets.
+ */
+function SceneIntegrityProbe() {
+  const highWater = useRef({
+    roots: 0,
+    segments: 0,
+    connectors: 0,
+    faces: 0,
+    duplicateNames: 0,
+    shadowCasters: 0,
+  })
+  useFrame(({ gl, scene }) => {
+    let roots = 0
+    let segments = 0
+    let connectors = 0
+    let faces = 0
+    let duplicateNames = 0
+    let shadowCasters = 0
+    let rootUuid = ''
+    const seenNames = new Set<string>()
+    const wormRoots: Object3D[] = []
+
+    scene.traverse(object => {
+      const { name } = object
+      if (name === 'worm-root') {
+        roots += 1
+        rootUuid = rootUuid || object.uuid
+        wormRoots.push(object)
+      } else if (name.startsWith('worm-segment-')) {
+        segments += 1
+      } else if (name.startsWith('worm-connector-')) {
+        connectors += 1
+      } else if (name === 'worm-face') {
+        faces += 1
+      } else {
+        return
+      }
+      if (seenNames.has(name)) duplicateNames += 1
+      seenNames.add(name)
+    })
+    for (const root of wormRoots) {
+      root.traverse(object => {
+        if (object.castShadow) shadowCasters += 1
+      })
+    }
+
+    const maximum = highWater.current
+    maximum.roots = Math.max(maximum.roots, roots)
+    maximum.segments = Math.max(maximum.segments, segments)
+    maximum.connectors = Math.max(maximum.connectors, connectors)
+    maximum.faces = Math.max(maximum.faces, faces)
+    maximum.duplicateNames = Math.max(maximum.duplicateNames, duplicateNames)
+    maximum.shadowCasters = Math.max(maximum.shadowCasters, shadowCasters)
+
+    const dataset = gl.domElement.dataset
+    writeDataset(dataset, 'wormRoots', roots)
+    writeDataset(dataset, 'wormSegments', segments)
+    writeDataset(dataset, 'wormConnectors', connectors)
+    writeDataset(dataset, 'wormFaces', faces)
+    writeDataset(dataset, 'wormDuplicateNames', duplicateNames)
+    writeDataset(dataset, 'wormShadowCasters', shadowCasters)
+    writeDataset(dataset, 'wormMaxRoots', maximum.roots)
+    writeDataset(dataset, 'wormMaxSegments', maximum.segments)
+    writeDataset(dataset, 'wormMaxConnectors', maximum.connectors)
+    writeDataset(dataset, 'wormMaxFaces', maximum.faces)
+    writeDataset(dataset, 'wormMaxDuplicateNames', maximum.duplicateNames)
+    writeDataset(dataset, 'wormMaxShadowCasters', maximum.shadowCasters)
+    if (dataset.wormRootUuid !== rootUuid) dataset.wormRootUuid = rootUuid
+  })
+  return null
+}
+
+function writeDataset(dataset: DOMStringMap, key: string, value: number) {
+  const serialized = String(value)
+  if (dataset[key] !== serialized) dataset[key] = serialized
+}
+
 function WurmVisual({
   anatomy,
   palette,
@@ -1024,15 +1105,16 @@ function WurmVisual({
   mouthRef: React.RefObject<Mesh | null>
 }) {
   return (
-    <group>
+    <group name="worm-root">
       {Array.from({ length: SEGMENT_COUNT }, (_, index) => (
         <group
           key={`wurm-segment-${index}`}
+          name={`worm-segment-${String(index + 1).padStart(2, '0')}`}
           ref={value => {
             segmentRefs.current[index] = value
           }}
         >
-          <mesh castShadow receiveShadow>
+          <mesh receiveShadow>
             <WurmSegmentGeometry shape={anatomy.segmentShape} />
             <meshStandardMaterial
               color={palette[index]}
@@ -1054,8 +1136,8 @@ function WurmVisual({
       ))}
       {Array.from({ length: SEGMENT_COUNT - 1 }, (_, index) => (
         <mesh
-          castShadow
           key={`wurm-connector-${index}`}
+          name={`worm-connector-${String(index + 1).padStart(2, '0')}`}
           ref={value => {
             connectorRefs.current[index] = value
           }}
@@ -1085,7 +1167,6 @@ function GenomeAppendageVisual({ appendage }: { appendage: GenomeAppendage }) {
       scale={[appendage.thicknessScale, appendage.thicknessScale, appendage.lengthScale]}
     >
       <mesh
-        castShadow
         rotation={
           appendage.shape === 'cylinder' || appendage.shape === 'capsule' ? [Math.PI / 2, 0, 0] : [0, 0, 0]
         }
@@ -1110,7 +1191,7 @@ function GenomeAppendageGeometry({ shape }: { shape: GenomeAppendage['shape'] })
 
 function WurmFace({ mouthRef }: { mouthRef: React.RefObject<Mesh | null> }) {
   return (
-    <group rotation={[0, 0, -Math.PI / 2]}>
+    <group name="worm-face" rotation={[0, 0, -Math.PI / 2]}>
       {[-0.055, 0.055].map(z => (
         <group key={z} position={[0.078, 0.055, z]}>
           <mesh>

@@ -14,7 +14,7 @@ The browser is the inspection surface, not the high-throughput trainer.
 
 ## Current Crawl Evolution
 
-`training/wurmkickflip_rl/evolve_locomotion_policy.py` evolves the tracked detached-crawl policy. The dependency-free TypeScript runtime consumes the same canonical contract and recurrence.
+`training/wurmkickflip_rl/evolve_locomotion_policy.py` evolves the tracked ground-locomotion policy, originally evaluated as detached crawl. The dependency-free TypeScript runtime consumes the same canonical contract and recurrence.
 
 The controller has 16 locally coupled recurrent `tanh` neurons, one per segment. Its 45-value genome contains:
 
@@ -49,18 +49,21 @@ These checks establish causality inside this compact model. They do not establis
 
 ## Terrarium Composition
 
-The trained model owns segment commands only during `crawling` and `seeking`. The live exhibit adds deterministic systems that were not learned:
+The trained model owns segment commands during `crawling`, `seeking`, and live `mounting`. The tracked genome was not changed or promoted for this addition: its existing goal sensors and recurrence now drive a browser-native boarding challenge. The exhibit adds deterministic systems that were not learned:
 
 - homeostasis chooses food, water, or skateboard well-being as a goal;
-- swept scene contacts handle glass, props, annular bowl rims, and the deck;
+- swept scene contacts handle glass, props, and annular bowl rims;
+- oriented deck geometry supplies vertical support and friction, while a measured coverage/region/speed/dwell gate decides when physical boarding is stable enough to enter riding;
 - finite bowl inventories restore only during 3D live-mouth contact and refill deterministically;
-- feeding poses, mounting, dismounting, route planning, pop, aerial rotation, and landing are scripted.
+- feeding poses, dismounting, route planning, pop, aerial rotation, and landing are scripted.
+
+The integrated motion challenge checks that the full recurrent controller reaches stable deck contact while zero action cannot move there and a controller frozen after warm-up cannot steer there. A fixed segment-channel shuffle is retained as a robustness stressor: it still boards, more slowly to first contact but slightly sooner to the final ride in the current deterministic seed, so the verifier reports that result instead of mislabeling it as a failed ablation. This supports a causal claim about active, continually changing neural segment actuation in this one compact browser plant, not a claim that evolution optimized a skateboard objective or that balance physics were learned.
 
 The kickflip is therefore an authored exhibition. The mounted `stunt-distilled-v2` network is an imitation-learned pose prior, not learned contact physics.
 
 ## Future Training Work
 
-The most valuable next research step is to bring more of the lifecycle inside the evaluated plant: finite resources, mouth contacts, skateboard discovery, useful deck contact, stable mounting, and rolling. Domain randomization should include gravity, roughness, friction, restitution, body scale, actuator delay/noise, sensor loss, obstacle layout, board mass, and wheel friction. Held-out seeds should measure generalization rather than one memorized terrarium.
+The most valuable next research step is to bring the complete lifecycle into the evolution objective: finite resources, mouth contacts, skateboard discovery, useful deck contact, stable mounting, balance, and rolling. The browser can now demonstrate contact-driven boarding with the unchanged crawl controller, but that behavior is not yet trained or selected across randomized board domains. Domain randomization should include gravity, roughness, friction, restitution, body scale, actuator delay/noise, sensor loss, obstacle layout, board mass, and wheel friction. Held-out seeds should measure generalization rather than one memorized terrarium.
 
 MuJoCo, Brax, or a custom vectorized contact model are plausible future backends. Any replacement must preserve explicit observation/action/artifact versions and continue separating learned behavior from authored presentation.
 

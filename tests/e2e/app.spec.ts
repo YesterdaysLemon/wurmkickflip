@@ -1,4 +1,4 @@
-import { expect, test, type Page } from '@playwright/test'
+import { expect, test, type Locator, type Page } from '@playwright/test'
 import { readFile } from 'node:fs/promises'
 
 test('mounts the production terrarium with WebGL and its neural brain online', async ({ page }) => {
@@ -28,6 +28,22 @@ test('mounts the production terrarium with WebGL and its neural brain online', a
   const neuralStatus = page.getByRole('status', { name: 'Neural controller status' })
   await expect(neuralStatus).toContainText('Online', { timeout: 15_000 })
   await expect(neuralStatus).toContainText('Evolved recurrent gait / Neural JS')
+
+  await expectSingleWormRig(canvas)
+  const initialRootUuid = await canvas.getAttribute('data-worm-root-uuid')
+  expect(initialRootUuid).toBeTruthy()
+  await expect
+    .poll(async () => Number(await page.locator('.landed-count strong').textContent()), {
+      timeout: 15_000,
+      message: 'autonomous worm never boarded and landed its first kickflip',
+    })
+    .toBeGreaterThan(0)
+  await expect(canvas).toHaveAttribute('data-worm-root-uuid', initialRootUuid!)
+  await expectSingleWormRig(canvas)
+
+  await page.getByRole('button', { name: 'Reset' }).click()
+  await expect.poll(() => canvas.getAttribute('data-worm-root-uuid')).not.toBe(initialRootUuid)
+  await expectSingleWormRig(canvas)
   expect(runtimeErrors).toEqual([])
 })
 
@@ -83,13 +99,20 @@ test('pause, reset, and assignment controls update the running simulation', asyn
 })
 
 test('gait microscope exposes live segment state and controlled perturbations', async ({ page }) => {
+  test.setTimeout(90_000)
   const runtimeErrors = watchRuntimeErrors(page)
+  await page.emulateMedia({ reducedMotion: 'reduce' })
   await page.goto('/', { waitUntil: 'networkidle' })
   await expect(page.getByRole('status', { name: 'Neural controller status' })).toContainText('Online', {
     timeout: 15_000,
   })
 
   await page.getByRole('button', { name: /Free crawl/i }).click()
+  const play = page.getByRole('button', { name: 'Play', exact: true })
+  await play.click()
+  const pause = page.getByRole('button', { name: 'Pause', exact: true })
+  await expect(pause).toBeVisible()
+  await pause.click()
   const microscope = page.getByTestId('gait-microscope')
   await microscope.scrollIntoViewIfNeeded()
   await expect(microscope).toContainText('Evolved crawl', { timeout: 5_000 })
@@ -109,11 +132,16 @@ test('gait microscope exposes live segment state and controlled perturbations', 
   const before = await neuralCells.evaluateAll(elements =>
     elements.map(element => element.getAttribute('data-value')),
   )
-  await page.waitForTimeout(250)
-  const after = await neuralCells.evaluateAll(elements =>
-    elements.map(element => element.getAttribute('data-value')),
-  )
-  expect(after).not.toEqual(before)
+  await play.click()
+  await expect
+    .poll(() =>
+      neuralCells.evaluateAll(elements => elements.map(element => element.getAttribute('data-value'))),
+    )
+    .not.toEqual(before)
+  await pause.click()
+  await page.getByRole('button', { name: 'Reset' }).click()
+  await expect(microscope.locator('.gait-experiment-status')).toContainText('Baseline body and wiring')
+  await expect(numb).toBeEnabled({ timeout: 15_000 })
 
   await page.getByRole('slider', { name: 'Perturbation segment' }).fill('4')
   await numb.click()
@@ -126,8 +154,11 @@ test('gait microscope exposes live segment state and controlled perturbations', 
 
   await page.getByRole('slider', { name: 'Traction scale' }).fill('0')
   await expect(microscope).toContainText('Traction 0%')
-  await page.getByRole('button', { name: 'Pause', exact: true }).click()
-  await page.getByRole('button', { name: 'Shove worm sideways' }).click()
+  await page.getByRole('button', { name: 'Reset' }).click()
+  await expect(microscope.locator('.gait-experiment-status')).toContainText('Baseline body and wiring')
+  const shove = page.getByRole('button', { name: 'Shove worm sideways' })
+  await expect(shove).toBeEnabled({ timeout: 15_000 })
+  await shove.click()
   await expect(microscope.locator('.gait-experiment-status')).toContainText('Side shove recovery')
 
   await page.getByRole('button', { name: 'Reset' }).click()
@@ -196,9 +227,8 @@ test('ends a live gait experiment when authored feeding takes control', async ({
   const microscope = page.getByTestId('gait-microscope')
   await microscope.scrollIntoViewIfNeeded()
   await expect(microscope).toContainText('Evolved crawl', { timeout: 5_000 })
-  const reverseSensors = page.getByRole('button', { name: 'Reverse sensory wiring' })
   const numb = page.getByRole('button', { name: 'Numb selected segment' })
-  await expect(reverseSensors).toBeEnabled()
+  await expect(numb).toBeEnabled()
   const targetDistance = page.locator('.needs-target')
   await expect
     .poll(
@@ -206,15 +236,15 @@ test('ends a live gait experiment when authored feeding takes control', async ({
         const match = (await targetDistance.textContent())?.match(/([\d.]+) m away/u)
         return match ? Number(match[1]) : Number.POSITIVE_INFINITY
       },
-      { timeout: 8_000, message: 'worm never brought its mouth within one step of the food bowl' },
+      { timeout: 12_000, message: 'worm never brought its mouth near actual food contact' },
     )
-    .toBeLessThanOrEqual(1.7)
+    .toBeLessThanOrEqual(1.65)
   await page.getByRole('button', { name: 'Pause', exact: true }).click()
   await expect(page.getByRole('button', { name: 'Play', exact: true })).toBeVisible()
-  await reverseSensors.click()
+  await numb.click()
   await expect(page.getByRole('button', { name: 'Play', exact: true })).toBeVisible()
   const experimentStatus = microscope.locator('.gait-experiment-status')
-  await expect(experimentStatus).toContainText('Sensory wiring reversed')
+  await expect(experimentStatus).toContainText('Segment numbed on S08')
   await page.getByRole('button', { name: 'Play', exact: true }).click()
 
   const endedNotice = 'Experiment ended because authored motion took control.'
@@ -268,7 +298,7 @@ test('reports gait experiments while reduced-motion simulation remains paused', 
   await page.getByRole('button', { name: 'Reset' }).click()
   await expect(play).toBeVisible()
   await expect(microscope).not.toContainText('Brain offline')
-  await expect(microscope).toContainText('Scripted pose')
+  await expect(microscope).toContainText('Evolved crawl')
   expect(runtimeErrors).toEqual([])
 })
 
@@ -412,4 +442,23 @@ function watchRuntimeErrors(page: Page) {
   })
   page.on('pageerror', error => errors.push(`page: ${error.message}`))
   return errors
+}
+
+async function expectSingleWormRig(canvas: Locator) {
+  for (const [attribute, value] of [
+    ['data-worm-roots', '1'],
+    ['data-worm-segments', '16'],
+    ['data-worm-connectors', '15'],
+    ['data-worm-faces', '1'],
+    ['data-worm-duplicate-names', '0'],
+    ['data-worm-shadow-casters', '0'],
+    ['data-worm-max-roots', '1'],
+    ['data-worm-max-segments', '16'],
+    ['data-worm-max-connectors', '15'],
+    ['data-worm-max-faces', '1'],
+    ['data-worm-max-duplicate-names', '0'],
+    ['data-worm-max-shadow-casters', '0'],
+  ] as const) {
+    await expect(canvas).toHaveAttribute(attribute, value)
+  }
 }

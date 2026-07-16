@@ -23,7 +23,7 @@ import {
   resetWormLocomotionPlant,
   type WormLocomotionPlant,
 } from './wormLocomotion'
-import { stepArticulatedWorm } from './wormDynamics'
+import { ARTICULATED_WORM_CONTRACT, stepArticulatedWorm } from './wormDynamics'
 import {
   sampleWormInteractionAnimation,
   type WormInteractionAnimationSample,
@@ -36,6 +36,11 @@ import {
   type TerrariumCircleObstacle,
   type TerrariumCollisionWorld,
 } from './terrariumCollisions'
+import {
+  applySkateboardDeckSupport,
+  withSkateboardDeckSupportField,
+  type SkateboardDeckContact,
+} from './skateboardContact'
 import type { TerrainField } from './terrainField'
 
 export type ShowcaseMode = 'kickflip' | 'freestyle'
@@ -62,7 +67,11 @@ export type GaitActionOrder = 'anterior-to-posterior' | 'scene-tail-to-head'
 export type GaitActionApplication = 'neural' | 'scripted' | 'lifecycle-handoff'
 
 export function gaitControllerOwnsBody(state: Pick<StuntState, 'locomotionState'>) {
-  return state.locomotionState === 'crawling' || state.locomotionState === 'seeking'
+  return (
+    state.locomotionState === 'crawling' ||
+    state.locomotionState === 'seeking' ||
+    state.locomotionState === 'mounting'
+  )
 }
 
 export const GAIT_EXPERIMENT_LIFECYCLE_NOTICE =
@@ -89,6 +98,13 @@ export type StuntState = {
   locomotionState: LocomotionState
   locomotionTime: number
   mountBlend: number
+  boardContactRatio: number
+  boardContactSegmentCount: number
+  boardContactStableSeconds: number
+  boardContactHeadWeight: number
+  boardContactMidbodyWeight: number
+  boardContactTailWeight: number
+  boardContactRelativeSpeed: number
   rideLandings: number
   boardX: number
   boardY: number
@@ -163,7 +179,11 @@ export type DecodedAction = {
 const CYCLE_SECONDS = 7.2
 const BOARD_CLEARANCE = 0.28
 const DISMOUNT_SECONDS = 1.2
-const MOUNT_SECONDS = 1.8
+export const BOARDING_ENTRY_CONTACT_RATIO = 0.015
+export const BOARDING_STABLE_CONTACT_RATIO = 0.28
+export const BOARDING_STABLE_SEGMENT_COUNT = 5
+export const BOARDING_STABLE_SECONDS = 0.2
+export const BOARDING_STABLE_TAIL_WEIGHT = 0.18
 const FEED_SECONDS = 2.65
 const ARENA_MARGIN = 0.82
 const SEGMENT_SMOOTHING = 9
@@ -172,41 +192,60 @@ const ROTATION_SMOOTHING = 10
 export function createStuntState(
   field: TerrainField,
   environmentConfig: EnvironmentConfig | null = null,
+  anatomy: WurmAnatomy = deriveWurmAnatomy(null),
 ): StuntState {
   const start = field.waypoints[0] ?? [-2.8, -1.8]
   const next = field.waypoints[1] ?? [2.4, -1.5]
   const boardHeading = Math.atan2(next[1] - start[1], next[0] - start[0])
   const boardY = boardGroundY(field, start[0], start[1])
+  const wormStartDistance = 2.65
+  const wormHeading = wrapAngle(boardHeading + Math.PI)
+  const wormX = start[0] + Math.cos(boardHeading) * wormStartDistance
+  const wormZ = start[1] + Math.sin(boardHeading) * wormStartDistance
+  const wormY =
+    field.sample(wormX, wormZ).height + ARTICULATED_WORM_CONTRACT.baseGroundClearance * anatomy.verticalScale
   const resources = createTerrariumResources(field, environmentConfig?.seed ?? 1337, [
     start[0],
     boardY,
     start[1],
   ])
+  const needs = createNeedsState(environmentConfig?.seed ?? 1337)
+  // The autonomous-life showcase begins with a reason to discover the board.
+  // This chooses a resource, not a trajectory: every centimeter of approach
+  // and boarding still has to come from the recurrent segment controller.
+  needs.wellbeing = Math.max(needs.wellbeing, 0.62)
   return {
     time: 0,
     cycleTime: 0,
-    locomotionState: 'riding',
+    locomotionState: 'crawling',
     locomotionTime: 0,
-    mountBlend: 1,
+    mountBlend: 0,
+    boardContactRatio: 0,
+    boardContactSegmentCount: 0,
+    boardContactStableSeconds: 0,
+    boardContactHeadWeight: 0,
+    boardContactMidbodyWeight: 0,
+    boardContactTailWeight: 0,
+    boardContactRelativeSpeed: 0,
     rideLandings: 0,
     boardX: start[0],
     boardY,
     boardZ: start[1],
-    boardVx: Math.cos(boardHeading) * 0.7,
+    boardVx: 0,
     boardVy: 0,
-    boardVz: Math.sin(boardHeading) * 0.7,
+    boardVz: 0,
     boardPitch: 0,
     boardRoll: 0,
     boardYaw: -boardHeading,
     boardHeading,
-    boardSpeed: 0.7,
+    boardSpeed: 0,
     rollVelocity: 0,
     wheelSpin: 0,
     distance: 0,
     reward: 0,
     grounded: true,
     coilMemory: 0,
-    contactRatio: 1,
+    contactRatio: 0,
     currentAirtime: 0,
     lastAirtime: 0,
     maxHeight: 0,
@@ -216,43 +255,43 @@ export function createStuntState(
     attempt: 0,
     landingFlash: 0,
     poke: 0,
-    wormX: start[0],
-    wormY: boardY + 0.18,
-    wormZ: start[1],
+    wormX,
+    wormY,
+    wormZ,
     wormVx: 0,
     wormVz: 0,
-    wormHeading: boardHeading,
+    wormHeading,
     wormDistance: 0,
     boardWaypointIndex: Math.min(1, Math.max(0, field.waypoints.length - 1)),
-    terrainFriction: field.sample(start[0], start[1]).friction,
-    distanceToBoard: 0,
+    terrainFriction: field.sample(wormX, wormZ).friction,
+    distanceToBoard: wormStartDistance,
     feedingResourceId: null,
     feedingReleaseResourceId: null,
     feedingCooldown: 0,
     bowlRimAperture: null,
     boardCollisionCooldown: 0,
     boardCollisionReleasePending: false,
-    transitionStartX: start[0],
-    transitionStartZ: start[1],
-    transitionStartHeading: boardHeading,
+    transitionStartX: wormX,
+    transitionStartZ: wormZ,
+    transitionStartHeading: wormHeading,
     dismountSide: 1,
     segmentGroundContacts: Array.from({ length: SEGMENT_COUNT }, () => ({
-      anchorX: start[0],
-      anchorZ: start[1],
+      anchorX: wormX,
+      anchorZ: wormZ,
       strength: 0,
     })),
     obstacleContactId: null,
     collisionCount: 0,
-    needs: createNeedsState(environmentConfig?.seed ?? 1337),
+    needs,
     resources,
     locomotionPlant: createWormLocomotionPlant(),
-    phase: 'terrarium cruise',
+    phase: 'ground crawl',
     segments: Array.from({ length: SEGMENT_COUNT }, (_, index) =>
-      makeSegment(index, start[0], boardY, start[1], boardHeading),
+      makeSegment(index, wormX, wormY, wormZ, wormHeading, anatomy),
     ),
     previousAction: makeInitialAction(),
-    previousActionOrder: 'scene-tail-to-head',
-    previousActionApplication: 'scripted',
+    previousActionOrder: 'anterior-to-posterior',
+    previousActionApplication: 'neural',
   }
 }
 
@@ -262,11 +301,16 @@ function makeSegment(
   centerY: number,
   centerZ: number,
   heading: number,
+  anatomy: WurmAnatomy,
 ): SegmentSnapshot {
-  const axial = (index / (SEGMENT_COUNT - 1) - 0.5) * 1.35
+  const axial =
+    (index / (SEGMENT_COUNT - 1) - 0.5) *
+    ARTICULATED_WORM_CONTRACT.spacing *
+    anatomy.visualLengthScale *
+    (SEGMENT_COUNT - 1)
   return {
     x: centerX + Math.cos(heading) * axial,
-    y: centerY + 0.2,
+    y: centerY,
     z: centerZ + Math.sin(heading) * axial,
     vx: 0,
     vy: 0,
@@ -435,28 +479,27 @@ function updateLocomotionLifecycle(
 ) {
   if (state.locomotionState === 'riding') {
     state.mountBlend = 1
-    const clearToDismount =
-      state.resources.every(
-        resource =>
-          resource.presentation !== 'bowl' ||
-          Math.hypot(state.boardX - resource.position[0], state.boardZ - resource.position[2]) >
-            resource.appearance.radius + 1.05,
-      ) &&
-      staticObstacles.every(
-        obstacle =>
-          Math.hypot(state.boardX - obstacle.center.x, state.boardZ - obstacle.center.z) >
-          obstacle.radius + 1.35,
-      )
-    if (
+    state.boardContactRatio = 1
+    state.boardContactSegmentCount = SEGMENT_COUNT
+    state.boardContactStableSeconds = Math.max(state.boardContactStableSeconds, BOARDING_STABLE_SECONDS)
+    state.boardContactHeadWeight = 1
+    state.boardContactMidbodyWeight = 1
+    state.boardContactTailWeight = 1
+    state.boardContactRelativeSpeed = 0
+    const wantsToDismount =
       mode === 'freestyle' ||
-      (clearToDismount && state.rideLandings > 0 && state.cycleTime > 5.55 && state.needs.wellbeing < 0.08)
-    ) {
+      (state.rideLandings > 0 && state.cycleTime > 5.55 && state.needs.wellbeing < 0.08)
+    if (wantsToDismount) {
+      const dismountSide = chooseDismountSide(state, staticObstacles, environmentConfig)
+      if (dismountSide === null) return
+      state.dismountSide = dismountSide
       transitionLocomotion(state, 'dismounting')
     }
     return
   }
 
   if (state.locomotionState === 'dismounting') {
+    state.boardContactStableSeconds = 0
     const contact = interactionSampleFor(state).contact
     state.mountBlend = (contact.headWeight + contact.midbodyWeight + contact.tailWeight) / 3
     if (state.locomotionTime >= DISMOUNT_SECONDS) {
@@ -468,6 +511,7 @@ function updateLocomotionLifecycle(
 
   if (state.locomotionState === 'crawling') {
     state.mountBlend = 0
+    clearBoardContact(state)
     if (
       state.feedingCooldown <= 0 &&
       state.feedingReleaseResourceId === null &&
@@ -485,6 +529,7 @@ function updateLocomotionLifecycle(
 
   if (state.locomotionState === 'feeding') {
     state.mountBlend = 0
+    clearBoardContact(state)
     if (state.locomotionTime >= FEED_SECONDS) {
       state.feedingReleaseResourceId = state.feedingResourceId
       state.feedingResourceId = null
@@ -498,35 +543,129 @@ function updateLocomotionLifecycle(
   }
 
   if (state.locomotionState === 'seeking') {
-    state.mountBlend = 0
+    state.mountBlend = state.boardContactRatio
+    state.boardContactStableSeconds = 0
     // Once well-being wins selection, commit to the board long enough to make
     // physical contact. Faster-growing food/water urgencies may queue next,
     // but they should not make the worm oscillate between distant resources.
     state.needs.targetResourceId = 'skateboard'
-    const discoveryRadius = environmentConfig?.skateboard.discoveryRadius ?? 1.35
-    const closestBodyDistance = state.segments.reduce(
-      (closest, segment) => Math.min(closest, Math.hypot(state.boardX - segment.x, state.boardZ - segment.z)),
-      state.distanceToBoard,
-    )
-    if (closestBodyDistance < Math.max(0.48, discoveryRadius * 0.55)) {
+    if (state.boardContactRatio >= BOARDING_ENTRY_CONTACT_RATIO && state.boardContactSegmentCount >= 1) {
       transitionLocomotion(state, 'mounting')
     }
     return
   }
 
-  const contact = interactionSampleFor(state).contact
-  state.mountBlend = (contact.headWeight + contact.midbodyWeight + contact.tailWeight) / 3
-  if (state.locomotionTime >= MOUNT_SECONDS) {
+  // Boarding is a committed physical maneuver. Keep the controller's target
+  // on the moving deck until contact either qualifies or is genuinely lost;
+  // otherwise a newly urgent bowl can strand the chain on stale deck contact.
+  state.needs.targetResourceId = 'skateboard'
+  state.mountBlend = state.boardContactRatio
+  if (boardContactQualifiesForMount(state) && state.boardContactStableSeconds >= BOARDING_STABLE_SECONDS) {
     state.mountBlend = 1
     state.rideLandings = 0
     state.cycleTime = 0
     state.coilMemory = 0
     state.flipProgress = 0
-    state.wormX = state.boardX
-    state.wormZ = state.boardZ
-    state.wormHeading = state.boardHeading
     transitionLocomotion(state, 'riding')
+  } else if (
+    state.boardContactRatio < BOARDING_ENTRY_CONTACT_RATIO * 0.25 &&
+    state.distanceToBoard > (environmentConfig?.skateboard.discoveryRadius ?? 1.35) &&
+    state.locomotionTime > 0.3
+  ) {
+    transitionLocomotion(state, 'seeking')
   }
+}
+
+export function boardContactQualifiesForMount(
+  state: Pick<
+    StuntState,
+    | 'boardContactRatio'
+    | 'boardContactSegmentCount'
+    | 'boardContactHeadWeight'
+    | 'boardContactMidbodyWeight'
+    | 'boardContactTailWeight'
+    | 'boardContactRelativeSpeed'
+  >,
+) {
+  return (
+    state.boardContactRatio >= BOARDING_STABLE_CONTACT_RATIO &&
+    state.boardContactSegmentCount >= BOARDING_STABLE_SEGMENT_COUNT &&
+    state.boardContactHeadWeight >= 0.34 &&
+    state.boardContactMidbodyWeight >= 0.26 &&
+    state.boardContactTailWeight >= BOARDING_STABLE_TAIL_WEIGHT &&
+    state.boardContactRelativeSpeed <= 1.6
+  )
+}
+
+export function chooseDismountSide(
+  state: StuntState,
+  staticObstacles: readonly TerrariumCircleObstacle[],
+  environmentConfig: EnvironmentConfig | null,
+): -1 | 1 | null {
+  const preferred: -1 | 1 = state.attempt % 2 === 0 ? 1 : -1
+  const candidates: readonly (-1 | 1)[] = [preferred, preferred === 1 ? -1 : 1]
+  const forwardX = Math.cos(state.boardHeading)
+  const forwardZ = Math.sin(state.boardHeading)
+  const rightX = -forwardZ
+  const rightZ = forwardX
+  const bodyClearance = 0.34
+  const halfWidth = (environmentConfig?.world.size[0] ?? 11.5) * 0.5
+  const halfDepth = (environmentConfig?.world.size[2] ?? 11.5) * 0.5
+
+  const score = (side: -1 | 1) => {
+    let minimumClearance = Number.POSITIVE_INFINITY
+    for (const progress of [0.12, 0.3, 0.5, 0.72, 1]) {
+      const interaction = sampleWormInteractionAnimation({
+        kind: 'dismounting',
+        elapsedSeconds: progress * DISMOUNT_SECONDS,
+        durationSeconds: DISMOUNT_SECONDS,
+        segmentCount: SEGMENT_COUNT,
+        side,
+      })
+      const sideOffset = interaction.side * (0.2 + progress * 0.78) + interaction.root.lateral
+      const x = state.boardX + forwardX * interaction.root.forward + rightX * sideOffset
+      const z = state.boardZ + forwardZ * interaction.root.forward + rightZ * sideOffset
+      minimumClearance = Math.min(
+        minimumClearance,
+        halfWidth - Math.abs(x) - bodyClearance,
+        halfDepth - Math.abs(z) - bodyClearance,
+      )
+      for (const resource of state.resources) {
+        if (resource.presentation !== 'bowl') continue
+        minimumClearance = Math.min(
+          minimumClearance,
+          Math.hypot(x - resource.position[0], z - resource.position[2]) -
+            resource.appearance.radius -
+            bodyClearance,
+        )
+      }
+      for (const obstacle of staticObstacles) {
+        minimumClearance = Math.min(
+          minimumClearance,
+          Math.hypot(x - obstacle.center.x, z - obstacle.center.z) - obstacle.radius - bodyClearance,
+        )
+      }
+    }
+    return minimumClearance
+  }
+
+  const ranked = candidates
+    .map(side => ({ side, clearance: score(side) }))
+    .sort((a, b) => {
+      if (Math.abs(a.clearance - b.clearance) > 1e-9) return b.clearance - a.clearance
+      return a.side === preferred ? -1 : 1
+    })
+  return ranked[0].clearance >= 0 ? ranked[0].side : null
+}
+
+function clearBoardContact(state: StuntState) {
+  state.boardContactRatio = 0
+  state.boardContactSegmentCount = 0
+  state.boardContactStableSeconds = 0
+  state.boardContactHeadWeight = 0
+  state.boardContactMidbodyWeight = 0
+  state.boardContactTailWeight = 0
+  state.boardContactRelativeSpeed = 0
 }
 
 function transitionLocomotion(state: StuntState, next: LocomotionState) {
@@ -560,7 +699,7 @@ function transitionLocomotion(state: StuntState, next: LocomotionState) {
     }
   }
   if (next === 'dismounting') {
-    state.dismountSide = state.attempt % 2 === 0 ? 1 : -1
+    state.boardContactStableSeconds = 0
     state.flipProgress = 0
     state.currentAirtime = 0
   }
@@ -583,7 +722,9 @@ export function interactionSampleFor(state: StuntState): WormInteractionAnimatio
           ? 'drinking'
           : 'eating'
   const durationSeconds =
-    kind === 'mounting' ? MOUNT_SECONDS : kind === 'dismounting' ? DISMOUNT_SECONDS : FEED_SECONDS
+    // The mounting sample remains a deterministic reference asset for the
+    // interaction-animation verifier, but live boarding never consumes it.
+    kind === 'mounting' ? 1.8 : kind === 'dismounting' ? DISMOUNT_SECONDS : FEED_SECONDS
   return sampleWormInteractionAnimation({
     kind,
     elapsedSeconds: state.locomotionTime,
@@ -811,33 +952,6 @@ function updateWormRoot(
     )
     state.wormVx = (state.wormX - oldX) / delta
     state.wormVz = (state.wormZ - oldZ) / delta
-  } else if (state.locomotionState === 'mounting') {
-    const interaction = interactionSampleFor(state)
-    const progress = smoothStep(interaction.progress)
-    const forwardX = Math.cos(state.boardHeading)
-    const forwardZ = Math.sin(state.boardHeading)
-    const rightX = -forwardZ
-    const rightZ = forwardX
-    const targetX =
-      MathUtils.lerp(state.transitionStartX, state.boardX, progress) +
-      forwardX * interaction.root.forward +
-      rightX * interaction.root.lateral
-    const targetZ =
-      MathUtils.lerp(state.transitionStartZ, state.boardZ, progress) +
-      forwardZ * interaction.root.forward +
-      rightZ * interaction.root.lateral
-    const oldX = state.wormX
-    const oldZ = state.wormZ
-    state.wormX = MathUtils.damp(state.wormX, targetX, 7.2, delta)
-    state.wormZ = MathUtils.damp(state.wormZ, targetZ, 7.2, delta)
-    state.wormHeading = dampAngle(
-      state.wormHeading,
-      lerpAngle(state.transitionStartHeading, state.boardHeading, progress) + interaction.root.yaw,
-      6.5,
-      delta,
-    )
-    state.wormVx = (state.wormX - oldX) / delta
-    state.wormVz = (state.wormZ - oldZ) / delta
   } else if (state.locomotionState === 'feeding') {
     const resource = state.feedingResourceId
       ? state.resources.find(candidate => candidate.id === state.feedingResourceId)
@@ -855,12 +969,27 @@ function updateWormRoot(
     state.wormVx = MathUtils.damp(state.wormVx, 0, 18, delta)
     state.wormVz = MathUtils.damp(state.wormVz, 0, 18, delta)
   } else {
+    const boardSupportActive = gaitControllerOwnsBody(state)
+    const boardingContactActive = state.locomotionState === 'seeking' || state.locomotionState === 'mounting'
+    const boardPose = {
+      x: state.boardX,
+      y: state.boardY,
+      z: state.boardZ,
+      vx: state.boardVx,
+      vz: state.boardVz,
+      heading: state.boardHeading,
+      pitch: state.boardPitch,
+      roll: state.boardRoll,
+    }
+    const locomotionField = boardSupportActive
+      ? withSkateboardDeckSupportField(field, boardPose, environmentConfig, anatomy)
+      : field
     const omittedResources: TerrariumResource['id'][] = []
-    if (
-      state.boardCollisionCooldown > 0 ||
-      state.boardCollisionReleasePending ||
-      state.locomotionState === 'seeking'
-    ) {
+    // The deck is a low support surface, not a vertical wall. The deck-aware
+    // terrain field lets a free chain climb or cross it without a circle-union
+    // projection jump; resource selection still controls whether contact can
+    // become a mount.
+    if (boardSupportActive || state.boardCollisionCooldown > 0 || state.boardCollisionReleasePending) {
       omittedResources.push('skateboard')
     }
     if (
@@ -875,7 +1004,7 @@ function updateWormRoot(
       state.segments,
       action,
       delta,
-      field,
+      locomotionField,
       collisionWorldFor(
         field,
         staticObstacles,
@@ -898,12 +1027,47 @@ function updateWormRoot(
     state.contactRatio = movement.contactRatio
     state.collisionCount += movement.collisionCount
     state.obstacleContactId = movement.contacts[0]?.obstacleId ?? null
-    state.terrainFriction = field.sample(state.wormX, state.wormZ).friction
+    state.terrainFriction = locomotionField.sample(state.wormX, state.wormZ).friction
+
+    if (boardSupportActive) {
+      const boardContact = applySkateboardDeckSupport(
+        state.segments,
+        boardPose,
+        environmentConfig,
+        anatomy,
+        delta,
+      )
+      if (boardingContactActive) recordBoardContact(state, boardContact, delta)
+      state.contactRatio = Math.max(state.contactRatio, boardContact.ratio)
+      state.wormVx = averageSegmentComponent(state.segments, 'vx')
+      state.wormVz = averageSegmentComponent(state.segments, 'vz')
+    }
   }
 
   const wormTerrain = field.sample(state.wormX, state.wormZ)
-  state.wormY = wormTerrain.height + 0.115
+  state.wormY =
+    gaitControllerOwnsBody(state) || state.boardContactRatio > 0
+      ? averageSegmentComponent(state.segments, 'y')
+      : wormTerrain.height + ARTICULATED_WORM_CONTRACT.baseGroundClearance * anatomy.verticalScale
   state.distanceToBoard = Math.hypot(state.boardX - state.wormX, state.boardZ - state.wormZ)
+}
+
+function recordBoardContact(state: StuntState, contact: SkateboardDeckContact, delta: number) {
+  state.boardContactRatio = contact.ratio
+  state.boardContactSegmentCount = contact.segmentCount
+  state.boardContactHeadWeight = contact.headWeight
+  state.boardContactMidbodyWeight = contact.midbodyWeight
+  state.boardContactTailWeight = contact.tailWeight
+  state.boardContactRelativeSpeed = contact.relativeSpeed
+  state.mountBlend = contact.ratio
+  state.boardContactStableSeconds = boardContactQualifiesForMount(state)
+    ? state.boardContactStableSeconds + delta
+    : Math.max(0, state.boardContactStableSeconds - delta * 2)
+}
+
+function averageSegmentComponent(segments: readonly SegmentSnapshot[], key: 'vx' | 'vz' | 'y') {
+  if (segments.length === 0) return 0
+  return segments.reduce((sum, segment) => sum + segment[key], 0) / segments.length
 }
 
 function launchKickflip(state: StuntState, gravity: number) {
@@ -967,8 +1131,8 @@ function updateSegments(
   staticObstacles: readonly TerrariumCircleObstacle[],
   anatomy: WurmAnatomy,
 ) {
-  if ((['crawling', 'seeking'] as readonly LocomotionState[]).includes(state.locomotionState)) {
-    state.contactRatio = state.locomotionPlant.contactRatio
+  if (gaitControllerOwnsBody(state)) {
+    state.contactRatio = Math.max(state.locomotionPlant.contactRatio, state.boardContactRatio)
     return
   }
   const airborneTuck = state.grounded
@@ -981,9 +1145,7 @@ function updateSegments(
   const centerY = state.boardY + 0.18 + airborneTuck * 0.18 + victory * 0.07
   const mount = smoothStep(state.mountBlend)
   const interaction =
-    state.locomotionState === 'mounting' ||
-    state.locomotionState === 'dismounting' ||
-    state.locomotionState === 'feeding'
+    state.locomotionState === 'dismounting' || state.locomotionState === 'feeding'
       ? interactionSampleFor(state)
       : null
   const feedingResource = state.feedingResourceId
@@ -1005,10 +1167,7 @@ function updateSegments(
         ? 5.2
         : SEGMENT_SMOOTHING
   const locomotionPose = deriveWormLocalPose(state.locomotionPlant, state.previousAction)
-  const detached =
-    state.locomotionState === 'crawling' ||
-    state.locomotionState === 'seeking' ||
-    state.locomotionState === 'feeding'
+  const detached = gaitControllerOwnsBody(state) || state.locomotionState === 'feeding'
   const baseOmittedResources: TerrariumResource['id'][] = []
   if (
     state.boardCollisionCooldown > 0 ||
@@ -1341,15 +1500,14 @@ export function toSnapshot(state: StuntState): SimulationSnapshot {
 
 export function locomotionSensorsFor(
   state: StuntState,
-  field: TerrainField,
+  _field: TerrainField,
   tractionScale = 1,
 ): LocomotionSensors {
-  const sensedFriction = MathUtils.clamp(
-    field.sample(state.wormX, state.wormZ).friction * tractionScale,
-    0,
-    1.2,
-  )
-  const targetId = state.locomotionState === 'seeking' ? 'skateboard' : state.needs.targetResourceId
+  const sensedFriction = MathUtils.clamp(state.terrainFriction * tractionScale, 0, 1.2)
+  const targetId =
+    state.locomotionState === 'seeking' || state.locomotionState === 'mounting'
+      ? 'skateboard'
+      : state.needs.targetResourceId
   const target = state.resources.find(resource => resource.id === targetId)
   if (!target) {
     return {
@@ -1393,7 +1551,7 @@ export function locomotionSensorsFor(
 /** Apply a uniform side impulse to the free articulated body. This does not
  * alter joints or neural state, so recovery remains the controller's job. */
 export function applyGaitLateralShove(state: StuntState, impulse: number) {
-  if (state.locomotionState !== 'crawling' && state.locomotionState !== 'seeking') return false
+  if (!gaitControllerOwnsBody(state)) return false
   if (!Number.isFinite(impulse)) throw new Error('gait shove impulse must be finite')
   const safeImpulse = MathUtils.clamp(impulse, -1.5, 1.5)
   const rightX = -Math.sin(state.wormHeading)

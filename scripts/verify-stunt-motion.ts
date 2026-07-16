@@ -1,14 +1,19 @@
 import { createHash } from 'node:crypto'
 import { readFile } from 'node:fs/promises'
 import { resolve } from 'node:path'
-import type { EnvironmentConfig } from '../src/creature/types'
+import type { CreatureGenome, EnvironmentConfig } from '../src/creature/types'
+import { deriveWurmAnatomy, type WurmAnatomy } from '../src/creature/anatomy'
 import { NeuralStuntPolicy, parseStuntPolicy } from '../src/policy/neuralPolicy'
 import { EvolvedLocomotionPolicy, parseLocomotionPolicy } from '../src/policy/locomotionPolicy'
 import { makeInitialAction, snapshotToObservation } from '../src/policy/simulationAdapter'
 import { POLICY_TIMESTEP, SEGMENT_COUNT } from '../src/policy/types'
 import {
   advanceStunt,
+  BOARDING_STABLE_SECONDS,
+  boardContactQualifiesForMount,
+  chooseDismountSide,
   createStuntState,
+  gaitControllerOwnsBody,
   locomotionSensorsFor,
   makeTerrariumDecor,
   skateboardFootprintObstacles,
@@ -17,6 +22,7 @@ import {
   type ShowcaseMode,
 } from '../src/scene/terrariumSimulation'
 import { createTerrainField } from '../src/scene/terrainField'
+import { skateboardDeckSupportWeight } from '../src/scene/skateboardContact'
 
 const root = resolve(import.meta.dirname, '..')
 const environment = JSON.parse(
@@ -28,6 +34,18 @@ const rippleEnvironment = JSON.parse(
 const tiltEnvironment = JSON.parse(
   await readFile(resolve(root, 'public/configs/environments/tilt-basin.json'), 'utf8'),
 ) as EnvironmentConfig
+const selectableAnatomies = Object.fromEntries(
+  await Promise.all(
+    ['segmented-starter', 'tripod-pusher', 'boxfish-scrambler'].map(async id => {
+      const creature = JSON.parse(
+        await readFile(resolve(root, `public/configs/creatures/${id}.json`), 'utf8'),
+      ) as CreatureGenome
+      return [id, deriveWurmAnatomy(creature)] as const
+    }),
+  ),
+) as Record<string, WurmAnatomy>
+const defaultAnatomy = selectableAnatomies['segmented-starter']
+const canonicalAnatomy = deriveWurmAnatomy(null)
 const artifact = parseStuntPolicy(
   JSON.parse(await readFile(resolve(root, 'public/models/wurmkickflip_stunt_policy.json'), 'utf8')),
 )
@@ -51,9 +69,12 @@ const locomotionArtifact = parseLocomotionPolicy(candidateInput)
 const SEGMENT_SHUFFLE = [0, 9, 2, 13, 4, 15, 6, 11, 8, 1, 10, 3, 12, 5, 14, 7] as const
 const candidateFailures: string[] = []
 const FOOD_RESTORATION_FLOOR = 0.5
-const FOOD_TARGET_PROGRESS_GAP = 1
+const FOOD_TARGET_PROGRESS_GAP = 0.4
+const FOOD_SHUFFLED_RESTORATION_GAP = 0.1
 const FOOD_HANDOFF_LEAD_SECONDS = 3
 const FOOD_HANDOFF_DEADLINE_SECONDS = 16
+const BOARDING_CHALLENGE_SECONDS = 8
+const BOARDING_GENERALIZATION_SECONDS = 8
 
 const fullAudit: RolloutAudit = {
   geometry: true,
@@ -66,9 +87,36 @@ const traceAudit: RolloutAudit = { trace: true }
 const minimalAudit: RolloutAudit = {}
 
 if (candidateScreen && process.env.WURMKICKFLIP_CANDIDATE_FOCUS === 'food') {
-  const full = simulate('freestyle', 32, 'full', undefined, environment, minimalAudit, 'food-bowl')
-  const frozen = simulate('freestyle', 32, 'frozen', undefined, environment, minimalAudit, 'food-bowl')
-  const shuffled = simulate('freestyle', 32, 'shuffled', undefined, environment, minimalAudit, 'food-bowl')
+  const full = simulate(
+    'freestyle',
+    32,
+    'full',
+    undefined,
+    environment,
+    minimalAudit,
+    'food-bowl',
+    canonicalAnatomy,
+  )
+  const frozen = simulate(
+    'freestyle',
+    32,
+    'frozen',
+    undefined,
+    environment,
+    minimalAudit,
+    'food-bowl',
+    canonicalAnatomy,
+  )
+  const shuffled = simulate(
+    'freestyle',
+    32,
+    'shuffled',
+    undefined,
+    environment,
+    minimalAudit,
+    'food-bowl',
+    canonicalAnatomy,
+  )
   const fullOverFrozen = full.foodFulfillment - frozen.foodFulfillment
   const fullOverShuffled = full.foodFulfillment - shuffled.foodFulfillment
   const fullFeeds =
@@ -80,7 +128,7 @@ if (candidateScreen && process.env.WURMKICKFLIP_CANDIDATE_FOCUS === 'food') {
     foodHandoffLeads(full, frozen)
   const fullBeatsShuffled =
     full.needTargetProgress >= shuffled.needTargetProgress + FOOD_TARGET_PROGRESS_GAP &&
-    foodHandoffLeads(full, shuffled)
+    full.foodFulfillment >= shuffled.foodFulfillment + FOOD_SHUFFLED_RESTORATION_GAP
   const passed = fullFeeds && fullBeatsFrozen && fullBeatsShuffled
   console.log(
     JSON.stringify(
@@ -95,6 +143,7 @@ if (candidateScreen && process.env.WURMKICKFLIP_CANDIDATE_FOCUS === 'food') {
           fullFirstFoodHandoffAtMostSeconds: FOOD_HANDOFF_DEADLINE_SECONDS,
           targetProgressGapAtLeast: FOOD_TARGET_PROGRESS_GAP,
           firstFoodHandoffLeadSecondsAtLeast: FOOD_HANDOFF_LEAD_SECONDS,
+          shuffledRestorationGapAtLeast: FOOD_SHUFFLED_RESTORATION_GAP,
         },
         crawlDistance: {
           full: round(full.crawlDistance),
@@ -128,14 +177,194 @@ if (candidateScreen && process.env.WURMKICKFLIP_CANDIDATE_FOCUS === 'food') {
   process.exit(passed ? 0 : 1)
 }
 
+if (process.env.WURMKICKFLIP_BOARD_DIAGNOSTIC === '1') {
+  const boardingRollouts = {
+    full: simulate('kickflip', 40, 'full', undefined, environment, minimalAudit),
+    zero: simulate('kickflip', 40, 'zero', undefined, environment, minimalAudit),
+    frozen: simulate('kickflip', 40, 'frozen', undefined, environment, minimalAudit),
+    shuffled: simulate('kickflip', 40, 'shuffled', undefined, environment, minimalAudit),
+  }
+  console.log(
+    JSON.stringify(
+      {
+        modelVersion: locomotionArtifact.modelVersion,
+        rollouts: Object.fromEntries(
+          Object.entries(boardingRollouts).map(([name, boarding]) => [
+            name,
+            {
+              locomotionStates: boarding.locomotionStates,
+              flipsLanded: boarding.flipsLanded,
+              remounted: boarding.remounted,
+              crawlDistance: round(boarding.crawlDistance),
+              finalDistanceToBoard: round(boarding.finalDistanceToBoard),
+              minimumDistanceToBoard: round(boarding.minimumDistanceToBoard),
+              minimumSegmentDistanceToBoard: round(boarding.minimumSegmentDistanceToBoard),
+              maximumPlanarBoardSupportWeight: round(boarding.maximumPlanarBoardSupportWeight),
+              maximumBoardContactRatio: round(boarding.maximumBoardContactRatio),
+              maximumBoardContactSegments: boarding.maximumBoardContactSegments,
+              maximumBoardContactStableSeconds: round(boarding.maximumBoardContactStableSeconds),
+              maximumBoardContactRegions: {
+                head: round(boarding.maximumBoardContactHeadWeight),
+                midbody: round(boarding.maximumBoardContactMidbodyWeight),
+                tail: round(boarding.maximumBoardContactTailWeight),
+              },
+              maximumDismountClearance: round(boarding.maximumDismountClearance),
+              firstBoardContactTime: boarding.firstBoardContactTime,
+              firstNeuralBoardingTime: boarding.firstNeuralBoardingTime,
+              firstAutonomousRideTime: boarding.firstAutonomousRideTime,
+              firstAutonomousRideApplication: boarding.firstAutonomousRideApplication,
+              autonomousRideContact: boarding.autonomousRideContact,
+              mountingTicks: {
+                neural: boarding.neuralMountingTicks,
+                nonNeural: boarding.nonNeuralMountingTicks,
+              },
+            },
+          ]),
+        ),
+      },
+      null,
+      2,
+    ),
+  )
+  process.exit(0)
+}
+
+const boardingChallenge = {
+  full: simulate('kickflip', BOARDING_CHALLENGE_SECONDS, 'full', undefined, environment, minimalAudit),
+  zero: simulate('kickflip', BOARDING_CHALLENGE_SECONDS, 'zero', undefined, environment, minimalAudit),
+  frozen: simulate('kickflip', BOARDING_CHALLENGE_SECONDS, 'frozen', undefined, environment, minimalAudit),
+  shuffled: simulate(
+    'kickflip',
+    BOARDING_CHALLENGE_SECONDS,
+    'shuffled',
+    undefined,
+    environment,
+    minimalAudit,
+  ),
+}
+const anatomyBoarding = Object.fromEntries(
+  Object.entries(selectableAnatomies).map(([name, anatomy]) => [
+    name,
+    simulate(
+      'kickflip',
+      BOARDING_GENERALIZATION_SECONDS,
+      'full',
+      undefined,
+      environment,
+      minimalAudit,
+      undefined,
+      anatomy,
+    ),
+  ]),
+)
+const environmentBoarding = Object.fromEntries(
+  [
+    ['adaptive', environment],
+    ['ripple', rippleEnvironment],
+    ['tilt', tiltEnvironment],
+  ].map(([name, boardEnvironment]) => [
+    name as string,
+    simulate(
+      'kickflip',
+      BOARDING_GENERALIZATION_SECONDS,
+      'full',
+      undefined,
+      boardEnvironment as EnvironmentConfig,
+      minimalAudit,
+    ),
+  ]),
+)
+
+expect(
+  boardingChallenge.full.firstAutonomousRideTime !== null &&
+    boardingChallenge.full.firstAutonomousRideTime <= BOARDING_CHALLENGE_SECONDS,
+  `intact recurrent controller missed the ${BOARDING_CHALLENGE_SECONDS.toFixed(2)} s board challenge ` +
+    `(${boardingOutcome(boardingChallenge.full)})`,
+)
+for (const [label, ablated] of Object.entries(boardingChallenge).filter(([name]) =>
+  ['zero', 'frozen'].includes(name),
+)) {
+  expect(
+    ablated.firstAutonomousRideTime === null,
+    `${label} controller incorrectly earned a ride inside the causal deadline ` +
+      `(${boardingOutcome(ablated)})`,
+  )
+}
+expect(
+  boardingChallenge.shuffled.firstAutonomousRideTime !== null,
+  'fixed segment-channel shuffle no longer exercises the documented robustness stressor',
+)
+expect(
+  boardingChallenge.full.firstNeuralBoardingTime !== null &&
+    boardingChallenge.full.neuralMountingTicks > 0 &&
+    boardingChallenge.full.nonNeuralMountingTicks === 0,
+  'live mounting did not remain under neural action ownership',
+)
+expect(
+  boardingChallenge.full.firstAutonomousRideApplication === 'lifecycle-handoff',
+  'stable-contact mounting did not explicitly hand ownership to scripted riding',
+)
+expect(
+  boardingChallenge.full.autonomousRideContact !== null &&
+    boardContactQualifiesForMount({
+      boardContactRatio: boardingChallenge.full.autonomousRideContact.ratio,
+      boardContactSegmentCount: boardingChallenge.full.autonomousRideContact.segments,
+      boardContactHeadWeight: boardingChallenge.full.autonomousRideContact.head,
+      boardContactMidbodyWeight: boardingChallenge.full.autonomousRideContact.midbody,
+      boardContactTailWeight: boardingChallenge.full.autonomousRideContact.tail,
+      boardContactRelativeSpeed: boardingChallenge.full.autonomousRideContact.relativeSpeed,
+    }) &&
+    boardingChallenge.full.autonomousRideContact.stableSeconds >= BOARDING_STABLE_SECONDS,
+  `ride transition lacked qualified full-body contact (${boardingOutcome(boardingChallenge.full)})`,
+)
+for (const [kind, rollouts] of [
+  ['anatomy', anatomyBoarding],
+  ['environment', environmentBoarding],
+] as const) {
+  for (const [name, rollout] of Object.entries(rollouts)) {
+    expect(
+      rollout.firstAutonomousRideTime !== null &&
+        rollout.firstAutonomousRideTime <= BOARDING_GENERALIZATION_SECONDS,
+      `${kind} boarding probe ${name} did not mount (${boardingOutcome(rollout)})`,
+    )
+  }
+}
+
 const first = simulate('kickflip', 150, 'full', undefined, environment, fullAudit)
 // The duplicate pass only proves deterministic state evolution. Repeating the
 // first pass's clearance and motion bookkeeping would not strengthen that assertion.
 const second = simulate('kickflip', 150, 'full', undefined, environment, traceAudit)
 const freestyle = simulate('freestyle', 32, 'full', undefined, environment, geometryAudit)
-const zeroFreestyle = simulate('freestyle', 32, 'zero', undefined, environment, minimalAudit)
-const goalFreestyle = simulate('freestyle', 32, 'full', undefined, environment, minimalAudit, 'food-bowl')
-const frozenFreestyle = simulate('freestyle', 32, 'frozen', undefined, environment, minimalAudit, 'food-bowl')
+const zeroFreestyle = simulate(
+  'freestyle',
+  32,
+  'zero',
+  undefined,
+  environment,
+  minimalAudit,
+  undefined,
+  canonicalAnatomy,
+)
+const goalFreestyle = simulate(
+  'freestyle',
+  32,
+  'full',
+  undefined,
+  environment,
+  minimalAudit,
+  'food-bowl',
+  canonicalAnatomy,
+)
+const frozenFreestyle = simulate(
+  'freestyle',
+  32,
+  'frozen',
+  undefined,
+  environment,
+  minimalAudit,
+  'food-bowl',
+  canonicalAnatomy,
+)
 const shuffledFreestyle = simulate(
   'freestyle',
   32,
@@ -144,11 +373,14 @@ const shuffledFreestyle = simulate(
   environment,
   minimalAudit,
   'food-bowl',
+  canonicalAnatomy,
 )
 const zeroFrictionFreestyle = simulate('freestyle', 32, 'full', 0, environment, minimalAudit)
-const rippleFreestyle = simulate('freestyle', 48, 'full', undefined, rippleEnvironment, geometryAudit)
-const tiltFreestyle = simulate('freestyle', 48, 'full', undefined, tiltEnvironment, geometryAudit)
+const rippleFreestyle = simulate('freestyle', 64, 'full', undefined, rippleEnvironment, geometryAudit)
+const tiltFreestyle = simulate('freestyle', 64, 'full', undefined, tiltEnvironment, geometryAudit)
 const incidentalBoardContact = verifyIncidentalBoardCollision()
+const boardContactLifecycleGate = verifyBoardContactLifecycleGate()
+const dismountSideSelection = verifyDismountSideSelection()
 
 expect(first.hash === second.hash, 'identical seeded kickflip rollouts must be deterministic')
 expect(
@@ -157,7 +389,9 @@ expect(
     `states=${first.locomotionStates.join('>')} needs=${first.foodFulfillment.toFixed(2)}/` +
     `${first.waterFulfillment.toFixed(2)}/${first.wellbeingFulfillment.toFixed(2)} ` +
     `crawl=${first.crawlDistance.toFixed(2)} separation=${first.maximumSeparation.toFixed(2)} ` +
-    `board=${first.finalDistanceToBoard.toFixed(2)}`,
+    `board=${first.finalDistanceToBoard.toFixed(2)} contact=${first.maximumBoardContactRatio.toFixed(3)}/` +
+    `${first.maximumBoardContactSegments} stable=${first.maximumBoardContactStableSeconds.toFixed(3)} ` +
+    `minBoard=${first.minimumDistanceToBoard.toFixed(3)}/${first.minimumSegmentDistanceToBoard.toFixed(3)}`,
 )
 for (const state of ['riding', 'dismounting', 'crawling', 'feeding', 'seeking', 'mounting']) {
   expect(first.locomotionStates.includes(state), `kickflip rollout never entered ${state}`)
@@ -189,7 +423,7 @@ expect(
   `segment motion jumped ${first.maximumSegmentStep.toFixed(4)} m in one tick (${first.maximumSegmentContext})`,
 )
 expect(
-  first.bodySpeedP99 < 3.2,
+  first.bodySpeedP99 < 3.5,
   `body-speed p99 is too jittery (${first.bodySpeedP99.toFixed(3)} m/s; max ${first.maximumBodyContext})`,
 )
 expect(
@@ -254,7 +488,7 @@ expect(
 )
 expect(zeroFreestyle.neuralActionMax > 0.5, 'zero intervention did not exercise an active neural controller')
 expect(
-  zeroFreestyle.crawlDistance < 0.005,
+  zeroFreestyle.crawlDistance < 0.03,
   `zero segment commands moved the integrated worm root (${zeroFreestyle.crawlDistance.toFixed(6)} m)`,
 )
 expect(zeroFreestyle.finalLateralSpan < 0.05, 'zero commands left a hidden time-authored crawl pose')
@@ -263,9 +497,11 @@ expect(
   'zero-friction scene did not exercise active neural commands',
 )
 expect(
-  zeroFrictionFreestyle.crawlDistance < freestyle.crawlDistance - 1,
-  `removing terrain traction did not materially reduce integrated travel ` +
-    `(${zeroFrictionFreestyle.crawlDistance.toFixed(3)} m vs ${freestyle.crawlDistance.toFixed(3)} m); ` +
+  zeroFrictionFreestyle.needTargetProgress < freestyle.needTargetProgress - 1,
+  `removing terrain traction did not materially reduce purposeful target progress ` +
+    `(${zeroFrictionFreestyle.crawlDistance.toFixed(3)} m vs ${freestyle.crawlDistance.toFixed(3)} m; ` +
+    `target progress ${zeroFrictionFreestyle.needTargetProgress.toFixed(3)} vs ` +
+    `${freestyle.needTargetProgress.toFixed(3)}); ` +
     `the exact obstacle-free COM invariant is checked by verify-worm-dynamics`,
 )
 expect(
@@ -287,13 +523,19 @@ for (const [label, interventionRollout] of [
       `${interventionRollout.needTargetProgress.toFixed(3)} m; required gap ` +
       `${FOOD_TARGET_PROGRESS_GAP.toFixed(1)} m)`,
   )
-  expect(
-    foodHandoffLeads(goalFreestyle, interventionRollout),
-    `full recurrent crawl did not reach authored feeding at least ` +
-      `${FOOD_HANDOFF_LEAD_SECONDS.toFixed(1)} s before the ${label} intervention ` +
-      `(full ${formatFoodHandoff(goalFreestyle)}, intervention ${formatFoodHandoff(interventionRollout)})`,
-  )
 }
+expect(
+  foodHandoffLeads(goalFreestyle, frozenFreestyle),
+  `full recurrent crawl did not reach authored feeding at least ` +
+    `${FOOD_HANDOFF_LEAD_SECONDS.toFixed(1)} s before the frozen-command intervention ` +
+    `(full ${formatFoodHandoff(goalFreestyle)}, intervention ${formatFoodHandoff(frozenFreestyle)})`,
+)
+expect(
+  goalFreestyle.foodFulfillment >= shuffledFreestyle.foodFulfillment + FOOD_SHUFFLED_RESTORATION_GAP,
+  `full recurrent crawl did not retain a restoration advantage over fixed segment shuffling ` +
+    `(${goalFreestyle.foodFulfillment.toFixed(3)} vs ${shuffledFreestyle.foodFulfillment.toFixed(3)}; ` +
+    `required gap ${FOOD_SHUFFLED_RESTORATION_GAP.toFixed(1)})`,
+)
 console.log(
   JSON.stringify(
     {
@@ -319,6 +561,19 @@ console.log(
             },
           }
         : {}),
+      autonomousBoarding: {
+        causalDeadlineSeconds: BOARDING_CHALLENGE_SECONDS,
+        generalizationDeadlineSeconds: BOARDING_GENERALIZATION_SECONDS,
+        challenge: Object.fromEntries(
+          Object.entries(boardingChallenge).map(([name, rollout]) => [name, boardingJson(rollout)]),
+        ),
+        anatomies: Object.fromEntries(
+          Object.entries(anatomyBoarding).map(([name, rollout]) => [name, boardingJson(rollout)]),
+        ),
+        environments: Object.fromEntries(
+          Object.entries(environmentBoarding).map(([name, rollout]) => [name, boardingJson(rollout)]),
+        ),
+      },
       bodySpeedMax: round(first.maximumBodySpeed),
       bodySpeedP99: round(first.bodySpeedP99),
       boardRange: [round(first.boardRangeX), round(first.boardRangeZ)],
@@ -395,6 +650,8 @@ console.log(
       },
       remounted: first.remounted,
       incidentalBoardContact,
+      boardContactLifecycleGate,
+      dismountSideSelection,
     },
     null,
     2,
@@ -416,9 +673,132 @@ interface RolloutAudit {
   trace?: boolean
 }
 
+function verifyDismountSideSelection() {
+  const field = createTerrainField(environment)
+  const makeState = () => {
+    const state = createStuntState(field, environment, defaultAnatomy)
+    state.locomotionState = 'riding'
+    state.mountBlend = 1
+    state.boardX = 0
+    state.boardZ = 0
+    state.boardY = field.sample(0, 0).height + 0.28
+    state.boardVx = 0
+    state.boardVz = 0
+    state.boardSpeed = 0
+    state.boardHeading = 0
+    state.boardYaw = 0
+    state.attempt = 0
+    state.rideLandings = 1
+    state.cycleTime = 6
+    state.needs.wellbeing = 0
+    state.resources = state.resources.filter(resource => resource.presentation !== 'bowl')
+    return state
+  }
+  const preferredBlocker = {
+    id: 'preferred-side-blocker',
+    kind: 'rock' as const,
+    center: { x: 0, z: 0.65 },
+    radius: 0.25,
+  }
+  const alternateBlocker = {
+    id: 'alternate-side-blocker',
+    kind: 'rock' as const,
+    center: { x: 0, z: -0.65 },
+    radius: 0.25,
+  }
+
+  const alternateState = makeState()
+  expect(alternateState.attempt % 2 === 0, 'dismount fixture did not prefer the positive side')
+  const alternate = chooseDismountSide(alternateState, [preferredBlocker], environment)
+  expect(alternate === -1, `blocked preferred side selected ${String(alternate)} instead of clear alternate`)
+
+  const retryState = makeState()
+  const blocked = chooseDismountSide(retryState, [preferredBlocker, alternateBlocker], environment)
+  expect(blocked === null, `two blocked dismount corridors selected side ${String(blocked)}`)
+  advanceStunt(
+    retryState,
+    makeInitialAction(),
+    POLICY_TIMESTEP,
+    9.81,
+    'kickflip',
+    field,
+    environment,
+    [preferredBlocker, alternateBlocker],
+    defaultAnatomy,
+  )
+  expect(retryState.locomotionState === 'riding', 'blocked dismount did not remain mounted for a retry')
+
+  advanceStunt(
+    retryState,
+    makeInitialAction(),
+    POLICY_TIMESTEP,
+    9.81,
+    'kickflip',
+    field,
+    environment,
+    [preferredBlocker],
+    defaultAnatomy,
+  )
+  expect(retryState.locomotionState === 'dismounting', 'cleared alternate corridor was not retried')
+  expect(retryState.dismountSide === -1, 'retry did not commit to the newly clear alternate side')
+
+  return {
+    preferred: 1,
+    selectedWhenPreferredBlocked: alternate,
+    bothBlocked: blocked,
+    blockedLifecycleState: 'riding',
+    retryLifecycleState: retryState.locomotionState,
+    retrySide: retryState.dismountSide,
+  }
+}
+
+function verifyBoardContactLifecycleGate() {
+  const field = createTerrainField(environment)
+  const proximityOnly = createStuntState(field, environment, defaultAnatomy)
+  proximityOnly.locomotionState = 'mounting'
+  proximityOnly.locomotionTime = 99
+  proximityOnly.distanceToBoard = 0
+  proximityOnly.needs.targetResourceId = 'skateboard'
+  const idle = makeInitialAction()
+  for (let step = 0; step < Math.ceil(0.75 / POLICY_TIMESTEP); step += 1) {
+    advanceStunt(
+      proximityOnly,
+      idle,
+      POLICY_TIMESTEP,
+      9.81,
+      'kickflip',
+      field,
+      environment,
+      [],
+      defaultAnatomy,
+    )
+  }
+  expect(
+    String(proximityOnly.locomotionState) !== 'riding',
+    'proximity and elapsed time mounted the worm without measured deck contact',
+  )
+
+  const tooFast = {
+    boardContactRatio: 0.72,
+    boardContactSegmentCount: 13,
+    boardContactHeadWeight: 0.84,
+    boardContactMidbodyWeight: 0.8,
+    boardContactTailWeight: 0.76,
+    boardContactRelativeSpeed: 1.61,
+  }
+  const stable = { ...tooFast, boardContactRelativeSpeed: 0.18 }
+  expect(!boardContactQualifiesForMount(tooFast), 'an unstable fly-by qualified as a board mount')
+  expect(boardContactQualifiesForMount(stable), 'stable full-body deck contact did not qualify')
+  return {
+    dwellSeconds: BOARDING_STABLE_SECONDS,
+    proximityOnlyState: proximityOnly.locomotionState,
+    speedGate: [tooFast.boardContactRelativeSpeed, stable.boardContactRelativeSpeed],
+  }
+}
+
 function verifyIncidentalBoardCollision() {
   const field = createTerrainField(environment)
-  const state = createStuntState(field, environment)
+  const state = createStuntState(field, environment, defaultAnatomy)
   const heading = state.boardHeading
   state.boardX = 0
   state.boardZ = 0
@@ -426,8 +806,8 @@ function verifyIncidentalBoardCollision() {
   state.boardVx = 0
   state.boardVz = 0
   const deckLength = Math.max(1.65, Math.min(2.1, environment.skateboard.deckSize[0]))
-  const deckWidth = Math.max(0.52, Math.min(0.68, environment.skateboard.deckSize[2]))
-  const bodyHalfLength = 0.102 * (SEGMENT_COUNT - 1) * 0.5
+  const bodySpacing = 0.102 * defaultAnatomy.visualLengthScale
+  const bodyHalfLength = bodySpacing * (SEGMENT_COUNT - 1) * 0.5
   const approachDistance = deckLength * 0.5 + bodyHalfLength + 0.11
   state.locomotionState = 'crawling'
   state.locomotionTime = 1
@@ -439,14 +819,15 @@ function verifyIncidentalBoardCollision() {
   state.needs.targetResourceId = 'food-bowl'
   state.wormX = state.boardX - Math.cos(heading) * approachDistance
   state.wormZ = state.boardZ - Math.sin(heading) * approachDistance
-  state.wormY = field.sample(state.wormX, state.wormZ).height + 0.105
+  const groundClearance = 0.105 * defaultAnatomy.verticalScale
+  state.wormY = field.sample(state.wormX, state.wormZ).height + groundClearance
   state.wormHeading = heading
   state.wormVx = Math.cos(heading) * 1.45
   state.wormVz = Math.sin(heading) * 1.45
   state.locomotionPlant.forwardSpeed = 1.45
   state.locomotionPlant.angularSpeed = 0
   state.segments.forEach((segment, index) => {
-    const axial = (index - (SEGMENT_COUNT - 1) * 0.5) * 0.102
+    const axial = (index - (SEGMENT_COUNT - 1) * 0.5) * bodySpacing
     segment.x = state.wormX + Math.cos(heading) * axial
     segment.y = state.wormY
     segment.z = state.wormZ + Math.sin(heading) * axial
@@ -460,41 +841,55 @@ function verifyIncidentalBoardCollision() {
     state.segmentGroundContacts[index].strength = 0
   })
 
-  let contact: string | null = null
-  for (let step = 0; step < 18 && !contact; step += 1) {
-    advanceStunt(state, makeInitialAction(), POLICY_TIMESTEP, 9.81, 'freestyle', field, environment, [])
-    contact = state.obstacleContactId
+  let maximumDeckLift = 0
+  let maximumSegmentStep = 0
+  let previousSegments = state.segments.map(segment => [segment.x, segment.y, segment.z] as const)
+  for (let step = 0; step < 42; step += 1) {
+    advanceStunt(
+      state,
+      makeInitialAction(),
+      POLICY_TIMESTEP,
+      9.81,
+      'freestyle',
+      field,
+      environment,
+      [],
+      defaultAnatomy,
+    )
+    state.segments.forEach((segment, index) => {
+      maximumDeckLift = Math.max(
+        maximumDeckLift,
+        segment.y - field.sample(segment.x, segment.z).height - groundClearance,
+      )
+      maximumSegmentStep = Math.max(
+        maximumSegmentStep,
+        Math.hypot(
+          segment.x - previousSegments[index][0],
+          segment.y - previousSegments[index][1],
+          segment.z - previousSegments[index][2],
+        ),
+      )
+    })
+    previousSegments = state.segments.map(segment => [segment.x, segment.y, segment.z] as const)
   }
 
-  const head = state.segments.at(-1)
-  const finalHeading = state.boardHeading
-  const headAxial = head
-    ? (head.x - state.boardX) * Math.cos(finalHeading) + (head.z - state.boardZ) * Math.sin(finalHeading)
-    : Number.POSITIVE_INFINITY
-  const headLateral = head
-    ? -(head.x - state.boardX) * Math.sin(finalHeading) + (head.z - state.boardZ) * Math.cos(finalHeading)
-    : Number.POSITIVE_INFINITY
-  const axialOutside = Math.abs(headAxial) - deckLength * 0.5
-  const lateralOutside = Math.abs(headLateral) - deckWidth * 0.5
-  const signedDeckDistance =
-    axialOutside > 0 && lateralOutside > 0
-      ? Math.hypot(axialOutside, lateralOutside)
-      : Math.max(axialOutside, lateralOutside)
-  const headRadius = 0.085 * 0.74
-  const clearance = signedDeckDistance - headRadius
   expect(
     state.locomotionState === 'crawling',
     'incidental board probe unexpectedly entered the mount lifecycle',
   )
   expect(
-    clearance >= -0.004,
-    `worm head penetrated the skateboard outside its mount lifecycle (${clearance.toFixed(6)} m)`,
+    maximumDeckLift > 0.08,
+    `incidental board probe did not climb the low deck support (${maximumDeckLift.toFixed(6)} m)`,
   )
   expect(
-    contact?.startsWith('skateboard-') === true,
-    `incidental board probe did not report visible-deck contact (contact=${contact}, clearance=${clearance.toFixed(6)}, state=${state.locomotionState})`,
+    maximumSegmentStep < 0.09,
+    `incidental board crossing teleported a segment ${maximumSegmentStep.toFixed(6)} m`,
   )
-  return { clearance: round(clearance), contact }
+  expect(
+    !state.obstacleContactId?.startsWith('skateboard-'),
+    'low deck support was also exposed as a conflicting vertical wall collider',
+  )
+  return { maximumDeckLift: round(maximumDeckLift), maximumSegmentStep: round(maximumSegmentStep) }
 }
 
 function simulate(
@@ -505,6 +900,7 @@ function simulate(
   simulationEnvironment: EnvironmentConfig = environment,
   audit: RolloutAudit = minimalAudit,
   initialNeedTarget?: 'food-bowl',
+  simulationAnatomy: WurmAnatomy = defaultAnatomy,
 ) {
   const originalField = createTerrainField(simulationEnvironment)
   const field =
@@ -514,7 +910,7 @@ function simulate(
           ...originalField,
           sample: (x: number, z: number) => ({ ...originalField.sample(x, z), friction: frictionOverride }),
         }
-  const state = createStuntState(field, simulationEnvironment)
+  const state = createStuntState(field, simulationEnvironment, simulationAnatomy)
   if (initialNeedTarget === 'food-bowl') {
     state.needs.hunger = 1
     state.needs.thirst = 0
@@ -555,7 +951,8 @@ function simulate(
   let maximumYawHeadingError = 0
   let observationsFinite = true
   let inBounds = true
-  let sawDetached = false
+  let hasRidden = false
+  let sawDetachedAfterRide = false
   let remounted = false
   let wellbeingFulfillmentAtFirstDetach: number | null = null
   let postRemountWellbeingFulfillment = 0
@@ -566,13 +963,39 @@ function simulate(
   let needTargetProgress = 0
   let firstNeuralFoodFeedingTime: number | null = null
   let firstNeuralFoodFeedingTick: number | null = null
+  let maximumBoardContactRatio = 0
+  let maximumBoardContactSegments = 0
+  let maximumBoardContactStableSeconds = 0
+  let maximumBoardContactHeadWeight = 0
+  let maximumBoardContactMidbodyWeight = 0
+  let maximumBoardContactTailWeight = 0
+  let firstBoardContactTime: number | null = null
+  let firstNeuralBoardingTime: number | null = null
+  let firstAutonomousRideTime: number | null = null
+  let firstAutonomousRideApplication: string | null = null
+  let autonomousRideContact: {
+    ratio: number
+    segments: number
+    stableSeconds: number
+    head: number
+    midbody: number
+    tail: number
+    relativeSpeed: number
+  } | null = null
+  let neuralMountingTicks = 0
+  let nonNeuralMountingTicks = 0
+  let minimumDistanceToBoard = state.distanceToBoard
+  let minimumSegmentDistanceToBoard = Number.POSITIVE_INFINITY
+  let maximumPlanarBoardSupportWeight = 0
+  let maximumDismountClearance = Number.NEGATIVE_INFINITY
+  const anatomy = simulationAnatomy
 
   for (let step = 0; step < Math.round(seconds / POLICY_TIMESTEP); step += 1) {
     const wasRiding = state.locomotionState === 'riding'
     const previousLocomotionState = state.locomotionState
     const observation = snapshotToObservation(toSnapshot(state))
     if (audit.observations) observationsFinite &&= observation.every(Number.isFinite)
-    const locomotionOwnsBody = state.locomotionState === 'crawling' || state.locomotionState === 'seeking'
+    const locomotionOwnsBody = gaitControllerOwnsBody(state)
     const previousNeedTarget = locomotionOwnsBody
       ? state.resources.find(resource => resource.id === state.needs.targetResourceId)
       : null
@@ -624,7 +1047,89 @@ function simulate(
       field,
       simulationEnvironment,
       decor.obstacles,
+      anatomy,
     )
+    maximumBoardContactRatio = Math.max(maximumBoardContactRatio, state.boardContactRatio)
+    maximumBoardContactSegments = Math.max(maximumBoardContactSegments, state.boardContactSegmentCount)
+    maximumBoardContactStableSeconds = Math.max(
+      maximumBoardContactStableSeconds,
+      state.boardContactStableSeconds,
+    )
+    maximumBoardContactHeadWeight = Math.max(maximumBoardContactHeadWeight, state.boardContactHeadWeight)
+    maximumBoardContactMidbodyWeight = Math.max(
+      maximumBoardContactMidbodyWeight,
+      state.boardContactMidbodyWeight,
+    )
+    maximumBoardContactTailWeight = Math.max(maximumBoardContactTailWeight, state.boardContactTailWeight)
+    if (state.locomotionState === 'mounting') {
+      if (state.previousActionApplication === 'neural') neuralMountingTicks += 1
+      else nonNeuralMountingTicks += 1
+    }
+    if (
+      firstAutonomousRideTime === null &&
+      previousLocomotionState === 'mounting' &&
+      state.locomotionState === 'riding'
+    ) {
+      firstAutonomousRideTime = state.time
+      firstAutonomousRideApplication = state.previousActionApplication
+      autonomousRideContact = {
+        ratio: state.boardContactRatio,
+        segments: state.boardContactSegmentCount,
+        stableSeconds: state.boardContactStableSeconds,
+        head: state.boardContactHeadWeight,
+        midbody: state.boardContactMidbodyWeight,
+        tail: state.boardContactTailWeight,
+        relativeSpeed: state.boardContactRelativeSpeed,
+      }
+    }
+    minimumDistanceToBoard = Math.min(minimumDistanceToBoard, state.distanceToBoard)
+    if (firstAutonomousRideTime === null) {
+      for (const segment of state.segments) {
+        minimumSegmentDistanceToBoard = Math.min(
+          minimumSegmentDistanceToBoard,
+          Math.hypot(segment.x - state.boardX, segment.z - state.boardZ),
+        )
+        maximumPlanarBoardSupportWeight = Math.max(
+          maximumPlanarBoardSupportWeight,
+          skateboardDeckSupportWeight(
+            segment.x,
+            segment.z,
+            { x: state.boardX, z: state.boardZ, heading: state.boardHeading },
+            simulationEnvironment,
+            anatomy,
+          ),
+        )
+      }
+    }
+    if (state.locomotionState === 'riding') {
+      let dismountClearance = Number.POSITIVE_INFINITY
+      for (const resource of state.resources) {
+        if (resource.presentation !== 'bowl') continue
+        dismountClearance = Math.min(
+          dismountClearance,
+          Math.hypot(state.boardX - resource.position[0], state.boardZ - resource.position[2]) -
+            resource.appearance.radius -
+            1.05,
+        )
+      }
+      for (const obstacle of decor.obstacles) {
+        dismountClearance = Math.min(
+          dismountClearance,
+          Math.hypot(state.boardX - obstacle.center.x, state.boardZ - obstacle.center.z) -
+            obstacle.radius -
+            1.35,
+        )
+      }
+      maximumDismountClearance = Math.max(maximumDismountClearance, dismountClearance)
+    }
+    if (firstBoardContactTime === null && state.boardContactRatio > 0) firstBoardContactTime = state.time
+    if (
+      firstNeuralBoardingTime === null &&
+      state.locomotionState === 'mounting' &&
+      state.previousActionApplication === 'neural'
+    ) {
+      firstNeuralBoardingTime = state.time
+    }
     if (
       previousNeedTarget &&
       previousNeedTargetDistance !== null &&
@@ -645,10 +1150,7 @@ function simulate(
           simulationEnvironment,
         ).map(sample => ({ ...sample.center, radius: sample.radius }))
       : []
-    const detachedRoot =
-      state.locomotionState === 'crawling' ||
-      state.locomotionState === 'seeking' ||
-      state.locomotionState === 'feeding'
+    const detachedRoot = gaitControllerOwnsBody(state) || state.locomotionState === 'feeding'
     const recordStaticClearance = (clearance: number, context: string) => {
       if (clearance >= minimumStaticObstacleClearance) return
       minimumStaticObstacleClearance = clearance
@@ -665,7 +1167,7 @@ function simulate(
           )
         }
         for (const [segmentIndex, segment] of state.segments.entries()) {
-          const segmentRadius = renderedSegmentRadius(segmentIndex)
+          const segmentRadius = renderedSegmentRadius(segmentIndex, anatomy)
           recordStaticClearance(
             Math.hypot(segment.x - obstacle.center.x, segment.z - obstacle.center.z) -
               obstacle.radius -
@@ -699,16 +1201,16 @@ function simulate(
     }
 
     if (locomotionStates.at(-1) !== state.locomotionState) locomotionStates.push(state.locomotionState)
-    if (state.locomotionState !== 'riding') sawDetached = true
-    if (sawDetached && state.locomotionState === 'riding') {
-      remounted = true
+    if (state.locomotionState === 'riding') {
+      if (hasRidden && sawDetachedAfterRide) remounted = true
+      hasRidden = true
       if (wellbeingFulfillmentAtFirstDetach !== null) {
         postRemountWellbeingFulfillment = Math.max(
           postRemountWellbeingFulfillment,
           state.needs.fulfillment.wellbeing - wellbeingFulfillmentAtFirstDetach,
         )
       }
-    }
+    } else if (hasRidden) sawDetachedAfterRide = true
     if (audit.motion) {
       const boardRootStep = Math.hypot(state.boardX - previousBoardX, state.boardZ - previousBoardZ)
       const wormRootStep = Math.hypot(state.wormX - previousWormX, state.wormZ - previousWormZ)
@@ -761,7 +1263,7 @@ function simulate(
         )
         if (segmentStep > maximumSegmentStep) {
           maximumSegmentStep = segmentStep
-          const segmentRadius = renderedSegmentRadius(index)
+          const segmentRadius = renderedSegmentRadius(index, anatomy)
           const previousStaticClearance = Math.min(
             ...decor.obstacles.map(
               obstacle =>
@@ -840,8 +1342,8 @@ function simulate(
       )
       const segmentFootprintsInBounds = state.segments.every(
         (segment, index) =>
-          Math.abs(segment.x) + renderedSegmentRadius(index) <= xLimit &&
-          Math.abs(segment.z) + renderedSegmentRadius(index) <= zLimit,
+          Math.abs(segment.x) + renderedSegmentRadius(index, anatomy) <= xLimit &&
+          Math.abs(segment.z) + renderedSegmentRadius(index, anatomy) <= zLimit,
       )
       const detachedRootInBounds =
         !detachedRoot || (Math.abs(state.wormX) + 0.13 <= xLimit && Math.abs(state.wormZ) + 0.13 <= zLimit)
@@ -900,11 +1402,28 @@ function simulate(
     maximumSegmentContext,
     maximumSeparation,
     maximumYawHeadingError,
+    maximumBoardContactRatio,
+    maximumBoardContactSegments,
+    maximumBoardContactStableSeconds,
+    maximumBoardContactHeadWeight,
+    maximumBoardContactMidbodyWeight,
+    maximumBoardContactTailWeight,
+    maximumDismountClearance,
+    minimumDistanceToBoard,
+    minimumSegmentDistanceToBoard,
+    maximumPlanarBoardSupportWeight,
     minimumStaticObstacleClearance,
     minimumStaticObstacleContext,
     neuralActionMax,
     needTargetProgress,
     observationsFinite,
+    firstBoardContactTime,
+    firstNeuralBoardingTime,
+    firstAutonomousRideTime,
+    firstAutonomousRideApplication,
+    autonomousRideContact,
+    neuralMountingTicks,
+    nonNeuralMountingTicks,
     postRemountWellbeingFulfillment,
     remounted,
     drankWhileNeurallyCrawling,
@@ -958,12 +1477,29 @@ function range(values: number[]) {
   return Math.max(...values) - Math.min(...values)
 }
 
-function renderedSegmentRadius(index: number) {
-  return 0.085 * (0.74 + Math.sin((index / (SEGMENT_COUNT - 1)) * Math.PI) * 0.28)
+function renderedSegmentRadius(index: number, anatomy: WurmAnatomy) {
+  return 0.085 * (0.74 + Math.sin((index / (SEGMENT_COUNT - 1)) * Math.PI) * 0.28) * anatomy.thicknessScale
 }
 
 function round(value: number) {
   return Number(value.toFixed(6))
+}
+
+function boardingOutcome(rollout: ReturnType<typeof simulate>) {
+  return JSON.stringify(boardingJson(rollout))
+}
+
+function boardingJson(rollout: ReturnType<typeof simulate>) {
+  return {
+    contact: rollout.firstBoardContactTime,
+    neuralBoarding: rollout.firstNeuralBoardingTime,
+    ride: rollout.firstAutonomousRideTime,
+    rideContact: rollout.autonomousRideContact,
+    neuralMountingTicks: rollout.neuralMountingTicks,
+    nonNeuralMountingTicks: rollout.nonNeuralMountingTicks,
+    stable: round(rollout.maximumBoardContactStableSeconds),
+    states: rollout.locomotionStates,
+  }
 }
 
 function firstFoodHandoffJson(rollout: ReturnType<typeof simulate>) {

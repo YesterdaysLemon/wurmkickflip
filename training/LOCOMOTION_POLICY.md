@@ -1,9 +1,9 @@
 # Evolved locomotion controller
 
-The detached worm uses a clock-free segmental recurrent neural controller. It is
-separate from the mounted exhibition path because the two jobs have different
-contracts: the kickflip is scripted, while ordinary locomotion must emerge from
-segment actuator work.
+Ground travel and live skateboard mounting use a clock-free segmental recurrent
+neural controller. That path is separate from mounted riding and the exhibition
+stunt because the jobs have different contracts: the kickflip is scripted, while
+ordinary locomotion and boarding approach must emerge from segment actuator work.
 
 ## Neural architecture
 
@@ -28,9 +28,11 @@ The tracked browser artifact is
 `public/models/wurmkickflip_locomotion_policy.json`, and its dependency-free browser
 runtime is `src/policy/locomotionPolicy.ts`.
 
-This controller is the live detached-crawl brain. It is not the older sinusoidal CPG
-in `wurmkickflip_rl.evolve`, and it is not the 174-input distilled stunt prior. The
-mounted pop and aerial kickflip remain scripted.
+This controller is the live ground-and-boarding brain. It owns segment commands
+during `crawling`, `seeking`, and `mounting`; it is not the older sinusoidal CPG in
+`wurmkickflip_rl.evolve`, and it is not the 174-input distilled stunt prior. The
+tracked genome was not retrained or promoted for skateboard mounting. Mounted board
+routing, pop, aerial rotation, landing, and dismounting remain scripted.
 
 ## Actuator plant
 
@@ -80,17 +82,21 @@ than claimed as step-for-step Python parity.
 The browser composes deterministic interaction handling around the evolved
 articulated plant:
 
-1. The recurrent network owns only the 32 segment activations during `crawling`
-   and `seeking`.
-2. Joint servos, mean-free shape forces, distance constraints, anisotropic ground
-   contact, and obstacle impulses are plant dynamics. They produce measured motion
-   and segment-local feedback; there is no scalar propulsion channel.
+1. The recurrent network owns the 32 segment activations during `crawling`,
+   `seeking`, and live `mounting`.
+2. Joint servos, mean-free shape forces, distance constraints, anisotropic terrain
+   contact, oriented deck support/friction, and obstacle impulses are plant
+   dynamics. They produce measured motion and segment-local feedback; there is no
+   scalar propulsion channel or authored boarding pose.
 3. Swept segment contacts constrain motion against glass, trees, rocks, and
-   inactive resources. Frictional sliding is derived, while any target-aware
-   recovery outside the policy remains authored scene logic.
-4. Eating/drinking, mount/dismount contact stages, board routing, and the aerial
-   kickflip are scripted choreography. They were not present in locomotion
-   evolution and must not be credited to this artifact.
+   inactive resources. The skateboard is instead exposed as a low oriented support
+   surface so a neurally driven chain can climb it without also colliding with a
+   vertical proxy wall. Frictional sliding and the boarding contact measurements are
+   derived, while target-aware recovery outside the policy remains scene logic.
+4. Riding begins only after deterministic contact qualification: sufficient chain
+   coverage and segment count, head/midbody/tail support, bounded relative speed,
+   and sustained dwell. Eating/drinking, dismounting, board routing, and the aerial
+   kickflip remain scripted choreography and must not be credited to this artifact.
 
 ## Reproduce the published evolution
 
@@ -237,8 +243,13 @@ must still produce the approach. Confirmed mouth restoration enters an
 authored feeding state: learned translation pauses, the face performs the contact
 cycle, and a narrow approach aperture plus release cooldown lets the anterior body
 enter and clear the otherwise solid annular rim.
-Mounting and dismounting likewise use authored head/midbody/tail contact weights;
-the neural controller owns the approach and regains control after dismount.
+During live mounting, the same recurrent controller continues to own planar motion
+and all segment commands. `skateboardContact.ts` supplies only the oriented top
+surface, deck-relative friction, and measured support data. Riding requires a
+contact ratio of at least `0.28`, at least five supported segments, head/midbody/tail
+weights of at least `0.34`/`0.26`/`0.18`, relative speed at most `1.6 m/s`, and
+`0.2 s` of qualifying contact. Dismounting remains authored, after which the neural
+controller regains the body.
 
 Run `npm run verify:needs` to validate deterministic placement, finite
 inventories/refills, exact mouth-contact restoration, empty-resource behavior,
@@ -246,8 +257,10 @@ immutability, the diagnostic homeostasis vector, and a complete three-resource l
 Run `npm run verify:collisions` to validate continuous anti-tunneling sweeps,
 long-body contacts, wall/corner response, frictional sliding, overlap recovery,
 support telemetry, and deterministic obstacle ordering. Run `npm run
-verify:interactions` to validate phase-continuous mount, dismount, eat, and drink
-poses plus their locomotion handoffs.
+verify:interactions` to validate deterministic interaction reference samples,
+phase-continuous dismount/eat/drink poses, and locomotion ownership handoffs. Its
+pure mounting sample is retained as a reference fixture and is not consumed by the
+live boarding path.
 Run `npm run verify:locomotion` to validate schema-v1 migration, malformed v1/v2
 rejection, contract fields, local contact and steering sensors, deterministic
 articulated traces, location-independent same-seed export, exact zero-friction COM
@@ -255,16 +268,24 @@ conservation, and causal ablations that use zero action, frozen action, and a fi
 segment shuffle. Each intervention
 replaces both the Float32 plant action and the Float64 previous-command feedback
 committed for the next recurrent step. `npm run
-verify:motion` exercises the integrated needs, crawl, mount, and scripted-kickflip
-lifecycle across the three tracked terrarium presets, including feeding,
-tree/rock contacts, resource release, remounting, and full-scene
-zero/frozen/shuffled/no-traction interventions. Its fixed food challenge requires
-the full controller to restore hunger and reach the neural-to-authored feeding
-handoff within 16 s, gain at least 1 m more cumulative need-target progress than
-both frozen and fixed-shuffle controls, and reach that feeding handoff at least 3 s
-earlier (or while the intervention never reaches it). This
-avoids treating the nearly quantized restoration amount of two eventual feeding
-cycles as a locomotion-speed measurement.
+verify:motion` exercises the integrated needs, crawl, neural mount, and
+scripted-kickflip lifecycle across the three tracked terrarium presets, including
+feeding, tree/rock contacts, resource release, remounting, and full-scene
+zero/frozen/shuffled/no-traction interventions. Its eight-second boarding challenge
+requires the intact controller to earn riding while zero and frozen commands may
+not; the fixed segment shuffle is retained as a reported robustness stressor and
+currently still boards. Separate eight-second probes require all three selectable
+anatomies and all three tracked environments to board. The ride handoff must follow
+at least `0.2 s` of qualifying multi-region contact, and every mounting tick before
+that handoff must remain neural-owned.
+
+The fixed food challenge requires the full controller to restore at least `0.5`
+hunger and reach the neural-to-authored feeding handoff within `16 s`, gain at least
+`0.4 m` more cumulative need-target progress than both frozen and fixed-shuffle
+controls, reach that handoff at least `3 s` before the frozen control (or while it
+never reaches it), and retain at least a `0.1` restoration advantage over the fixed
+shuffle. This avoids treating the nearly quantized restoration amount of two
+eventual feeding cycles as a locomotion-speed measurement.
 The published v3 artifact's six-scenario TypeScript rollout records about 3.9737 m
 mean target progress, versus 0 m for zero action, -0.0138 m for a frozen output, and
 3.5290 m after deterministic segment shuffling. Its motion is 0.9166 head-axis,

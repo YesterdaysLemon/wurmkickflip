@@ -100,7 +100,7 @@ The browser no longer ships ONNX Runtime, generated WASM binaries, or `wurmkickf
 
 ## Evolved Locomotion Contract
 
-`public/models/wurmkickflip_locomotion_policy.json` is the tracked detached-crawl controller. Keep it aligned with:
+`public/models/wurmkickflip_locomotion_policy.json` is the tracked ground-locomotion controller, now used for both crawl and boarding segment commands. Keep it aligned with:
 
 - `contracts/locomotion-v2.json`
 - `src/policy/locomotionPolicy.ts`
@@ -129,9 +129,9 @@ The kickflip is outside this locomotion contract. The browser scripts its pop, b
 
 ### Runtime Ownership Boundary
 
-The evolved artifact owns only the recurrent segment commands produced during `crawling` and `seeking`. The deterministic needs selector supplies a goal; it is not a learned planner. Joint servos, mean-free articulated shape forces, constraints, anisotropic ground damping, and obstacle impulses are plant dynamics. They return measured root motion and segment-local contact feedback, but none should be presented as extra neural outputs or evidence that evolution learned a general contact solver.
+The evolved artifact owns the recurrent segment commands produced during `crawling`, `seeking`, and live `mounting`. The deterministic needs selector supplies a goal; it is not a learned planner. Joint servos, mean-free articulated shape forces, constraints, anisotropic ground damping, and obstacle impulses are plant dynamics. They return measured root motion and segment-local contact feedback, but none should be presented as extra neural outputs or evidence that evolution learned a general contact solver.
 
-The scene authors target-aware tangent reorientation after blocked contact and all resource/stunt transitions. `wormInteractionAnimation.ts` scripts head-to-tail mounting, head-first dismounting, and face-only eating/drinking; the scene also scripts board routing, pop, aerial rotation, and landing. A food or water approach can therefore be neural while the visible contact cycle is scripted. Run `npm run verify:collisions` for the derived contact layer, `npm run verify:interactions` for authored contact choreography, and `npm run verify:motion` for their integration with the evolved controller and resource lifecycle.
+The scene authors target-aware tangent reorientation after blocked contact and deterministic resource/stunt lifecycle transitions. `skateboardContact.ts` supplies an oriented deck-top support surface and friction only after neural motion carries segments into the footprint; it never writes planar position, heading, or a target body pose. Riding begins only when measured contact covers enough of the chain, includes the head, midbody, and tail, remains within a relative-speed limit, and stays qualified for the required dwell time. That gate is plant logic, not a learned decision policy. `wormInteractionAnimation.ts` scripts head-first dismounting and face-only eating/drinking; its pure mounting sample remains a non-live reference fixture. The scene also scripts board routing, pop, aerial rotation, and landing. Run `npm run verify:collisions` for the derived contact layer, `npm run verify:interactions` for authored contact choreography and ownership handoffs, and `npm run verify:motion` for their integration with neural boarding and the resource lifecycle.
 
 ## Compatibility Rules
 
@@ -139,8 +139,8 @@ The scene authors target-aware tangent reorientation after blocked contact and a
 - Do not train against a Python layout that differs from the browser layout.
 - Do not accept a learned JSON artifact whose matrix dimensions or behavior checks fail.
 - Keep the distilled teacher mask, exported `teacherFeatureIndices`, zeroed unused weights, and validators aligned when retraining the tracked JSON artifact.
-- Keep the scripted mounted fallback working when the tracked stunt JSON is absent or invalid. A missing crawl artifact must instead hold detached actuators at zero and report the unavailable brain.
+- Keep the scripted mounted fallback working when the tracked stunt JSON is absent or invalid. A missing locomotion artifact must instead hold ground/boarding actuators at zero and report the unavailable brain.
 - Keep the locomotion artifact, browser recurrence, Python evolution equations, articulated contact plant, and ablation thresholds aligned.
 - Do not add authored oscillator time/phase or sine/cosine gait outputs to the evolved locomotion path.
-- Do not describe collision solving, anisotropic friction, need selection, feeding/mounting choreography, board routing, or the kickflip as learned by the detached locomotion artifact.
+- Do not describe collision solving, anisotropic terrain/deck friction, need selection, boarding qualification, feeding/dismounting choreography, board routing, or the kickflip as learned by the locomotion artifact.
 - Add parity tests before any contract expansion.

@@ -374,10 +374,23 @@ function verifyLifecycleActionOwnership() {
   const neuralToMounting = createStuntState(field)
   neuralToMounting.locomotionState = 'seeking'
   neuralToMounting.needs.targetResourceId = 'skateboard'
-  const mountingHead = neuralToMounting.segments.at(-1)
-  assert.ok(mountingHead, 'worm head is missing from neural-to-mounting fixture')
-  mountingHead.x = neuralToMounting.boardX
-  mountingHead.z = neuralToMounting.boardZ
+  neuralToMounting.wormX = neuralToMounting.boardX
+  neuralToMounting.wormZ = neuralToMounting.boardZ
+  neuralToMounting.wormHeading = neuralToMounting.boardHeading
+  neuralToMounting.segments.forEach((segment, index) => {
+    const axial = (index - (SEGMENT_COUNT - 1) * 0.5) * 0.102
+    segment.x = neuralToMounting.boardX + Math.cos(neuralToMounting.boardHeading) * axial
+    segment.y = neuralToMounting.boardY + 0.179
+    segment.z = neuralToMounting.boardZ + Math.sin(neuralToMounting.boardHeading) * axial
+    segment.vx = 0
+    segment.vy = 0
+    segment.vz = 0
+    segment.yaw = neuralToMounting.boardHeading
+  })
+  // Contact is measured after plant integration, then consumed by the next
+  // lifecycle step. Both seeking and mounting remain neural-owned.
+  advanceStunt(neuralToMounting, neuralAction, timestep, 9.81, 'kickflip', field, null)
+  assert.ok(neuralToMounting.boardContactRatio > 0, 'board fixture did not produce measured contact')
   advanceStunt(neuralToMounting, neuralAction, timestep, 9.81, 'kickflip', field, null)
   assert.equal(
     neuralToMounting.locomotionState,
@@ -386,8 +399,35 @@ function verifyLifecycleActionOwnership() {
   )
   assert.equal(
     neuralToMounting.previousActionApplication,
+    'neural',
+    'seeking-to-mounting transition stopped neural ownership',
+  )
+  assert.equal(
+    neuralToMounting.previousActionOrder,
+    'anterior-to-posterior',
+    'seeking-to-mounting transition changed neural anatomy order',
+  )
+
+  for (let step = 0; step < 60 && neuralToMounting.locomotionState !== 'riding'; step += 1) {
+    advanceStunt(neuralToMounting, neuralAction, timestep, 9.81, 'kickflip', field, null)
+  }
+  assert.equal(neuralToMounting.locomotionState, 'riding', 'stable deck contact never earned riding')
+  assert.equal(
+    neuralToMounting.previousActionApplication,
     'lifecycle-handoff',
-    'ignored seeking command was reported as applied neural locomotion',
+    'mounting-to-riding ownership change was not reported as a lifecycle handoff',
+  )
+
+  const proximityWithoutContact = createStuntState(field)
+  proximityWithoutContact.locomotionState = 'seeking'
+  proximityWithoutContact.needs.targetResourceId = 'skateboard'
+  proximityWithoutContact.distanceToBoard = 0
+  proximityWithoutContact.locomotionTime = 99
+  advanceStunt(proximityWithoutContact, neuralAction, timestep, 9.81, 'kickflip', field, null)
+  assert.notEqual(
+    proximityWithoutContact.locomotionState,
+    'mounting',
+    'proximity and elapsed time entered mounting without measured deck contact',
   )
 
   return {
@@ -396,7 +436,9 @@ function verifyLifecycleActionOwnership() {
     followingTickOrder: 'anterior-to-posterior',
     followingTickApplication: 'neural',
     crawlToFeedingApplication: neuralToFeeding.previousActionApplication,
-    seekingToMountingApplication: neuralToMounting.previousActionApplication,
+    seekingToMountingApplication: 'neural',
+    mountingToRidingApplication: neuralToMounting.previousActionApplication,
+    proximityOnlyState: proximityWithoutContact.locomotionState,
   }
 }
 
@@ -500,6 +542,8 @@ function verifyZeroTractionConservation() {
 
 function verifyWholeBodyShove() {
   const authoredState = createStuntState(field)
+  authoredState.locomotionState = 'riding'
+  authoredState.mountBlend = 1
   const authoredVelocity = authoredState.segments.map(segment => [segment.vx, segment.vz])
   assert.equal(
     gaitExperimentLifecycleNotice(authoredState),

@@ -1,8 +1,8 @@
 # Distilled Stunt Policy
 
-`wurmkickflip_rl.train_stunt_policy` trains a small PyTorch behavior-cloning model and exports it as browser-readable JSON. This is supervised behavior distillation from a deterministic state-aware expert; it is not PPO and it does not claim that a physics rollout has learned a kickflip. In the current browser it is a mounted exhibition pose prior. Board routing, pop, aerial board rotation, landing window, and ride lifecycle are scripted explicitly. Staged head-to-tail mounting and head-first dismounting come from the separate deterministic `src/scene/wormInteractionAnimation.ts` sampler, not this model.
+`wurmkickflip_rl.train_stunt_policy` trains a small PyTorch behavior-cloning model and exports it as browser-readable JSON. This is supervised behavior distillation from a deterministic state-aware expert; it is not PPO and it does not claim that a physics rollout has learned a kickflip. In the current browser it is a mounted exhibition pose prior. Board routing, pop, aerial board rotation, landing window, ride lifecycle, and dismount choreography are scripted explicitly. Live mounting is not part of this model or an authored pose: the clock-free recurrent locomotion controller owns segment commands until deterministic deck support and a sustained contact gate hand the body to riding. The pure head-to-tail mounting sample in `src/scene/wormInteractionAnimation.ts` remains only as a deterministic reference fixture; its head-first dismount sample is still used by the live authored dismount.
 
-The teacher runs a 7.2-second loop with a traveling bend wave, a positive co-contraction coil from roughly 2.2-2.65 seconds, a negative co-contraction release from roughly 2.65-2.85 seconds, a left/right kick signal during release and early air, a moderate air tuck, and a damped landing. Board roll and segment state perturbations teach corrective feedback instead of a time-only open-loop sequence. This cycle is not used for detached locomotion: ordinary crawling uses the separate clock-free recurrent controller described in [`LOCOMOTION_POLICY.md`](LOCOMOTION_POLICY.md).
+The teacher runs a 7.2-second loop with a traveling bend wave, a positive co-contraction coil from roughly 2.2-2.65 seconds, a negative co-contraction release from roughly 2.65-2.85 seconds, a left/right kick signal during release and early air, a moderate air tuck, and a damped landing. Board roll and segment state perturbations teach corrective feedback instead of a time-only open-loop sequence. This cycle is not used for ground locomotion or live mounting: both use the separate clock-free recurrent controller described in [`LOCOMOTION_POLICY.md`](LOCOMOTION_POLICY.md).
 
 Train and export reproducibly from `training/`:
 
@@ -19,7 +19,11 @@ The action semantics are two values per segment. For segment `i`, `bend = (dorsa
 
 This model is an integration-ready stunt prior, not the worm's autonomous locomotion brain. A learned kickflip still requires a simulator with real articulated contacts, airborne rotation and landing metrics, and held-out rollout evaluation.
 
-Run `npm run verify:interactions` from the repository root to validate the authored
-mount/dismount contact sequence independently of this policy, and `npm run
-verify:motion` to validate its integration with the scripted kickflip, resource
-lifecycle, swept contacts, and evolved detached crawl.
+Run `npm run verify:interactions` from the repository root to validate deterministic
+interaction reference samples, authored dismount/feed poses, and action-ownership
+handoffs independently of this policy. Run `npm run verify:motion` to validate its
+integration with the scripted kickflip, resource lifecycle, swept contacts, evolved
+ground crawl, and neural mounting. That integrated lane requires sustained
+multi-region deck contact before riding, rejects zero and frozen commands in the
+eight-second causal boarding challenge, and probes all selectable anatomies and
+tracked environments.

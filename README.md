@@ -2,9 +2,9 @@
 
 # Wurmkickflip
 
-Wurmkickflip is a React/Three.js virtual terrarium containing a 16-segment neural worm, finite food and water bowls, and a skateboard that satisfies well-being. The worm autonomously chooses the most urgent resource, crawls there with an evolved recurrent controller, and uses scripted contact choreography to eat, drink, mount, dismount, and kickflip.
+Wurmkickflip is a React/Three.js virtual terrarium containing a 16-segment neural worm, finite food and water bowls, and a skateboard that satisfies well-being. The worm autonomously chooses the most urgent resource and uses its evolved recurrent controller to crawl there. That same controller now owns the planar approach and segment actuation while boarding the skateboard; eating/drinking contact poses, dismounting, board routing, and the aerial kickflip remain scripted.
 
-The boundary is intentional: ordinary travel is neural and contact-driven; the aerial kickflip is authored because this compact plant is not a high-fidelity skateboard simulator.
+The boundary is intentional: ordinary travel and boarding are neural/contact-driven, while an environmental deck response supplies vertical support, friction, and a measured stability gate. The aerial kickflip is authored because this compact plant is not a high-fidelity skateboard simulator. No new locomotion artifact was promoted for boarding: the tracked controller's existing target-directed recurrence is being exercised in this browser-native contact challenge.
 
 ## How The Worm Moves
 
@@ -22,9 +22,9 @@ Verification compares the live controller with zero action, frozen action, and a
 
 - Hunger, thirst, and well-being decay continuously. A deterministic selector with hysteresis chooses the most urgent available resource; it chooses a goal but never prescribes a gait.
 - Food and water have finite deterministic inventories. Restoration requires continued 3D contact between the live head-derived mouth point and the visible bowl contents. Empty bowls stop restoring and refill deterministically.
-- The skateboard is the well-being resource. Well-being restores only while mounted.
-- Trees, rocks, glass bounds, annular bowl rims, the skateboard deck, and every body segment participate in deterministic swept collision handling.
-- Eating/drinking poses, mount/dismount transitions, board routing, pop, aerial rotation, and landing are scripted and are reported as such in the UI.
+- The skateboard is the well-being resource. The worm begins off-board, approaches through recurrent segment commands, and reaches riding only after sustained measured deck contact. Well-being restores only while mounted.
+- Trees, rocks, glass bounds, annular bowl rims, and every body segment participate in deterministic swept collision handling. The oriented skateboard deck separately projects contacting segments onto its top surface and applies deck friction without writing planar position, heading, or a target body pose.
+- Eating/drinking poses, dismounting, board routing, pop, aerial rotation, and landing are scripted and are reported as such in the UI.
 
 The separate `stunt-distilled-v2` artifact shapes mounted exhibition poses. It is behavior-distilled imitation and is not the source of detached locomotion or proof that a kickflip was learned.
 
@@ -46,7 +46,7 @@ npm run check:repro    # exact long-form published locomotion reproduction
 npm run verify:gait    # neural locality, perturbations, traction, and recovery
 ```
 
-The fast suite covers the shared render/physics heightfield, articulated dynamics, swept contacts, mouth resources, interaction poses, policy contracts, replay integrity, and bundle budgets. The integration suite runs deterministic long terrarium lifecycles and locomotion interventions.
+The fast suite covers the shared render/physics heightfield, articulated dynamics, swept contacts, mouth resources, interaction poses, policy contracts, replay integrity, and bundle budgets. The integration suite runs deterministic long terrarium lifecycles, autonomous boarding gates, and locomotion interventions. Browser checks also enforce one live worm rig (16 segments, 15 connectors, and one face), including high-water counts across resets and stunt transitions. The worm body no longer casts the separated articulated shadow that could resemble a second worm while elevated over the skateboard.
 
 ## Evolve The Crawl Brain
 
@@ -68,7 +68,7 @@ The trainer and browser both consume [`contracts/locomotion-v2.json`](contracts/
 The current browser ships only two mounted-policy modes:
 
 - `neural-js` loads the tracked recurrent crawl brain and tracked mounted stunt JSON.
-- `scripted`, selected with `?policyBackend=scripted`, keeps neural crawling but replaces the mounted pose prior with a deterministic diagnostic fallback.
+- `scripted`, selected with `?policyBackend=scripted`, keeps neural ground travel/boarding but replaces the mounted pose prior with a deterministic diagnostic fallback.
 
 The old browser ONNX Runtime dependency and WASM payloads were retired. The Python PPO/ONNX exporter and sinusoidal morphology/CPG evolution remain offline legacy experiments for research, but their output is not loaded by the exhibit and must not be described as provenance for the tracked crawl model.
 
@@ -76,8 +76,9 @@ The old browser ONNX Runtime dependency and WASM payloads were retired. The Pyth
 
 - `src/scene/terrariumSimulation.ts`: pure fixed-step terrarium state machine and simulation orchestration.
 - `src/scene/wormDynamics.ts`: free articulated chain, muscle forces, constraints, friction, and segment collisions.
+- `src/scene/skateboardContact.ts`: oriented deck support, friction, and measured boarding contact.
 - `src/scene/terrariumNeeds.ts`: goal selection, finite resource inventories, mouth-contact restoration, and refill.
-- `src/scene/WurmkickflipScene.tsx`: Three.js rendering and browser integration.
+- `src/scene/WurmkickflipScene.tsx`: Three.js rendering, browser integration, and scene-graph integrity telemetry.
 - `src/policy/locomotionPolicy.ts`: dependency-free recurrent inference, exact trace snapshots, perturbations, and schema migration.
 - `src/replay/`: checksummed deterministic recorder/player core.
 - `training/wurmkickflip_rl/`: vectorized evolution plus older experimental trainers.

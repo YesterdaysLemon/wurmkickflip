@@ -525,7 +525,7 @@ export function App() {
               <Zap size={20} aria-hidden="true" />
               <span>
                 <strong>Autonomous life</strong>
-                <small>Needs + scripted kickflip</small>
+                <small>Needs + neural boarding</small>
               </span>
             </button>
             <button
@@ -942,8 +942,8 @@ export function App() {
             <span>
               LEARNED · goal sensors + proprioception → 16 antagonistic pairs / 32 muscle channels @ 60 Hz
             </span>
-            <span>DERIVED · mean-free segment forces, ground friction, swept prop contacts</span>
-            <span>SCRIPTED · mount/feed choreography + aerial kickflip</span>
+            <span>DERIVED · mean-free segment forces, terrain + skateboard support, swept prop contacts</span>
+            <span>SCRIPTED · feed/dismount choreography + aerial kickflip</span>
           </code>
         </details>
       </aside>

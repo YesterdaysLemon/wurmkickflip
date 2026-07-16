@@ -9,7 +9,7 @@
 - Treat tracked locomotion seed bytes as provenance: they are excluded from formatting, and changing one requires a reviewed artifact promotion plus the exact reproduction lane.
 - Keep every implicit trainer output under `training/runs/`; writing `public/models/` must be an explicit reviewed promotion.
 - Never add a hidden root-motion channel, gait clock, phase input, or trigonometric gait recipe to detached locomotion.
-- Keep claims explicit: the network owns segment commands; the plant owns constraints/friction/collisions; the scene owns goals and contact/stunt choreography.
+- Keep claims explicit: the network owns planar travel and segment commands through live mounting; the plant owns constraints, terrain/deck support, friction, collisions, and boarding qualification; the scene owns goals and authored feed/dismount/stunt choreography.
 
 ## Verification Routing
 
@@ -18,7 +18,7 @@
 - Bounds, props, bowls, board, or swept contacts: `npm run verify:collisions`.
 - Articulated forces, constraints, friction, body invariants, neural perturbations, or gait telemetry: `npm run verify:dynamics`, `npm run verify:locomotion`, and `npm run verify:gait` as applicable.
 - Food, water, inventories, mouth contact, refill, or goal selection: `npm run verify:needs`.
-- Mount/dismount/feed poses and ownership handoffs: `npm run verify:interactions`.
+- Interaction reference samples, dismount/feed poses, and ownership handoffs: `npm run verify:interactions`.
 - Integrated board/worm/resource lifecycle: `npm run verify:motion`.
 - Replay schema/recorder/player: `npm run verify:replay`.
 - Config loading/runtime adapter: `npm run verify:configs`.
@@ -33,8 +33,10 @@ Python changes additionally require `npm run python:check`. Run Python commands 
 - The browser simulation is deterministic and physically inspired, not a faithful biological or skateboard transfer environment.
 - Detached locomotion is genuinely evolved inside a compact free-particle contact plant. Mean-free muscle forces and constraints cannot translate the center of mass without friction or obstacle impulses.
 - Homeostasis chooses targets but is not a learned planner. Food/water restoration requires live 3D mouth contact with finite contents; well-being requires mounting.
-- Feeding, mounting, dismounting, route selection, post-contact recovery, pop, aerial board rotation, landing, and lifecycle timing are scripted.
+- Neural segment commands drive planar skateboard approach and live mounting, but the unchanged locomotion artifact was not evolved against a skateboard objective. Deck support/friction and the stable-contact gate are deterministic plant behavior.
+- Feeding, dismounting, route selection, post-contact recovery, pop, aerial board rotation, landing, and stunt lifecycle timing are scripted.
 - The mounted stunt JSON is behavior-distilled imitation, not reinforcement-learned kickflip physics.
+- The scene graph must contain one worm root, 16 segments, 15 connectors, and one face; preserve current/high-water browser telemetry across keyed resets. Keep worm body cast shadows disabled unless a replacement cannot be mistaken for a duplicate articulated rig.
 - Browser ONNX Runtime is retired. PPO/ONNX and sinusoidal CPG/morphology tools are offline legacy experiments only.
 - Creature genomes currently project appearance onto a fixed 16-segment, 32-channel runtime lattice; their declared legacy controller metadata is not executed.
 
