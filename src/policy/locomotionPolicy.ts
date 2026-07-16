@@ -1,4 +1,11 @@
-import { ACTION_SIZE, POLICY_TIMESTEP, SEGMENT_COUNT, type PolicyAction } from './types'
+import {
+  ACTION_SIZE,
+  POLICY_TIMESTEP,
+  SEGMENT_COUNT,
+  type ActiveGaitExperiment,
+  type NeuralGaitPerturbationKind,
+  type PolicyAction,
+} from './types'
 import { LOCOMOTION_CONTRACT } from './locomotionContract'
 
 export const LOCOMOTION_POLICY_PATH = '/models/wurmkickflip_locomotion_policy.json'
@@ -21,6 +28,32 @@ export const LOCOMOTION_OUTPUT_WEIGHT_NAMES = LOCOMOTION_CONTRACT.outputWeightNa
 const LEGACY_SENSOR_NAMES = LOCOMOTION_SENSOR_NAMES.slice(0, 7)
 const LEGACY_INPUT_WEIGHT_NAMES = LOCOMOTION_INPUT_WEIGHT_NAMES.slice(0, 13)
 const LEGACY_OUTPUT_WEIGHT_NAMES = LOCOMOTION_OUTPUT_WEIGHT_NAMES.slice(0, 7)
+const V3_SELECTION_GATE_KEYS = [
+  'nominalSignedHeadLeading',
+  'nominalLateralMotion',
+  'nominalTargetAlignment',
+  'combinedControlProgress',
+  'combinedPerturbedProgress',
+  'combinedProgressRetention',
+  'combinedLateSpeedRetention',
+  'combinedControlLateSpeed',
+  'recoveredSignedHeadLeading',
+  'recoveredLateralMotion',
+  'recoveredTargetAlignment',
+  'causalOrderingGap',
+  'causalProgressGap',
+  'localCausalInitial',
+  'localCausalRadiusTwo',
+  'localCausalRadiusThree',
+  'localCausalSettled',
+] as const
+const V3_ABLATION_GATE_KEYS = [
+  'fullProgress',
+  'zeroActionStationary',
+  'fullBeatsFrozen',
+  'fullBeatsShuffled',
+  'noFrictionConservesCom',
+] as const
 
 export type LocomotionSensors = {
   targetForward: number
@@ -78,6 +111,26 @@ export type LocomotionPolicyArtifact = {
   training: Record<string, unknown>
 }
 
+export type LocomotionPolicyTelemetry = {
+  hidden: number[]
+  drives: number[]
+  commands: number[]
+  requestedCommands: number[]
+  sensedBends: number[]
+  sensedBendVelocities: number[]
+  sensedContactLoads: number[]
+  sensedSlipSpeeds: number[]
+  sensedObstacleForward: number[]
+  sensedObstacleRight: number[]
+  activePerturbation: ActiveGaitExperiment | null
+}
+
+type NeuralPerturbationState = {
+  kind: NeuralGaitPerturbationKind
+  segment: number | null
+  remainingSteps: number
+}
+
 /**
  * A clock-free chain of locally coupled recurrent neurons. Every hidden unit owns
  * one anatomical segment and produces that segment's antagonistic actuator pair.
@@ -88,6 +141,15 @@ export class EvolvedLocomotionPolicy {
   private readonly hidden = new Float64Array(SEGMENT_COUNT)
   private readonly nextHidden = new Float64Array(SEGMENT_COUNT)
   private readonly previousCommand = new Float64Array(SEGMENT_COUNT)
+  private readonly drives = new Float64Array(SEGMENT_COUNT)
+  private readonly requestedCommands = new Float64Array(SEGMENT_COUNT)
+  private readonly sensedBends = new Float64Array(SEGMENT_COUNT)
+  private readonly sensedBendVelocities = new Float64Array(SEGMENT_COUNT)
+  private readonly sensedContactLoads = new Float64Array(SEGMENT_COUNT)
+  private readonly sensedSlipSpeeds = new Float64Array(SEGMENT_COUNT)
+  private readonly sensedObstacleForward = new Float64Array(SEGMENT_COUNT)
+  private readonly sensedObstacleRight = new Float64Array(SEGMENT_COUNT)
+  private perturbation: NeuralPerturbationState | null = null
 
   constructor(artifact: LocomotionPolicyArtifact) {
     this.artifact = artifact
@@ -99,6 +161,91 @@ export class EvolvedLocomotionPolicy {
     this.hidden.set(this.artifact.initialState)
     this.nextHidden.fill(0)
     this.previousCommand.fill(0)
+    this.drives.fill(0)
+    this.requestedCommands.fill(0)
+    this.sensedBends.fill(0)
+    this.sensedBendVelocities.fill(0)
+    this.sensedContactLoads.fill(0)
+    this.sensedSlipSpeeds.fill(0)
+    this.sensedObstacleForward.fill(0)
+    this.sensedObstacleRight.fill(0)
+    this.perturbation = null
+  }
+
+  applyPerturbation(kind: NeuralGaitPerturbationKind, segment: number | null, durationSeconds: number) {
+    if (
+      kind === 'numb-neuron' &&
+      (!Number.isInteger(segment) || segment === null || segment < 0 || segment >= SEGMENT_COUNT)
+    ) {
+      throw new Error(`neural perturbation segment must be between 0 and ${SEGMENT_COUNT - 1}`)
+    }
+    if (!Number.isFinite(durationSeconds) || durationSeconds <= 0) {
+      throw new Error('neural perturbation duration must be positive and finite')
+    }
+    this.perturbation = {
+      kind,
+      segment: kind === 'numb-neuron' ? segment : null,
+      remainingSteps: Math.max(1, Math.round(durationSeconds / POLICY_TIMESTEP)),
+    }
+    if (kind === 'numb-neuron' && segment !== null) {
+      this.hidden[segment] = 0
+      this.nextHidden[segment] = 0
+      this.previousCommand[segment] = 0
+    }
+  }
+
+  clearPerturbation() {
+    this.perturbation = null
+  }
+
+  hasActivePerturbation() {
+    return this.perturbation !== null
+  }
+
+  /**
+   * Replace the recurrent command feedback after an external actuator
+   * intervention. Ordinary runtime inference does not need this: run() already
+   * commits the controller's effective command. Verifiers use it when they
+   * deliberately zero, freeze, or reassign commands before the plant sees them.
+   *
+   * Keep this vector at controller precision. The browser plant separately
+   * receives the Float32 PolicyAction, matching the trainer's precision split.
+   */
+  commitCommandFeedback(commands: ArrayLike<number>) {
+    if (commands.length !== SEGMENT_COUNT) {
+      throw new Error(`locomotion command feedback requires ${SEGMENT_COUNT} segment values`)
+    }
+    const committed = new Float64Array(SEGMENT_COUNT)
+    for (let segment = 0; segment < SEGMENT_COUNT; segment += 1) {
+      committed[segment] = clamp(
+        finiteNumber(commands[segment], `locomotion command feedback segment ${segment}`),
+        -1,
+        1,
+      )
+    }
+    this.previousCommand.set(committed)
+  }
+
+  getTelemetry(): LocomotionPolicyTelemetry {
+    return {
+      hidden: Array.from(this.hidden),
+      drives: Array.from(this.drives),
+      commands: Array.from(this.previousCommand),
+      requestedCommands: Array.from(this.requestedCommands),
+      sensedBends: Array.from(this.sensedBends),
+      sensedBendVelocities: Array.from(this.sensedBendVelocities),
+      sensedContactLoads: Array.from(this.sensedContactLoads),
+      sensedSlipSpeeds: Array.from(this.sensedSlipSpeeds),
+      sensedObstacleForward: Array.from(this.sensedObstacleForward),
+      sensedObstacleRight: Array.from(this.sensedObstacleRight),
+      activePerturbation: this.perturbation
+        ? {
+            kind: this.perturbation.kind,
+            segment: this.perturbation.segment,
+            remainingSeconds: this.perturbation.remainingSteps * POLICY_TIMESTEP,
+          }
+        : null,
+    }
   }
 
   run(
@@ -110,20 +257,31 @@ export class EvolvedLocomotionPolicy {
       throw new Error(`locomotion policy requires ${SEGMENT_COUNT} segment bend values and velocities`)
     }
 
+    // Keep a zero-second perturbation observable after its final affected tick,
+    // then retire it immediately before the next inference step.
+    if (this.perturbation?.remainingSteps === 0) this.perturbation = null
     const input = this.artifact.weights.input
     const recurrent = this.artifact.weights.recurrent
     const output = this.artifact.weights.output
     const positions = this.artifact.segmentPositions
     const safeSensors = sanitizeSensors(sensors)
+    const perturbation = this.perturbation
 
     for (let segment = 0; segment < SEGMENT_COUNT; segment += 1) {
       const position = positions[segment]
-      const bend = finiteOrZero(segmentBends[segment])
-      const bendVelocity = finiteOrZero(segmentBendVelocities[segment])
-      const contactLoad = localSensor(safeSensors.contactLoads, segment, 1, 0, 1)
-      const slipSpeed = localSensor(safeSensors.slipSpeeds, segment, 0, 0, 2)
-      const obstacleForward = localSensor(safeSensors.obstacleForward, segment, 0, -1, 1)
-      const obstacleRight = localSensor(safeSensors.obstacleRight, segment, 0, -1, 1)
+      const sensorIndex = perturbation?.kind === 'reverse-sensors' ? SEGMENT_COUNT - 1 - segment : segment
+      const bend = finiteOrZero(segmentBends[sensorIndex])
+      const bendVelocity = finiteOrZero(segmentBendVelocities[sensorIndex])
+      const contactLoad = localSensor(safeSensors.contactLoads, sensorIndex, 1, 0, 1)
+      const slipSpeed = localSensor(safeSensors.slipSpeeds, sensorIndex, 0, 0, 2)
+      const obstacleForward = localSensor(safeSensors.obstacleForward, sensorIndex, 0, -1, 1)
+      const obstacleRight = localSensor(safeSensors.obstacleRight, sensorIndex, 0, -1, 1)
+      this.sensedBends[segment] = bend
+      this.sensedBendVelocities[segment] = bendVelocity
+      this.sensedContactLoads[segment] = contactLoad
+      this.sensedSlipSpeeds[segment] = slipSpeed
+      this.sensedObstacleForward[segment] = obstacleForward
+      this.sensedObstacleRight[segment] = obstacleRight
       const anterior = segment > 0 ? this.hidden[segment - 1] : 0
       const posterior = segment + 1 < SEGMENT_COUNT ? this.hidden[segment + 1] : 0
       const drive =
@@ -147,18 +305,20 @@ export class EvolvedLocomotionPolicy {
         recurrent[0] * this.hidden[segment] +
         recurrent[1] * anterior +
         recurrent[2] * posterior
-      this.nextHidden[segment] = Math.tanh(drive)
+      this.drives[segment] = drive
+      this.nextHidden[segment] =
+        perturbation?.kind === 'numb-neuron' && perturbation.segment === segment ? 0 : Math.tanh(drive)
     }
 
     const action = new Float32Array(ACTION_SIZE)
     for (let segment = 0; segment < SEGMENT_COUNT; segment += 1) {
       const position = positions[segment]
-      const bend = finiteOrZero(segmentBends[segment])
+      const bend = this.sensedBends[segment]
       const anterior = segment > 0 ? this.nextHidden[segment - 1] : 0
       const posterior = segment + 1 < SEGMENT_COUNT ? this.nextHidden[segment + 1] : 0
-      const contactLoad = localSensor(safeSensors.contactLoads, segment, 1, 0, 1)
-      const obstacleRight = localSensor(safeSensors.obstacleRight, segment, 0, -1, 1)
-      const command = Math.tanh(
+      const contactLoad = this.sensedContactLoads[segment]
+      const obstacleRight = this.sensedObstacleRight[segment]
+      const requestedCommand = Math.tanh(
         output[0] +
           output[1] * this.nextHidden[segment] +
           output[2] * anterior +
@@ -169,11 +329,17 @@ export class EvolvedLocomotionPolicy {
           output[7] * obstacleRight +
           output[8] * contactLoad,
       )
+      const command =
+        perturbation?.kind === 'numb-neuron' && perturbation.segment === segment ? 0 : requestedCommand
+      this.requestedCommands[segment] = requestedCommand
       this.previousCommand[segment] = command
       action[segment * 2] = command
       action[segment * 2 + 1] = -command
     }
     this.hidden.set(this.nextHidden)
+    if (this.perturbation) {
+      this.perturbation.remainingSteps -= 1
+    }
     return action
   }
 }
@@ -220,6 +386,7 @@ export function parseLocomotionPolicy(value: unknown): LocomotionPolicyArtifact 
     : parsedOutput
   const plant = legacy ? parseLegacyPlant(value.plant) : parsePlant(value.plant)
   if (!isRecord(value.training)) throw new Error('locomotion training metadata must be an object')
+  validatePublicationMetadata(value.training, value.modelVersion)
 
   return {
     schemaVersion: 2,
@@ -243,6 +410,70 @@ export function parseLocomotionPolicy(value: unknown): LocomotionPolicyArtifact 
     training: legacy
       ? { ...value.training, runtimeMigration: 'schema-1-zero-contact-weights' }
       : { ...value.training },
+  }
+}
+
+function validatePublicationMetadata(training: Record<string, unknown>, modelVersion: string) {
+  const objective = training.objectiveVersion
+  const v3Objective = 'articulated-head-leading-transient-recovery-v3'
+  const publishedV3Model = 'locomotion-articulated-head-leading-es-v3'
+  if (modelVersion === publishedV3Model && objective !== v3Objective) {
+    throw new Error('published v3 locomotion identity requires the v3 objective contract')
+  }
+  if (objective !== v3Objective) return
+
+  for (const key of [
+    'allSelectionGatesPassed',
+    'allSelectionMarginsFeasible',
+    'allSelectionGuardBandsPassed',
+    'allAblationGatesPassed',
+    'allAblationGuardBandsPassed',
+    'allGateGuardBandsPassed',
+    'allPublicationGatesPassed',
+  ]) {
+    if (training[key] !== true) throw new Error(`v3 training.${key} must be true before runtime loading`)
+  }
+  requireExactPassingGates(training.selectionGateResults, 'selectionGateResults', V3_SELECTION_GATE_KEYS)
+  requireExactPassingGates(
+    training.selectionGateGuardBandResults,
+    'selectionGateGuardBandResults',
+    V3_SELECTION_GATE_KEYS,
+  )
+  requireExactPassingGates(training.ablationGateResults, 'ablationGateResults', V3_ABLATION_GATE_KEYS)
+  requireExactPassingGates(
+    training.ablationGateGuardBandResults,
+    'ablationGateGuardBandResults',
+    V3_ABLATION_GATE_KEYS,
+  )
+  if (!/^[a-f\d]{64}$/u.test(String(training.canonicalGenomeRecipeHash))) {
+    throw new Error('v3 training.canonicalGenomeRecipeHash must be a lowercase SHA-256 digest')
+  }
+  const pairedHost = training.pairedHostReproduction
+  if (
+    !isRecord(pairedHost) ||
+    pairedHost.requiredForPublication !== true ||
+    pairedHost.trainerAttestation !== 'none' ||
+    !Array.isArray(pairedHost.compared) ||
+    pairedHost.compared.length !== 2 ||
+    pairedHost.compared[0] !== 'serializedGenome' ||
+    pairedHost.compared[1] !== 'artifactBytes'
+  ) {
+    throw new Error('v3 training.pairedHostReproduction must require external genome and byte comparison')
+  }
+}
+
+function requireExactPassingGates(value: unknown, label: string, expectedKeys: readonly string[]) {
+  if (!isRecord(value)) throw new Error(`v3 training.${label} must be a gate record`)
+  const actualKeys = Object.keys(value).sort()
+  const canonicalKeys = [...expectedKeys].sort()
+  if (
+    actualKeys.length !== canonicalKeys.length ||
+    actualKeys.some((key, index) => key !== canonicalKeys[index])
+  ) {
+    throw new Error(`v3 training.${label} keys do not match the publication contract`)
+  }
+  if (expectedKeys.some(key => value[key] !== true)) {
+    throw new Error(`v3 training.${label} must contain only passing gates`)
   }
 }
 

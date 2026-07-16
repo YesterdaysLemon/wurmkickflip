@@ -14,6 +14,7 @@ __pycache__
 *.py[cod]
 .venv
 .ruff_cache
+.pytest_cache
 *.egg-info
 training/runs
 public/configs/evolved/*

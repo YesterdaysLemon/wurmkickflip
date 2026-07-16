@@ -16,6 +16,7 @@ try {
     'uv',
     [
       'run',
+      '--locked',
       'python',
       '-m',
       'wurmkickflip_rl.evolve',

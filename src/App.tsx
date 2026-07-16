@@ -25,7 +25,15 @@ import { deriveWurmAnatomy } from './creature/anatomy'
 import { createCreatureRuntimeAdapter, FIXED_ARTICULATED_RUNTIME_PROFILE } from './creature/runtimeProfile'
 import { useLabConfigs } from './creature/useLabConfigs'
 import { PolicyRunner } from './policy/policyRunner'
-import { POLICY_TIMESTEP, type PolicyBackend, type PolicyStatus, type ViewerMetrics } from './policy/types'
+import {
+  POLICY_TIMESTEP,
+  SEGMENT_COUNT,
+  type GaitExperimentCommand,
+  type GaitTelemetry,
+  type PolicyBackend,
+  type PolicyStatus,
+  type ViewerMetrics,
+} from './policy/types'
 import {
   downloadReplayArtifact,
   LiveReplayCapture,
@@ -96,6 +104,7 @@ const initialMetrics: StuntMetrics = {
   activeNeed: null,
   needTarget: null,
   needTargetDistance: 0,
+  gait: emptyGaitTelemetry('awaiting-sample'),
 }
 
 export function App() {
@@ -110,6 +119,10 @@ export function App() {
   const [showcaseMode, setShowcaseMode] = useState<ShowcaseMode>('kickflip')
   const [policyStatus, setPolicyStatus] = useState<PolicyStatus>(initialStatus)
   const [metrics, setMetrics] = useState<StuntMetrics>(initialMetrics)
+  const [selectedGaitSegment, setSelectedGaitSegment] = useState(7)
+  const [gaitTractionScale, setGaitTractionScale] = useState(1)
+  const gaitExperimentSequence = useRef(0)
+  const [gaitExperiment, setGaitExperiment] = useState<GaitExperimentCommand | null>(null)
   const captureRef = useRef<LiveReplayCapture | null>(null)
   const captureSequenceRef = useRef(0)
   const [captureState, setCaptureState] = useState<CaptureState>('idle')
@@ -191,6 +204,10 @@ export function App() {
     }
   }, [])
 
+  const handleGaitTelemetry = useCallback((gait: GaitTelemetry) => {
+    setMetrics(current => ({ ...current, gait }))
+  }, [])
+
   const isReplay = activeReplay !== null && replaySample !== null
   const activeRunning = isReplay ? replayPlaying : running
   const replayProgress = activeReplay
@@ -223,6 +240,7 @@ export function App() {
         activeNeed: null,
         needTarget: null,
         needTargetDistance: 0,
+        gait: replayGaitTelemetry(replaySample),
       }
     : {
         ...metrics,
@@ -260,6 +278,9 @@ export function App() {
       message: policyStatus.message,
       stuntName: mode === 'kickflip' ? 'Scripted kickflip' : 'Evolved free crawl',
     })
+    gaitExperimentSequence.current += 1
+    setGaitExperiment({ sequence: gaitExperimentSequence.current, kind: 'clear' })
+    setGaitTractionScale(1)
     policyRunner.reset()
     setResetNonce(value => value + 1)
   }
@@ -397,6 +418,26 @@ export function App() {
     restartSimulation(mode)
   }
 
+  const runGaitExperiment = (kind: 'numb-neuron' | 'reverse-sensors' | 'lateral-shove') => {
+    if (isReplay || !displayedMetrics.gait.controllerActive) return
+    gaitExperimentSequence.current += 1
+    const sequence = gaitExperimentSequence.current
+    if (kind === 'numb-neuron') {
+      setGaitExperiment({ sequence, kind, segment: selectedGaitSegment, durationSeconds: 3 })
+    } else if (kind === 'reverse-sensors') {
+      setGaitExperiment({ sequence, kind, durationSeconds: 3 })
+    } else {
+      setGaitExperiment({ sequence, kind, impulse: 1.1, durationSeconds: 3 })
+    }
+    if (!reducedMotion) setRunning(true)
+  }
+
+  const clearGaitExperiments = () => {
+    gaitExperimentSequence.current += 1
+    setGaitExperiment({ sequence: gaitExperimentSequence.current, kind: 'clear' })
+    setGaitTractionScale(1)
+  }
+
   const replayStatus = isReplay
     ? `Playback ${fixed(replayCursorSeconds, 2)} / ${fixed(activeReplay.player.durationSeconds, 2)} s`
     : captureState === 'recording'
@@ -412,7 +453,10 @@ export function App() {
           {...sceneInteractionProps}
           creature={selectedCreature}
           environmentConfig={selectedEnvironment}
+          gaitExperiment={gaitExperiment}
+          gaitTractionScale={gaitTractionScale}
           onMetrics={setMetrics}
+          onGaitTelemetry={handleGaitTelemetry}
           onPolicyStatus={setPolicyStatus}
           onReplayFrame={captureState === 'recording' ? handleReplayFrame : undefined}
           policyRunner={policyRunner}
@@ -449,7 +493,12 @@ export function App() {
             <p className="brand-note">Tiny brain. Impossible sport.</p>
           </div>
 
-          <div className={`neural-status neural-status--${neural.tone}`} role="status" aria-live="polite">
+          <div
+            className={`neural-status neural-status--${neural.tone}`}
+            role="status"
+            aria-label="Neural controller status"
+            aria-live="polite"
+          >
             <span className="neural-status__icon">
               <Brain size={19} aria-hidden="true" />
             </span>
@@ -676,7 +725,8 @@ export function App() {
             <p className="replay-limitation">
               Board and root poses, contact, replay time, and all 32 muscle channels come from the verified
               artifact. Schema v1 omits segment poses and needs state, so the visible body is reconstructed
-              from root + activations while live bowls remain context.
+              from root + activations while live bowls remain context. It also omits lifecycle muscle ordering
+              and traction, so the gait microscope leaves those fields unassigned.
             </p>
           </div>
         </details>
@@ -847,33 +897,16 @@ export function App() {
           </details>
         </section>
 
-        <section className="muscle-readout" aria-labelledby="muscle-heading">
-          <div className="section-kicker">
-            <Activity size={15} aria-hidden="true" />
-            <h2 id="muscle-heading">Antagonistic pair drive</h2>
-            <span>16 pairs · 32 muscle channels</span>
-          </div>
-          <div
-            className="muscle-grid"
-            aria-label="Live drive for 16 antagonistic actuator pairs derived from 32 muscle channels"
-          >
-            {displayedMetrics.muscleActivity.map((value, index) => {
-              const level = Math.max(0.06, Math.min(1, Math.abs(value)))
-              return (
-                <span
-                  className={`muscle-cell${value < 0 ? ' is-ventral' : ''}`}
-                  key={index}
-                  title={`Segment pair ${index + 1}: ${value.toFixed(2)}`}
-                >
-                  <i style={{ '--muscle-level': level } as CSSProperties} />
-                  <b className="sr-only">
-                    Segment pair {index + 1}: {value.toFixed(2)}
-                  </b>
-                </span>
-              )
-            })}
-          </div>
-        </section>
+        <GaitMicroscope
+          disabled={isReplay}
+          gait={displayedMetrics.gait}
+          onClear={clearGaitExperiments}
+          onExperiment={runGaitExperiment}
+          onSelectedSegmentChange={setSelectedGaitSegment}
+          onTractionScaleChange={setGaitTractionScale}
+          selectedSegment={selectedGaitSegment}
+          tractionScale={gaitTractionScale}
+        />
 
         <div className="lab-tape" aria-label="Rollout diagnostics">
           <span>
@@ -915,6 +948,257 @@ export function App() {
         </details>
       </aside>
     </main>
+  )
+}
+
+type GaitMicroscopeProps = {
+  gait: GaitTelemetry
+  selectedSegment: number
+  tractionScale: number
+  disabled: boolean
+  onSelectedSegmentChange: (segment: number) => void
+  onTractionScaleChange: (scale: number) => void
+  onExperiment: (kind: 'numb-neuron' | 'reverse-sensors' | 'lateral-shove') => void
+  onClear: () => void
+}
+
+const GAIT_ROWS = [
+  {
+    key: 'neural',
+    label: 'Neuron',
+    maximum: 1,
+    signed: true,
+    liveOnly: true,
+    read: (segment: GaitTelemetry['segments'][number]) => segment.neuralActivation,
+  },
+  {
+    key: 'muscle',
+    label: 'Muscle',
+    maximum: 1,
+    signed: true,
+    liveOnly: false,
+    read: (segment: GaitTelemetry['segments'][number]) => segment.muscleCommand,
+  },
+  {
+    key: 'bend',
+    label: 'Bend',
+    maximum: 1.2,
+    signed: true,
+    liveOnly: true,
+    read: (segment: GaitTelemetry['segments'][number]) => segment.jointBend,
+  },
+  {
+    key: 'support',
+    label: 'Support',
+    maximum: 1,
+    signed: false,
+    liveOnly: true,
+    read: (segment: GaitTelemetry['segments'][number]) => segment.contactLoad,
+  },
+  {
+    key: 'slip',
+    label: 'Slip',
+    maximum: 2,
+    signed: false,
+    liveOnly: true,
+    read: (segment: GaitTelemetry['segments'][number]) => segment.slipSpeed,
+  },
+] as const
+
+function GaitMicroscope({
+  gait,
+  selectedSegment,
+  tractionScale,
+  disabled,
+  onSelectedSegmentChange,
+  onTractionScaleChange,
+  onExperiment,
+  onClear,
+}: GaitMicroscopeProps) {
+  const selected = gait.segments[selectedSegment] ?? emptyGaitSegment(selectedSegment)
+  const liveNeural = gait.source === 'live-neural'
+  const experimentDisabled = disabled || !gait.controllerActive
+  const activeKind = gait.activeExperiment?.kind ?? null
+  const sourceLabel =
+    gait.source === 'live-neural'
+      ? 'Evolved crawl'
+      : gait.source === 'scripted-stunt'
+        ? 'Scripted pose'
+        : gait.source === 'lifecycle-handoff'
+          ? 'Control handoff'
+          : gait.source === 'replay-muscles'
+            ? 'Replay v1 · order unknown'
+            : gait.source === 'awaiting-sample'
+              ? 'Awaiting sample'
+              : 'Brain offline'
+  const activeDescription = gait.activeExperiment
+    ? `${formatExperimentKind(gait.activeExperiment.kind)}${
+        gait.activeExperiment.segment === null
+          ? ''
+          : ` on S${String(gait.activeExperiment.segment + 1).padStart(2, '0')}`
+      }`
+    : gait.experimentNotice
+      ? gait.experimentNotice
+      : tractionScale !== 1 && gait.tractionAvailable
+        ? `Traction scaled to ${Math.round(tractionScale * 100)}%`
+        : liveNeural
+          ? 'Baseline body and wiring'
+          : gait.source === 'replay-muscles'
+            ? 'Replay v1 did not record anatomical muscle ordering, traction, hidden state, or local afferents.'
+            : gait.source === 'scripted-stunt'
+              ? 'Choose Free crawl to hand the body to the evolved segment controller.'
+              : gait.source === 'lifecycle-handoff'
+                ? 'One fixed step is transferring the body between authored motion and the evolved controller.'
+                : gait.source === 'awaiting-sample'
+                  ? 'Waiting for the first detached body sample.'
+                  : 'The evolved crawl artifact is unavailable.'
+
+  return (
+    <section className="gait-microscope" data-testid="gait-microscope" aria-labelledby="gait-heading">
+      <div className="section-kicker">
+        <Brain size={15} aria-hidden="true" />
+        <h2 id="gait-heading">Gait microscope</h2>
+        <span>{sourceLabel}</span>
+      </div>
+
+      <div className="gait-direction" aria-label="Body-axis gait measurements">
+        <span>
+          Forward <b>{formatSigned(gait.bodyForwardSpeed)} m/s</b>
+        </span>
+        <span>
+          Sideways <b>{formatSigned(gait.bodyLateralSpeed)} m/s</b>
+        </span>
+        <span>
+          Facing goal <b>{gait.targetAlignmentAvailable ? formatSigned(gait.targetAlignment) : '—'}</b>
+        </span>
+      </div>
+
+      <div className="gait-axis" aria-hidden="true">
+        <span>Head · S01</span>
+        <i />
+        <span>S16 · Tail</span>
+      </div>
+      <div className="gait-matrix" role="table" aria-label="Live gait microscope">
+        <div role="rowgroup">
+          {GAIT_ROWS.map(row => (
+            <div className={`gait-row gait-row--${row.key}`} role="row" key={row.key}>
+              <span className="gait-row-label" role="rowheader">
+                {row.label}
+              </span>
+              {gait.segments.map(segment => {
+                const value = row.read(segment)
+                const available = row.liveOnly
+                  ? liveNeural
+                  : gait.source !== 'unavailable' &&
+                    gait.source !== 'awaiting-sample' &&
+                    gait.segmentOrder === 'anterior-to-posterior'
+                const level = available ? clamp01(Math.abs(value) / row.maximum) : 0
+                const label = available
+                  ? `${row.label}, segment ${segment.segment + 1}: ${value.toFixed(3)}`
+                  : `${row.label}, segment ${segment.segment + 1}: unavailable`
+                return (
+                  <span
+                    aria-label={label}
+                    className={`gait-cell${value < 0 && row.signed ? ' is-negative' : ''}${
+                      segment.segment === selectedSegment ? ' is-selected' : ''
+                    }${available ? '' : ' is-unavailable'}`}
+                    data-testid={`gait-cell-${row.key}-${String(segment.segment + 1).padStart(2, '0')}`}
+                    data-value={available ? value.toFixed(6) : ''}
+                    key={segment.segment}
+                    role="cell"
+                  >
+                    <i style={{ '--gait-level': level } as CSSProperties} />
+                  </span>
+                )
+              })}
+            </div>
+          ))}
+        </div>
+      </div>
+
+      <p className="gait-probe">
+        {liveNeural ? (
+          <>
+            <b>S{String(selectedSegment + 1).padStart(2, '0')}</b> drive {formatSigned(selected.neuralDrive)}
+            {' · '}neuron {formatSigned(selected.neuralActivation)} {' · '}command{' '}
+            {formatSigned(selected.requestedMuscleCommand)} → {formatSigned(selected.muscleCommand)}
+            {' · '}afferent/body support {fixed(selected.afferentContactLoad, 2)} →{' '}
+            {fixed(selected.contactLoad, 2)}
+            {' · '}obstacle {formatSigned(selected.obstacleForward)}/{formatSigned(selected.obstacleRight)}
+          </>
+        ) : (
+          'Neural drive, bend, support, and slip appear only when the evolved crawl controller owns the body.'
+        )}
+      </p>
+
+      <div className="gait-sliders">
+        <label>
+          <span>Probe S{String(selectedSegment + 1).padStart(2, '0')}</span>
+          <input
+            aria-label="Perturbation segment"
+            type="range"
+            min={0}
+            max={SEGMENT_COUNT - 1}
+            step={1}
+            value={selectedSegment}
+            onChange={event => onSelectedSegmentChange(Number(event.target.value))}
+          />
+          <small>head → tail</small>
+        </label>
+        <label>
+          <span>
+            {!gait.tractionAvailable ? 'Traction unrecorded' : `Traction ${Math.round(tractionScale * 100)}%`}
+          </span>
+          <input
+            aria-label="Traction scale"
+            disabled={disabled}
+            type="range"
+            min={0}
+            max={1.5}
+            step={0.05}
+            value={gait.tractionAvailable ? tractionScale : 1}
+            onChange={event => onTractionScaleChange(Number(event.target.value))}
+          />
+          <small>slick → grippy</small>
+        </label>
+      </div>
+
+      <div className="gait-actions">
+        <button
+          type="button"
+          aria-pressed={activeKind === 'numb-neuron'}
+          disabled={experimentDisabled}
+          onClick={() => onExperiment('numb-neuron')}
+        >
+          Numb selected segment
+        </button>
+        <button
+          type="button"
+          aria-pressed={activeKind === 'reverse-sensors'}
+          disabled={experimentDisabled}
+          onClick={() => onExperiment('reverse-sensors')}
+        >
+          Reverse sensory wiring
+        </button>
+        <button
+          type="button"
+          aria-pressed={activeKind === 'lateral-shove'}
+          disabled={experimentDisabled}
+          onClick={() => onExperiment('lateral-shove')}
+        >
+          Shove worm sideways
+        </button>
+        <button type="button" disabled={disabled} onClick={onClear}>
+          Clear perturbations
+        </button>
+      </div>
+      <p className="gait-experiment-status">
+        <span aria-live="polite">{activeDescription}</span>
+        {gait.activeExperiment ? (
+          <span aria-hidden="true"> · {fixed(gait.activeExperiment.remainingSeconds, 1)} s</span>
+        ) : null}
+      </p>
+    </section>
   )
 }
 
@@ -979,6 +1263,70 @@ function getNeuralStatus(backend: PolicyBackend) {
   if (backend === 'unavailable') return { label: 'Offline', tone: 'fallback' }
   if (backend === 'neural-js') return { label: 'Online', tone: 'online' }
   return { label: 'Fallback', tone: 'fallback' }
+}
+
+function emptyGaitSegment(segment: number): GaitTelemetry['segments'][number] {
+  return {
+    segment,
+    neuralActivation: 0,
+    neuralDrive: 0,
+    muscleCommand: 0,
+    requestedMuscleCommand: 0,
+    jointBend: 0,
+    jointVelocity: 0,
+    afferentJointBend: 0,
+    afferentJointVelocity: 0,
+    afferentContactLoad: 0,
+    afferentSlipSpeed: 0,
+    afferentObstacleForward: 0,
+    afferentObstacleRight: 0,
+    contactLoad: 0,
+    slipSpeed: 0,
+    obstacleForward: 0,
+    obstacleRight: 0,
+  }
+}
+
+function emptyGaitTelemetry(source: GaitTelemetry['source']): GaitTelemetry {
+  return {
+    controllerActive: false,
+    source,
+    segmentOrder: 'anterior-to-posterior',
+    tractionScale: 1,
+    tractionAvailable: source !== 'replay-muscles',
+    bodyForwardSpeed: 0,
+    bodyLateralSpeed: 0,
+    targetAlignment: 0,
+    targetAlignmentAvailable: false,
+    activeExperiment: null,
+    experimentNotice: null,
+    segments: Array.from({ length: SEGMENT_COUNT }, (_, segment) => emptyGaitSegment(segment)),
+  }
+}
+
+function replayGaitTelemetry(sample: ReplayPlaybackSample): GaitTelemetry {
+  const gait = emptyGaitTelemetry('replay-muscles')
+  const heading = sample.creatureRoot.rotation[1]
+  const forwardX = Math.cos(heading)
+  const forwardZ = Math.sin(heading)
+  const rightX = -forwardZ
+  const rightZ = forwardX
+  gait.segmentOrder = 'unavailable'
+  gait.bodyForwardSpeed =
+    sample.creatureRoot.velocity[0] * forwardX + sample.creatureRoot.velocity[2] * forwardZ
+  gait.bodyLateralSpeed = sample.creatureRoot.velocity[0] * rightX + sample.creatureRoot.velocity[2] * rightZ
+  return gait
+}
+
+function formatExperimentKind(kind: NonNullable<GaitTelemetry['activeExperiment']>['kind']) {
+  if (kind === 'numb-neuron') return 'Segment numbed'
+  if (kind === 'reverse-sensors') return 'Sensory wiring reversed'
+  return 'Side shove recovery'
+}
+
+function formatSigned(value: number | undefined) {
+  const safe = finite(value)
+  return `${safe >= 0 ? '+' : ''}${safe.toFixed(2)}`
 }
 
 function formatBackend(backend: PolicyBackend) {

@@ -59,6 +59,7 @@ export function stepArticulatedWorm(
   field: TerrainField,
   collisionWorld: TerrariumCollisionWorld | null,
   anatomy: WurmAnatomy,
+  tractionScale = 1,
 ): ArticulatedWormStep {
   if (segments.length !== LOCOMOTION_SEGMENT_COUNT) {
     throw new Error(`articulated worm requires ${LOCOMOTION_SEGMENT_COUNT} segments`)
@@ -70,6 +71,7 @@ export function stepArticulatedWorm(
   const scratch = scratchFor(plant)
   const spacing = ARTICULATED_WORM_CONTRACT.spacing * anatomy.visualLengthScale
   const groundClearance = ARTICULATED_WORM_CONTRACT.baseGroundClearance * anatomy.verticalScale
+  const safeTractionScale = clamp(tractionScale, 0, 1.5)
 
   let centerX = 0
   let centerZ = 0
@@ -128,9 +130,10 @@ export function stepArticulatedWorm(
     const jointSpeed = Math.abs(plant.jointVelocities[plantIndex] ?? 0)
     const terrain = field.sample(segment.x, segment.z)
     const quietLoad = clamp(1 - jointSpeed / 3.25, 0.08, 1)
-    const support = clamp(terrain.normal[1] * terrain.friction * quietLoad, 0, 1)
+    const support = clamp(terrain.normal[1] * terrain.friction * safeTractionScale * quietLoad, 0, 1)
     const longitudinalDamping =
-      1 - Math.exp(-ARTICULATED_WORM_CONTRACT.longitudinalFriction * terrain.friction * dt)
+      1 -
+      Math.exp(-ARTICULATED_WORM_CONTRACT.longitudinalFriction * terrain.friction * safeTractionScale * dt)
     const lateralDamping = 1 - Math.exp(-ARTICULATED_WORM_CONTRACT.lateralFriction * support * dt)
     const dampedForward = forwardVelocity * (1 - longitudinalDamping)
     const dampedLateral = lateralVelocity * (1 - lateralDamping)
@@ -151,8 +154,8 @@ export function stepArticulatedWorm(
   satisfyDistanceConstraints(segments, spacing, scratch)
 
   const contacts: ArticulatedWormContact[] = []
+  const contactMask = collisionWorld ? new Uint8Array(LOCOMOTION_SEGMENT_COUNT) : undefined
   if (collisionWorld) {
-    const contactMask = new Uint8Array(LOCOMOTION_SEGMENT_COUNT)
     resolveArticulatedCollisions(
       plant,
       segments,
@@ -160,17 +163,23 @@ export function stepArticulatedWorm(
       collisionWorld,
       anatomy,
       oldHeading,
+      safeTractionScale,
       contacts,
       scratch.previousX,
       scratch.previousZ,
       contactMask,
     )
-    // Alternate body constraints and contact projection. A single final
-    // constraint pass can pull several segments through a bowl and defer a
-    // large correction until the next tick; these relaxation passes keep both
-    // invariants local to the current fixed step.
-    for (let pass = 0; pass < 3; pass += 1) {
-      satisfyDistanceConstraints(segments, spacing, scratch, contactMask)
+  }
+  // The articulated plant always performs the same three post-integration
+  // relaxation solves. When collision geometry exists, alternate each solve
+  // with contact projection so neither invariant can pull through the other.
+  // Keeping the solve count independent of an optional collision world keeps
+  // the obstacle-free trainer/browser base transition structurally identical.
+  // Browser contacts additionally pin contacted particles during relaxation;
+  // the vectorized training contact projection is deliberately a surrogate.
+  for (let pass = 0; pass < LOCOMOTION_CONTRACT.postIntegrationRelaxationPasses; pass += 1) {
+    satisfyDistanceConstraints(segments, spacing, scratch, contactMask)
+    if (collisionWorld) {
       resolveArticulatedCollisions(
         plant,
         segments,
@@ -178,6 +187,7 @@ export function stepArticulatedWorm(
         collisionWorld,
         anatomy,
         oldHeading,
+        safeTractionScale,
         contacts,
         undefined,
         undefined,
@@ -229,6 +239,7 @@ function resolveArticulatedCollisions(
   collisionWorld: TerrariumCollisionWorld,
   anatomy: WurmAnatomy,
   fallbackHeading: number,
+  tractionScale: number,
   contacts: ArticulatedWormContact[],
   sweepStartX?: ArrayLike<number>,
   sweepStartZ?: ArrayLike<number>,
@@ -275,7 +286,7 @@ function resolveArticulatedCollisions(
       body,
       ground: {
         grounded: true,
-        friction: terrain.friction,
+        friction: terrain.friction * tractionScale,
         normalY: terrain.normal[1],
         contactRatio: plant.contactLoads[LOCOMOTION_SEGMENT_COUNT - 1 - index],
       },

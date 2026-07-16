@@ -7,8 +7,8 @@ The teacher runs a 7.2-second loop with a traveling bend wave, a positive co-con
 Train and export reproducibly from `training/`:
 
 ```powershell
-uv run python -m wurmkickflip_rl.train_stunt_policy
-uv run python -m wurmkickflip_rl.validate_stunt_policy
+uv run --locked python -m wurmkickflip_rl.train_stunt_policy
+uv run --locked python -m wurmkickflip_rl.validate_stunt_policy
 ```
 
 The tracked output is `public/models/wurmkickflip_stunt_policy.json`. It contains a raw-input `174 -> hidden -> 32` tanh MLP; input normalization used during training is folded into the first layer. The artifact records its seed, sample count, epoch count, validation MSE, and teacher-agreement score. Teacher agreement is the fraction of held-out action coordinates within `0.12` of the expert target.

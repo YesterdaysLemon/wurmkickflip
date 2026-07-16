@@ -11,6 +11,9 @@ import { makeInitialAction, snapshotToObservation } from '../policy/simulationAd
 import {
   POLICY_TIMESTEP,
   SEGMENT_COUNT,
+  type ActiveGaitExperiment,
+  type GaitExperimentCommand,
+  type GaitTelemetry,
   type PolicyAction,
   type PolicyStatus,
   type ViewerMetrics,
@@ -25,14 +28,18 @@ import { readNeedsMetrics, readResourceContents, type TerrariumResource } from '
 import { createTerrainField, TERRAIN_GRID_RESOLUTION, type TerrainField } from './terrainField'
 import {
   advanceStunt,
+  applyGaitLateralShove,
   boardGroundY,
   createStuntState,
   dampAngle,
   decodeAction,
+  gaitControllerOwnsBody,
+  gaitExperimentLifecycleNotice,
   interactionSampleFor,
   lerpAngle,
   locomotionSensorsFor,
   makeTerrariumDecor,
+  scriptedGaitMusclesAnteriorToPosterior,
   smoothAction,
   smoothStep,
   stuntNameFor,
@@ -53,9 +60,12 @@ type SceneProps = {
   creature: CreatureGenome | null
   environmentConfig: EnvironmentConfig | null
   onMetrics: (metrics: ViewerMetrics) => void
+  onGaitTelemetry?: (gait: GaitTelemetry) => void
   onPolicyStatus: (status: PolicyStatus) => void
   onReplayFrame?: (frame: ReplayRecorderFrame) => void
   replaySample?: ReplayPlaybackSample | null
+  gaitExperiment?: GaitExperimentCommand | null
+  gaitTractionScale?: number
 }
 
 const up = new Vector3(0, 1, 0)
@@ -64,6 +74,7 @@ const connectorDelta = new Vector3()
 const connectorStart = new Vector3()
 const connectorEnd = new Vector3()
 const renderTarget = new Vector3()
+const EXPERIMENT_ENDED_NOTICE = 'Experiment ended because authored motion took control.'
 
 export function WurmkickflipScene({
   policyRunner,
@@ -74,9 +85,12 @@ export function WurmkickflipScene({
   creature,
   environmentConfig,
   onMetrics,
+  onGaitTelemetry,
   onPolicyStatus,
   onReplayFrame,
   replaySample = null,
+  gaitExperiment = null,
+  gaitTractionScale = 1,
 }: SceneProps) {
   const locomotionRunner = useMemo(() => new LocomotionPolicyRunner(), [])
   useEffect(() => {
@@ -129,9 +143,12 @@ export function WurmkickflipScene({
       <TerrariumWorld
         creature={creature}
         environmentConfig={environmentConfig}
+        gaitExperiment={gaitExperiment}
+        gaitTractionScale={gaitTractionScale}
         interactionNonce={interactionNonce}
         key={sceneKey}
         onMetrics={onMetrics}
+        onGaitTelemetry={onGaitTelemetry}
         onReplayFrame={onReplayFrame}
         policyRunner={policyRunner}
         replaySample={replaySample}
@@ -161,8 +178,11 @@ type TerrariumWorldProps = {
   creature: CreatureGenome | null
   environmentConfig: EnvironmentConfig | null
   onMetrics: (metrics: ViewerMetrics) => void
+  onGaitTelemetry?: (gait: GaitTelemetry) => void
   onReplayFrame?: (frame: ReplayRecorderFrame) => void
   replaySample: ReplayPlaybackSample | null
+  gaitExperiment: GaitExperimentCommand | null
+  gaitTractionScale: number
 }
 
 function TerrariumWorld({
@@ -173,7 +193,10 @@ function TerrariumWorld({
   showcaseMode,
   creature,
   environmentConfig,
+  gaitExperiment,
+  gaitTractionScale,
   onMetrics,
+  onGaitTelemetry,
   onReplayFrame,
   replaySample,
 }: TerrariumWorldProps) {
@@ -186,6 +209,11 @@ function TerrariumWorld({
   const inferenceAccumulator = useRef(POLICY_TIMESTEP)
   const metricsAccumulator = useRef(0)
   const lastInteractionNonce = useRef(interactionNonce)
+  // A remount can race a command emitted from the previous scene. Start
+  // unacknowledged so the new body either applies it or reports why it could not.
+  const lastGaitExperimentSequence = useRef(-1)
+  const bodyExperiment = useRef<ActiveGaitExperiment | null>(null)
+  const experimentNotice = useRef<string | null>(null)
   const boardRef = useRef<Group>(null)
   const wheelRefs = useRef<Array<Mesh | null>>([])
   const segmentRefs = useRef<Array<Group | null>>([])
@@ -196,20 +224,38 @@ function TerrariumWorld({
 
   useEffect(() => {
     locomotionRunner.reset()
+    bodyExperiment.current = null
+    experimentNotice.current = null
   }, [locomotionRunner])
+
+  useEffect(() => {
+    let cancelled = false
+    void locomotionRunner.load().then(() => {
+      if (cancelled) return
+      onGaitTelemetry?.(
+        gaitTelemetryFor(
+          state.current,
+          locomotionRunner,
+          terrainField,
+          gaitTractionScale,
+          bodyExperiment.current,
+          experimentNotice.current,
+        ),
+      )
+    })
+    return () => {
+      cancelled = true
+    }
+  }, [gaitTractionScale, locomotionRunner, onGaitTelemetry, terrainField])
 
   const gravity = Math.abs(environmentConfig?.world.gravity[1] ?? -9.81)
   const palette = useMemo(() => makeWurmPalette(creature), [creature])
   const anatomy = useMemo(() => deriveWurmAnatomy(creature), [creature])
+  const environmentSeed = environmentConfig?.seed ?? 1337
+  const obstacleDensity = environmentConfig?.terrain.obstacleDensity ?? 0.08
   const terrain = useMemo(
-    () =>
-      makeTerrariumDecor(
-        environmentConfig?.seed ?? 1337,
-        terrainField,
-        state.current.resources,
-        environmentConfig?.terrain.obstacleDensity ?? 0.08,
-      ),
-    [environmentConfig?.seed, environmentConfig?.terrain.obstacleDensity, terrainField],
+    () => makeTerrariumDecor(environmentSeed, terrainField, state.current.resources, obstacleDensity),
+    [environmentSeed, obstacleDensity, terrainField],
   )
 
   useEffect(() => {
@@ -218,6 +264,76 @@ function TerrariumWorld({
       lastInteractionNonce.current = interactionNonce
     }
   }, [interactionNonce])
+
+  useEffect(() => {
+    if (!gaitExperiment || lastGaitExperimentSequence.current === gaitExperiment.sequence) return
+    lastGaitExperimentSequence.current = gaitExperiment.sequence
+    if (gaitExperiment.kind === 'clear') {
+      locomotionRunner.clearPerturbation()
+      bodyExperiment.current = null
+      experimentNotice.current = null
+      onGaitTelemetry?.(
+        gaitTelemetryFor(state.current, locomotionRunner, terrainField, gaitTractionScale, null, null),
+      )
+      return
+    }
+    if (gaitExperiment.kind === 'lateral-shove') {
+      locomotionRunner.clearPerturbation()
+      const accepted = applyGaitLateralShove(state.current, gaitExperiment.impulse)
+      bodyExperiment.current = accepted
+        ? {
+            kind: 'lateral-shove',
+            segment: null,
+            remainingSeconds: gaitExperiment.durationSeconds,
+          }
+        : null
+      experimentNotice.current = accepted ? null : gaitExperimentLifecycleNotice(state.current)
+      onGaitTelemetry?.(
+        gaitTelemetryFor(
+          state.current,
+          locomotionRunner,
+          terrainField,
+          gaitTractionScale,
+          bodyExperiment.current,
+          experimentNotice.current,
+        ),
+      )
+      return
+    }
+    if (!gaitControllerOwnsBody(state.current)) {
+      locomotionRunner.clearPerturbation()
+      bodyExperiment.current = null
+      experimentNotice.current = gaitExperimentLifecycleNotice(state.current)
+      onGaitTelemetry?.(
+        gaitTelemetryFor(
+          state.current,
+          locomotionRunner,
+          terrainField,
+          gaitTractionScale,
+          null,
+          experimentNotice.current,
+        ),
+      )
+      return
+    }
+    bodyExperiment.current = null
+    experimentNotice.current = null
+    locomotionRunner.applyPerturbation(
+      gaitExperiment.kind,
+      gaitExperiment.kind === 'numb-neuron' ? gaitExperiment.segment : null,
+      gaitExperiment.durationSeconds,
+    )
+    onGaitTelemetry?.(
+      gaitTelemetryFor(
+        state.current,
+        locomotionRunner,
+        terrainField,
+        gaitTractionScale,
+        bodyExperiment.current,
+        experimentNotice.current,
+      ),
+    )
+  }, [gaitExperiment, gaitTractionScale, locomotionRunner, onGaitTelemetry, terrainField])
 
   useFrame((_, rawDelta) => {
     const frameDelta = Math.min(rawDelta, 0.08)
@@ -264,14 +380,17 @@ function TerrariumWorld({
       let steps = 0
       while (physicsAccumulator.current >= POLICY_TIMESTEP && steps < 5) {
         const wasRiding = state.current.locomotionState === 'riding'
-        const locomotionOwnsBody =
-          state.current.locomotionState === 'crawling' || state.current.locomotionState === 'seeking'
+        const locomotionOwnsBody = gaitControllerOwnsBody(state.current)
+        if (!locomotionOwnsBody) {
+          locomotionRunner.clearPerturbation()
+          bodyExperiment.current = null
+        }
         if (state.current.locomotionState === 'riding') {
           smoothAction(appliedAction.current, latestAction.current, POLICY_TIMESTEP)
         } else if (locomotionOwnsBody) {
           appliedAction.current.set(
             locomotionRunner.run(
-              locomotionSensorsFor(state.current, terrainField),
+              locomotionSensorsFor(state.current, terrainField, gaitTractionScale),
               state.current.locomotionPlant.joints,
               state.current.locomotionPlant.jointVelocities,
             ),
@@ -289,7 +408,19 @@ function TerrariumWorld({
           environmentConfig,
           terrain.obstacles,
           anatomy,
+          gaitTractionScale,
         )
+        const controllerStillOwnsBody = gaitControllerOwnsBody(state.current)
+        if (!controllerStillOwnsBody) {
+          if (locomotionOwnsBody && (bodyExperiment.current || locomotionRunner.hasActivePerturbation())) {
+            experimentNotice.current = EXPERIMENT_ENDED_NOTICE
+          }
+          locomotionRunner.clearPerturbation()
+          bodyExperiment.current = null
+        } else if (bodyExperiment.current) {
+          bodyExperiment.current.remainingSeconds -= POLICY_TIMESTEP
+          if (bodyExperiment.current.remainingSeconds <= 0) bodyExperiment.current = null
+        }
         onReplayFrame?.(
           replayRecorderFrameForScene(state.current, environmentConfig?.skateboard.discoveryRadius ?? 1.35),
         )
@@ -348,6 +479,14 @@ function TerrariumWorld({
             Math.max(maximum, Math.hypot(segment.vx - rootVx, segment.vy, segment.vz - rootVz)),
           0,
         )
+        const gait = gaitTelemetryFor(
+          current,
+          locomotionRunner,
+          terrainField,
+          gaitTractionScale,
+          bodyExperiment.current,
+          experimentNotice.current,
+        )
         onMetrics({
           time: current.time,
           reward: current.reward,
@@ -383,6 +522,7 @@ function TerrariumWorld({
           activeNeed: interactionResource?.need ?? needsMetrics.activeNeed,
           needTarget: displayedNeedTarget,
           needTargetDistance: displayedNeedDistance,
+          gait,
         })
       }
     }
@@ -419,6 +559,72 @@ function TerrariumWorld({
       <LandingBurst burstRefs={burstRefs} palette={palette} />
     </group>
   )
+}
+
+function gaitTelemetryFor(
+  state: StuntState,
+  runner: LocomotionPolicyRunner,
+  field: TerrainField,
+  tractionScale: number,
+  bodyExperiment: ActiveGaitExperiment | null,
+  experimentNotice: string | null,
+): GaitTelemetry {
+  const controllerActive = gaitControllerOwnsBody(state)
+  const appliedNeuralAction = state.previousActionApplication === 'neural'
+  const lifecycleHandoff = state.previousActionApplication === 'lifecycle-handoff'
+  const runnerStatus = runner.getStatus()
+  const policy = runner.getTelemetry()
+  const forwardX = Math.cos(state.wormHeading)
+  const forwardZ = Math.sin(state.wormHeading)
+  const rightX = -forwardZ
+  const rightZ = forwardX
+  const sensors = locomotionSensorsFor(state, field, tractionScale)
+  const appliedMuscles = lifecycleHandoff
+    ? Array.from({ length: SEGMENT_COUNT }, () => 0)
+    : appliedNeuralAction
+      ? decodeAction(state.previousAction).bends
+      : scriptedGaitMusclesAnteriorToPosterior(state.previousAction)
+  const activeExperiment = policy.activePerturbation ?? bodyExperiment
+  return {
+    controllerActive: controllerActive && runnerStatus.loaded,
+    source: lifecycleHandoff
+      ? 'lifecycle-handoff'
+      : appliedNeuralAction
+        ? runnerStatus.loaded
+          ? 'live-neural'
+          : 'unavailable'
+        : 'scripted-stunt',
+    segmentOrder: 'anterior-to-posterior',
+    tractionScale: MathUtils.clamp(tractionScale, 0, 1.5),
+    tractionAvailable: true,
+    bodyForwardSpeed: state.wormVx * forwardX + state.wormVz * forwardZ,
+    bodyLateralSpeed: state.wormVx * rightX + state.wormVz * rightZ,
+    targetAlignment: sensors.targetForward,
+    targetAlignmentAvailable: controllerActive && appliedNeuralAction && runnerStatus.loaded,
+    activeExperiment: activeExperiment ? { ...activeExperiment } : null,
+    experimentNotice,
+    segments: Array.from({ length: SEGMENT_COUNT }, (_, segment) => ({
+      segment,
+      neuralActivation: policy.hidden[segment] ?? 0,
+      neuralDrive: policy.drives[segment] ?? 0,
+      muscleCommand: appliedMuscles[segment] ?? 0,
+      requestedMuscleCommand: appliedNeuralAction
+        ? (policy.requestedCommands[segment] ?? 0)
+        : (appliedMuscles[segment] ?? 0),
+      jointBend: state.locomotionPlant.joints[segment] ?? 0,
+      jointVelocity: state.locomotionPlant.jointVelocities[segment] ?? 0,
+      afferentJointBend: policy.sensedBends[segment] ?? 0,
+      afferentJointVelocity: policy.sensedBendVelocities[segment] ?? 0,
+      afferentContactLoad: policy.sensedContactLoads[segment] ?? 0,
+      afferentSlipSpeed: policy.sensedSlipSpeeds[segment] ?? 0,
+      afferentObstacleForward: policy.sensedObstacleForward[segment] ?? 0,
+      afferentObstacleRight: policy.sensedObstacleRight[segment] ?? 0,
+      contactLoad: state.locomotionPlant.contactLoads[segment] ?? 0,
+      slipSpeed: state.locomotionPlant.slipSpeeds[segment] ?? 0,
+      obstacleForward: state.locomotionPlant.obstacleForward[segment] ?? 0,
+      obstacleRight: state.locomotionPlant.obstacleRight[segment] ?? 0,
+    })),
+  }
 }
 
 function renderStunt(

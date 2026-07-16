@@ -39,6 +39,14 @@ Creature genomes project appearance only onto this fixed lattice. Their declared
 
 `src/scene/terrariumCollisions.ts` prepares deterministic height-aware collision worlds. It handles glass planes and sorted circular footprints for tree/rock trunks, annular bowl rims, board deck probes, and every tapered body segment. Continuous sweeps, overlap recovery, tangent projection, and contact normals prevent tunneling while preserving useful sliding.
 
+### Gait microscope and interventions
+
+The browser publishes a copied 10 Hz inspection snapshot from the exact 60 Hz crawl path. Its arrays stay in policy order (`S01` anterior/head through `S16` posterior/tail), while scene segments remain tail-to-head. Each fixed step tags its action ordering before lifecycle transitions, so a feeding-to-crawl handoff cannot relabel the just-applied scripted action as neural (or vice versa). Neural drive, effective hidden state, requested command, applied command, and the afferents actually consumed by inference are captured inside `EvolvedLocomotionPolicy.run`; outcome bend/support/slip values come from the following plant step and are labeled separately. Experiment commands are rechecked against the scene's current action owner before they may touch recurrent state, rather than trusting the throttled UI snapshot.
+
+Fixed-tick neural perturbations can silence one neuron/motor pair or mirror all local anterior/posterior sensory wiring. A whole-body lateral velocity kick tests recovery without changing joints or hidden state. Neural/body experiments are cancelled when the evolved controller yields the body to authored mounting, feeding, or stunt motion, and Reset restores baseline traction. The traction scale consistently changes the controller's terrain-friction input, anisotropic ground damping/support, collision-ground friction, and the following tick's local support afferents. Zero traction is therefore an intentionally compound sensor-and-mechanics intervention rather than a cosmetic sensor edit.
+
+The support channel is a compact traction proxy derived from terrain friction, surface normal, and joint motion; it is not a true normal-load solver. Replay schema v1 contains all 32 muscle channels but does not tag whether live-neural or authored lifecycle ordering produced them, nor does it record traction, the current goal, hidden state, or segment-local afferents. The microscope therefore marks all segment rows, replay traction, and goal-facing alignment unavailable instead of assigning invented semantics.
+
 ### Homeostasis and interactions
 
 `src/scene/terrariumNeeds.ts` owns hunger, thirst, well-being, target hysteresis, finite inventories, deterministic refill, and 3D mouth-to-contents tests. The selector supplies a goal but never a gait. Food/water restore only during continued live-mouth contact with nonempty visible contents; well-being restores only while mounted.
@@ -57,7 +65,7 @@ Mounted pose inference uses the tracked `stunt-distilled-v2` JSON with the stabl
 
 ## Offline Evolution
 
-`contracts/locomotion-v2.json` is the canonical TypeScript/Python plant and sensor contract. `training/wurmkickflip_rl/articulated_locomotion.py` vectorizes the causal body model; `evolve_locomotion_policy.py` evaluates populations across 12 obstacle/friction/body/target/contact scenarios. The public controller is reproduced by a deterministic 40-generation base stage and 10-generation refinement. Warm starts are identified by SHA-256 and model version rather than filesystem path.
+`contracts/locomotion-v2.json` is the canonical TypeScript/Python plant and sensor contract. `training/wurmkickflip_rl/articulated_locomotion.py` vectorizes the causal body model; `evolve_locomotion_policy.py` evaluates populations across 12 obstacle/friction/body/target/contact scenarios plus v3 head-leading, transient-recovery, and local-causality terms. The public controller is reproduced by a deterministic one-generation, four-member retention confirmation from a retained, hash-identified search seed; that recipe confirms the candidate rather than claiming to rediscover it. The 480-step combined-recovery shaping domain is explicitly arena-limited; the 900-tick TypeScript gait rollout is the promotion authority. Warm starts are identified by SHA-256 and model version rather than filesystem path.
 
 The older Gymnasium/PPO/ONNX and morphology-plus-sinusoidal-CPG paths remain offline experiments. They are not browser runtime dependencies or provenance for the tracked recurrent model.
 
@@ -81,7 +89,7 @@ Mounted tick:
 
 ## Verification Shape
 
-Static checks cover TypeScript, ESLint/Prettier, Ruff, Pyright, dependency audit, and bundle budgets. Focused verifiers cover configs, contracts, parity, shared terrain, collision properties, articulated invariants, finite resources, interaction continuity, replay integrity, policy evolution, and performance. The integrated motion rollout exercises repeated food/water/board cycles, collisions, remounting, scripted kickflips, and neural interventions. Playwright covers recovery/error UI, reduced motion, and replay flows; the long reproduction lane reruns both published evolution stages in an isolated workspace.
+Static checks cover TypeScript, ESLint/Prettier, Ruff, Pyright, dependency audit, and bundle budgets. Focused verifiers cover configs, contracts, parity, shared terrain, collision properties, articulated invariants, finite resources, interaction continuity, replay integrity, policy evolution, and performance. `verify:gait` additionally proves copied telemetry, exact perturbation expiry, mirrored wiring, one-edge-per-tick causal spread, active-neural zero-traction conservation, deterministic shove handling, and paired recovery. The integrated motion rollout exercises repeated food/water/board cycles, collisions, remounting, scripted kickflips, and neural interventions. Playwright covers the live microscope, recovery/error UI, reduced motion, and replay flows; the long reproduction lane reruns the published evolution recipe in an isolated workspace.
 
 ## Honest Limits
 

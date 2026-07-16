@@ -364,7 +364,7 @@ assert(pythonConstants.includes('"neural-js"'), 'Python backend allowlist is mis
 
 const python = spawnSync(
   'uv',
-  ['run', 'python', '-m', 'wurmkickflip_rl.replay_schema', '../fixtures/replay-artifact.json'],
+  ['run', '--locked', 'python', '-m', 'wurmkickflip_rl.replay_schema', '../fixtures/replay-artifact.json'],
   {
     cwd: resolve(root, 'training'),
     encoding: 'utf8',
@@ -376,6 +376,7 @@ const pythonRejectsUnknownBackend = spawnSync(
   'uv',
   [
     'run',
+    '--locked',
     'python',
     '-c',
     [

@@ -7,6 +7,7 @@ const python = spawnSync(
   'uv',
   [
     'run',
+    '--locked',
     'python',
     '-c',
     `

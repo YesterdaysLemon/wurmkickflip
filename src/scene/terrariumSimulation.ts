@@ -58,6 +58,19 @@ export type StuntPhase =
   | 'free crawl'
 
 export type LocomotionState = 'riding' | 'dismounting' | 'crawling' | 'seeking' | 'mounting' | 'feeding'
+export type GaitActionOrder = 'anterior-to-posterior' | 'scene-tail-to-head'
+export type GaitActionApplication = 'neural' | 'scripted' | 'lifecycle-handoff'
+
+export function gaitControllerOwnsBody(state: Pick<StuntState, 'locomotionState'>) {
+  return state.locomotionState === 'crawling' || state.locomotionState === 'seeking'
+}
+
+export const GAIT_EXPERIMENT_LIFECYCLE_NOTICE =
+  'Experiment skipped because authored motion took control. Return to Free crawl and try again.'
+
+export function gaitExperimentLifecycleNotice(state: Pick<StuntState, 'locomotionState'>) {
+  return gaitControllerOwnsBody(state) ? null : GAIT_EXPERIMENT_LIFECYCLE_NOTICE
+}
 
 type SegmentGroundContact = {
   anchorX: number
@@ -133,6 +146,8 @@ export type StuntState = {
   phase: StuntPhase
   segments: SegmentSnapshot[]
   previousAction: PolicyAction
+  previousActionOrder: GaitActionOrder
+  previousActionApplication: GaitActionApplication
 }
 
 export type DecodedAction = {
@@ -236,6 +251,8 @@ export function createStuntState(
       makeSegment(index, start[0], boardY, start[1], boardHeading),
     ),
     previousAction: makeInitialAction(),
+    previousActionOrder: 'scene-tail-to-head',
+    previousActionApplication: 'scripted',
   }
 }
 
@@ -269,11 +286,18 @@ export function advanceStunt(
   environmentConfig: EnvironmentConfig | null,
   staticObstacles: readonly TerrariumCircleObstacle[] = [],
   anatomy: WurmAnatomy = deriveWurmAnatomy(null),
+  tractionScale = 1,
 ) {
+  const commandApplication: Exclude<GaitActionApplication, 'lifecycle-handoff'> = gaitControllerOwnsBody(
+    state,
+  )
+    ? 'neural'
+    : 'scripted'
   state.time += delta
   state.locomotionTime += delta
   const decoded = decodeAction(action)
   state.previousAction = action
+  state.previousActionOrder = commandApplication === 'neural' ? 'anterior-to-posterior' : 'scene-tail-to-head'
   state.poke = Math.max(0, state.poke - delta * 0.58)
   state.landingFlash = Math.max(0, state.landingFlash - delta * 1.35)
   state.feedingCooldown = Math.max(0, state.feedingCooldown - delta)
@@ -308,6 +332,16 @@ export function advanceStunt(
   state.needs = needsStep.state
 
   updateLocomotionLifecycle(state, mode, environmentConfig, staticObstacles, needsStep.interaction)
+  const bodyApplication: Exclude<GaitActionApplication, 'lifecycle-handoff'> = gaitControllerOwnsBody(state)
+    ? 'neural'
+    : 'scripted'
+  // Lifecycle transitions happen inside this step, after the caller chose an
+  // action for the pre-step owner. Preserve both facts: the action's anatomical
+  // ordering above and whether that command actually matched the body system
+  // advanced below. A transition tick is neither an applied neural command nor
+  // an ordinary authored-pose sample.
+  state.previousActionApplication =
+    commandApplication === bodyApplication ? bodyApplication : 'lifecycle-handoff'
 
   if (state.locomotionState === 'riding') {
     state.cycleTime += delta
@@ -325,7 +359,7 @@ export function advanceStunt(
 
   updateBoardPlanar(state, decoded, delta, field, environmentConfig, staticObstacles)
   state.resources = syncSkateboardResource(state.resources, field, [state.boardX, state.boardY, state.boardZ])
-  updateWormRoot(state, action, delta, field, environmentConfig, staticObstacles, anatomy)
+  updateWormRoot(state, action, delta, field, environmentConfig, staticObstacles, anatomy, tractionScale)
   const groundY = boardGroundY(field, state.boardX, state.boardZ)
   const terrain = field.sample(state.boardX, state.boardZ)
 
@@ -740,6 +774,7 @@ function updateWormRoot(
   environmentConfig: EnvironmentConfig | null,
   staticObstacles: readonly TerrariumCircleObstacle[],
   anatomy: WurmAnatomy,
+  tractionScale: number,
 ) {
   if (state.locomotionState === 'riding') {
     state.wormX = MathUtils.damp(state.wormX, state.boardX, 18, delta)
@@ -851,6 +886,7 @@ function updateWormRoot(
         bowlRimAperture,
       ),
       anatomy,
+      tractionScale,
     )
     state.wormX = movement.root.x
     state.wormY = movement.root.y
@@ -1303,7 +1339,16 @@ export function toSnapshot(state: StuntState): SimulationSnapshot {
   }
 }
 
-export function locomotionSensorsFor(state: StuntState, field: TerrainField): LocomotionSensors {
+export function locomotionSensorsFor(
+  state: StuntState,
+  field: TerrainField,
+  tractionScale = 1,
+): LocomotionSensors {
+  const sensedFriction = MathUtils.clamp(
+    field.sample(state.wormX, state.wormZ).friction * tractionScale,
+    0,
+    1.2,
+  )
   const targetId = state.locomotionState === 'seeking' ? 'skateboard' : state.needs.targetResourceId
   const target = state.resources.find(resource => resource.id === targetId)
   if (!target) {
@@ -1313,7 +1358,7 @@ export function locomotionSensorsFor(state: StuntState, field: TerrainField): Lo
       targetDistance: 0,
       forwardSpeed: state.locomotionPlant.forwardSpeed,
       angularSpeed: state.locomotionPlant.angularSpeed,
-      terrainFriction: field.sample(state.wormX, state.wormZ).friction,
+      terrainFriction: sensedFriction,
       urgency: 0,
       contactLoads: state.locomotionPlant.contactLoads,
       slipSpeeds: state.locomotionPlant.slipSpeeds,
@@ -1336,13 +1381,38 @@ export function locomotionSensorsFor(state: StuntState, field: TerrainField): Lo
     targetDistance: MathUtils.clamp(distance / 5, 0, 1.5),
     forwardSpeed: state.locomotionPlant.forwardSpeed,
     angularSpeed: state.locomotionPlant.angularSpeed,
-    terrainFriction: field.sample(state.wormX, state.wormZ).friction,
+    terrainFriction: sensedFriction,
     urgency: state.needs[target.need],
     contactLoads: state.locomotionPlant.contactLoads,
     slipSpeeds: state.locomotionPlant.slipSpeeds,
     obstacleForward: state.locomotionPlant.obstacleForward,
     obstacleRight: state.locomotionPlant.obstacleRight,
   }
+}
+
+/** Apply a uniform side impulse to the free articulated body. This does not
+ * alter joints or neural state, so recovery remains the controller's job. */
+export function applyGaitLateralShove(state: StuntState, impulse: number) {
+  if (state.locomotionState !== 'crawling' && state.locomotionState !== 'seeking') return false
+  if (!Number.isFinite(impulse)) throw new Error('gait shove impulse must be finite')
+  const safeImpulse = MathUtils.clamp(impulse, -1.5, 1.5)
+  const rightX = -Math.sin(state.wormHeading)
+  const rightZ = Math.cos(state.wormHeading)
+  for (const segment of state.segments) {
+    segment.vx += rightX * safeImpulse
+    segment.vz += rightZ * safeImpulse
+  }
+  state.wormVx += rightX * safeImpulse
+  state.wormVz += rightZ * safeImpulse
+  state.poke = 1
+  return true
+}
+
+/** Normalize authored scene-order muscles (tail first) to policy/anatomy order
+ * (head first). Live neural commands already use policy order. */
+export function scriptedGaitMusclesAnteriorToPosterior(action: PolicyAction) {
+  const sceneOrder = decodeAction(action).bends
+  return Array.from({ length: SEGMENT_COUNT }, (_, segment) => sceneOrder[SEGMENT_COUNT - 1 - segment] ?? 0)
 }
 
 export function phaseFor(state: StuntState, mode: ShowcaseMode): StuntPhase {

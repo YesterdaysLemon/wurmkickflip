@@ -7,6 +7,7 @@ type LocomotionContract = {
   segmentCount: number
   muscleChannelCount: number
   timestep: number
+  postIntegrationRelaxationPasses: number
   sensorNames: string[]
   inputWeightNames: string[]
   recurrentWeightNames: string[]
@@ -37,7 +38,11 @@ export const LOCOMOTION_CONTRACT = contractJson as LocomotionContract
 
 if (
   LOCOMOTION_CONTRACT.segmentCount !== 16 ||
-  LOCOMOTION_CONTRACT.muscleChannelCount !== LOCOMOTION_CONTRACT.segmentCount * 2
+  LOCOMOTION_CONTRACT.muscleChannelCount !== LOCOMOTION_CONTRACT.segmentCount * 2 ||
+  !Number.isInteger(LOCOMOTION_CONTRACT.postIntegrationRelaxationPasses) ||
+  LOCOMOTION_CONTRACT.postIntegrationRelaxationPasses < 0
 ) {
-  throw new Error('locomotion contract must describe 16 antagonistic actuator pairs / 32 muscle channels')
+  throw new Error(
+    'locomotion contract must describe 16 antagonistic actuator pairs / 32 muscle channels and a non-negative relaxation pass count',
+  )
 }

@@ -393,7 +393,7 @@ h1 {
 
 .mode-section,
 .terrarium-controls,
-.muscle-readout {
+.gait-microscope {
   position: relative;
   display: grid;
   gap: 8px;
@@ -999,49 +999,280 @@ h1 {
   line-height: 1.35;
 }
 
-.muscle-readout {
+.gait-microscope {
   padding-top: 1px;
 }
 
-.muscle-grid {
+.gait-direction {
   display: grid;
-  grid-template-columns: repeat(16, minmax(0, 1fr));
-  align-items: end;
-  gap: 3px;
-  height: 38px;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 1px;
+  overflow: hidden;
+  border: 1px solid var(--line);
+  border-radius: 7px;
+  background: rgba(0, 0, 0, 0.13);
+}
+
+.gait-direction span {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+  padding: 6px 7px;
+  color: rgba(244, 239, 221, 0.4);
+  font-family: ui-monospace, SFMono-Regular, Consolas, monospace;
+  font-size: 8px;
+  font-weight: 800;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.gait-direction span + span {
+  border-left: 1px solid var(--line);
+}
+
+.gait-direction b {
+  overflow: hidden;
+  color: rgba(244, 239, 221, 0.88);
+  font-size: 9px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.gait-axis {
+  display: grid;
+  grid-template-columns: auto minmax(24px, 1fr) auto;
+  align-items: center;
+  gap: 7px;
+  color: rgba(244, 239, 221, 0.38);
+  font-family: ui-monospace, SFMono-Regular, Consolas, monospace;
+  font-size: 8px;
+  font-weight: 800;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+}
+
+.gait-axis i {
+  height: 1px;
+  background: linear-gradient(90deg, var(--mint), rgba(244, 239, 221, 0.12), var(--signal));
+}
+
+.gait-matrix {
+  display: grid;
   padding: 5px;
   border: 1px solid var(--line);
   border-radius: 8px;
   background:
-    linear-gradient(rgba(255, 255, 255, 0.025) 1px, transparent 1px) 0 50% / 100% 50%,
-    rgba(0, 0, 0, 0.13);
+    linear-gradient(rgba(255, 255, 255, 0.022) 1px, transparent 1px) 0 50% / 100% 50%,
+    rgba(0, 0, 0, 0.15);
 }
 
-.muscle-cell {
+.gait-matrix > [role='rowgroup'] {
+  display: grid;
+  gap: 3px;
+}
+
+.gait-row {
+  display: grid;
+  grid-template-columns: 43px repeat(16, minmax(0, 1fr));
+  align-items: center;
+  gap: 2px;
+  min-width: 0;
+}
+
+.gait-row-label {
+  overflow: hidden;
+  color: rgba(244, 239, 221, 0.42);
+  font-family: ui-monospace, SFMono-Regular, Consolas, monospace;
+  font-size: 8px;
+  font-weight: 800;
+  letter-spacing: 0.03em;
+  text-overflow: ellipsis;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+.gait-cell {
   position: relative;
-  display: flex;
-  width: 100%;
-  height: 100%;
-  align-items: flex-end;
+  display: block;
+  min-width: 0;
+  height: 18px;
   border-radius: 2px;
-  background: rgba(244, 239, 221, 0.05);
+  background: rgba(244, 239, 221, 0.045);
+  box-shadow: inset 0 0 0 1px rgba(244, 239, 221, 0.025);
   overflow: hidden;
 }
 
-.muscle-cell i {
-  display: block;
-  width: 100%;
-  height: calc(var(--muscle-level) * 100%);
-  min-height: 2px;
+.gait-cell::before {
+  position: absolute;
+  right: 1px;
+  left: 1px;
+  top: 50%;
+  height: 1px;
+  background: rgba(244, 239, 221, 0.11);
+  content: '';
+}
+
+.gait-cell i {
+  position: absolute;
+  right: 2px;
+  bottom: 50%;
+  left: 2px;
+  height: calc(var(--gait-level) * 50%);
+  min-height: 1px;
   border-radius: 2px 2px 0 0;
-  background: linear-gradient(180deg, var(--acid), var(--mint));
-  box-shadow: rgba(201, 244, 91, 0.22) 0 0 6px;
+  background: var(--mint);
+  box-shadow: rgba(88, 214, 174, 0.25) 0 0 5px;
   transition: height 80ms linear;
 }
 
-.muscle-cell.is-ventral i {
-  background: linear-gradient(180deg, #ffb06c, var(--signal));
-  box-shadow: rgba(255, 103, 77, 0.23) 0 0 6px;
+.gait-cell.is-negative i {
+  top: 50%;
+  bottom: auto;
+  border-radius: 0 0 2px 2px;
+  background: var(--signal);
+  box-shadow: rgba(255, 103, 77, 0.24) 0 0 5px;
+}
+
+.gait-row--muscle .gait-cell i {
+  background: var(--acid);
+  box-shadow: rgba(201, 244, 91, 0.22) 0 0 5px;
+}
+
+.gait-row--muscle .gait-cell.is-negative i {
+  background: #ff9b68;
+}
+
+.gait-row--bend .gait-cell i,
+.gait-row--support .gait-cell i {
+  background: var(--sky);
+  box-shadow: rgba(131, 200, 223, 0.2) 0 0 5px;
+}
+
+.gait-row--support .gait-cell i,
+.gait-row--slip .gait-cell i {
+  bottom: 0;
+  height: calc(var(--gait-level) * 100%);
+  border-radius: 2px 2px 0 0;
+}
+
+.gait-row--support .gait-cell::before,
+.gait-row--slip .gait-cell::before {
+  display: none;
+}
+
+.gait-row--slip .gait-cell i {
+  background: var(--signal);
+  box-shadow: rgba(255, 103, 77, 0.2) 0 0 5px;
+}
+
+.gait-cell.is-selected {
+  box-shadow: inset 0 0 0 1px rgba(201, 244, 91, 0.65);
+}
+
+.gait-cell.is-unavailable::after {
+  position: absolute;
+  inset: 50% 3px auto;
+  height: 1px;
+  background: rgba(244, 239, 221, 0.16);
+  content: '';
+}
+
+.gait-cell.is-unavailable i,
+.gait-cell.is-unavailable::before {
+  display: none;
+}
+
+.gait-probe,
+.gait-experiment-status {
+  margin: 0;
+  color: rgba(244, 239, 221, 0.5);
+  font-family: ui-monospace, SFMono-Regular, Consolas, monospace;
+  font-size: 9px;
+  line-height: 1.45;
+}
+
+.gait-probe {
+  min-height: 30px;
+}
+
+.gait-probe b {
+  color: var(--acid);
+}
+
+.gait-sliders {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 7px;
+}
+
+.gait-sliders label {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 2px 6px;
+  min-width: 0;
+  color: rgba(244, 239, 221, 0.72);
+  font-size: 9px;
+  font-weight: 800;
+}
+
+.gait-sliders input {
+  grid-column: 1 / -1;
+  width: 100%;
+  min-width: 0;
+  margin: 0;
+  accent-color: var(--acid);
+}
+
+.gait-sliders small {
+  grid-column: 2;
+  grid-row: 1;
+  color: rgba(244, 239, 221, 0.34);
+  font-family: ui-monospace, SFMono-Regular, Consolas, monospace;
+  font-size: 7.5px;
+  font-weight: 700;
+  text-transform: uppercase;
+}
+
+.gait-actions {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 5px;
+}
+
+.gait-actions button {
+  min-height: 42px;
+  padding: 7px 8px;
+  border: 1px solid var(--line-strong);
+  border-radius: 6px;
+  color: rgba(244, 239, 221, 0.74);
+  background: rgba(255, 255, 255, 0.045);
+  cursor: pointer;
+  font-size: 9px;
+  font-weight: 800;
+  line-height: 1.2;
+}
+
+.gait-actions button:hover:not(:disabled) {
+  border-color: rgba(201, 244, 91, 0.42);
+  color: var(--paper);
+  background: rgba(201, 244, 91, 0.07);
+}
+
+.gait-actions button[aria-pressed='true'] {
+  border-color: rgba(255, 103, 77, 0.58);
+  color: #fff5e4;
+  background: rgba(255, 103, 77, 0.18);
+}
+
+.gait-actions button:disabled {
+  cursor: not-allowed;
+  opacity: 0.34;
+}
+
+.gait-experiment-status {
+  min-height: 11px;
+  color: rgba(88, 214, 174, 0.72);
 }
 
 .lab-tape {
@@ -1327,7 +1558,7 @@ h1 {
   .needs-panel,
   .terrarium-controls,
   .utility-actions,
-  .muscle-readout {
+  .gait-microscope {
     align-self: stretch;
   }
 

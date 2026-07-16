@@ -1,0 +1,419 @@
+{
+  "schemaVersion": 1,
+  "kind": "wurmkickflip.retainedTerrariumCausalCandidateSummary",
+  "modelVersion": "locomotion-head-leading-es-v3-terrarium-causal-candidate-v1",
+  "seed": {
+    "path": "training/seeds/wurmkickflip_locomotion_terrarium_causal_candidate_warm_start_v3.json",
+    "sha256": "0c46518c424528337f3a2ad5a96912b7812dda473688d468556023be095551ba"
+  },
+  "serializedGenome": [
+    -0.98,
+    0.95390854,
+    -0.88518085,
+    0.35396638,
+    0.47343455,
+    -0.43961505,
+    0.13267677,
+    -0.98,
+    -0.61980583,
+    0.98,
+    -0.07328735,
+    -0.47686784,
+    -0.02806158,
+    0.84109456,
+    0.98,
+    0.4184546,
+    1.8962418,
+    0.45119161,
+    -0.02294479,
+    0.02881726,
+    0.63133678,
+    -0.04216515,
+    0.7177489,
+    0.89627429,
+    0.62900977,
+    -0.99773579,
+    -0.58038205,
+    -0.74368202,
+    0.28532878,
+    0.4332245,
+    -0.60773162,
+    0.06461218,
+    -0.6383996,
+    0.56631266,
+    -1.1230874,
+    1.79680271,
+    0.36084618,
+    0.1986287,
+    0.47506168,
+    -1.06801965,
+    2.12067697,
+    -1.69938764,
+    0.49515428,
+    0.80053162,
+    -0.65786383
+  ],
+  "retainedCandidateRecipeHash": "3a31b782dfdda3c9ef4d4572b4ae5c5267b5b08fb0bb380f4308037c1738a0a3",
+  "derivationRecipe": {
+    "schemaVersion": 1,
+    "kind": "wurmkickflip.deterministicCoordinateCompositionRecipe",
+    "operation": "copy the exact historical discovery genome, then add three bounded coordinate deltas",
+    "historicalDiscoverySourceArtifact": {
+      "path": "training/runs/locomotion_head_leading_v3/final-v3-windows-four-solve.json",
+      "sha256": "87b9e3444b1fa1366d21df0be4ea72f1441665424b96a196751c119f820bbe67",
+      "summaryPath": "training/runs/locomotion_head_leading_v3/final-v3-windows-four-solve-summary.json",
+      "summarySha256": "6dab1afb5d4b396b6ea523c6a85c1bdaf1c288250a72bb6f8c67e1664aed79a9",
+      "modelVersion": "locomotion-articulated-head-leading-es-v3",
+      "canonicalGenomeRecipeHash": "d8ff50d99a66837ff218561fe2979acf85d84e0e470507bb9736d06473b6cf42",
+      "declaredRecipe": {
+        "seed": 20260737,
+        "generations": 10,
+        "populationSize": 64,
+        "eliteCount": 12,
+        "episodeSteps": 480,
+        "combinedRecoveryMode": "bounded-480"
+      },
+      "serializedGenome": [
+        -0.98,
+        0.95390854,
+        -0.88518085,
+        0.35396638,
+        0.47343455,
+        -0.43961505,
+        0.13267677,
+        -0.98,
+        -0.61980583,
+        0.98,
+        -0.07328735,
+        -0.47686784,
+        -0.02806158,
+        0.84109456,
+        0.98,
+        0.4184546,
+        1.8962418,
+        0.45119161,
+        -0.02294479,
+        0.02881726,
+        0.63133678,
+        -0.04216515,
+        0.7177489,
+        0.89627429,
+        0.52900977,
+        -0.99773579,
+        -0.58038205,
+        -0.74368202,
+        0.28532878,
+        0.4332245,
+        -0.60773162,
+        0.06461218,
+        -0.6383996,
+        0.56631266,
+        -1.1230874,
+        1.79680271,
+        0.36084618,
+        0.1986287,
+        0.47506168,
+        -1.06801965,
+        2.07067697,
+        -1.69938764,
+        0.49515428,
+        0.81053162,
+        -0.65786383
+      ],
+      "recipeSourceSha256": {
+        "training/wurmkickflip_rl/evolve_locomotion_policy.py": "6190e14bd1e887231abf96c95413057b6730db1b21086f635055cb8edf1a31a9",
+        "training/wurmkickflip_rl/articulated_locomotion.py": "8892268f98d25839c4bb35d911e2def52efb50da65d43f2a21f1c8218929cf72",
+        "training/wurmkickflip_rl/contracts.py": "ea7b182d9f753c3dcd6d569150adfd08496b3ec2af01bd6cb73d15c6be901a91",
+        "contracts/locomotion-v2.json": "50acf6e504a4c98975f1983ed3710343d65045c818787108a885ee9cdd08f72e",
+        "training/uv.lock": "d1e602609b18ae9547455ec9d128b10356487e6665a698e3963090e5b6451819",
+        "training/pyproject.toml": "701bd00f81d7bc36c2c3cc328120ebd544cdb3a70034238a3f153cd62f04a0fb"
+      },
+      "warmStart": {
+        "sha256": "5a4e670acb45f69cdfc30ee9c2be5d4e12563e6b37d960264890f44658b656b8",
+        "modelVersion": "locomotion-head-leading-es-v3-four-solve-swap-1-3-seed-v1"
+      },
+      "genomeDecimals": 8
+    },
+    "coordinateDeltas": [
+      {
+        "genomeIndex": 24,
+        "section": "weights.input",
+        "name": "terrainFriction",
+        "delta": 0.1
+      },
+      {
+        "genomeIndex": 40,
+        "section": "weights.output",
+        "name": "targetRight",
+        "delta": 0.05
+      },
+      {
+        "genomeIndex": 43,
+        "section": "weights.output",
+        "name": "obstacleRight",
+        "delta": -0.01
+      }
+    ],
+    "diagnosticArtifact": {
+      "path": "training/runs/locomotion_candidate_screen/exact-local/exact-p10-g43m01-g40p05.json",
+      "sha256": "420744ebb7a7860d45e463b448c700c8dd1bbdaae0640ac1ab6220a6e3932827",
+      "modelVersion": "locomotion-diagnostic-exact-p10-g43m01-g40p05-v1"
+    },
+    "genomeDecimals": 8,
+    "recipeSourceSha256": {
+      "training/wurmkickflip_rl/evolve_locomotion_policy.py": "6190e14bd1e887231abf96c95413057b6730db1b21086f635055cb8edf1a31a9",
+      "training/wurmkickflip_rl/articulated_locomotion.py": "8892268f98d25839c4bb35d911e2def52efb50da65d43f2a21f1c8218929cf72",
+      "training/wurmkickflip_rl/contracts.py": "ea7b182d9f753c3dcd6d569150adfd08496b3ec2af01bd6cb73d15c6be901a91",
+      "contracts/locomotion-v2.json": "50acf6e504a4c98975f1983ed3710343d65045c818787108a885ee9cdd08f72e",
+      "training/uv.lock": "d1e602609b18ae9547455ec9d128b10356487e6665a698e3963090e5b6451819",
+      "training/pyproject.toml": "701bd00f81d7bc36c2c3cc328120ebd544cdb3a70034238a3f153cd62f04a0fb"
+    },
+    "cleanCloneReconstruction": "start from historicalDiscoverySourceArtifact.serializedGenome, apply each coordinate delta once, round every value to genomeDecimals; ignored paths are historical labels only"
+  },
+  "pythonHostDiagnostics": {
+    "platform": {
+      "system": "Windows",
+      "python": "3.11.15",
+      "numpy": "2.4.6"
+    },
+    "selectionGateResults": {
+      "nominalSignedHeadLeading": true,
+      "nominalLateralMotion": true,
+      "nominalTargetAlignment": true,
+      "combinedControlProgress": true,
+      "combinedPerturbedProgress": true,
+      "combinedProgressRetention": true,
+      "combinedLateSpeedRetention": true,
+      "combinedControlLateSpeed": true,
+      "recoveredSignedHeadLeading": true,
+      "recoveredLateralMotion": true,
+      "recoveredTargetAlignment": true,
+      "causalOrderingGap": true,
+      "causalProgressGap": true,
+      "localCausalInitial": true,
+      "localCausalRadiusTwo": true,
+      "localCausalRadiusThree": true,
+      "localCausalSettled": true
+    },
+    "selectionGateGuardBandResults": {
+      "nominalSignedHeadLeading": true,
+      "nominalLateralMotion": true,
+      "nominalTargetAlignment": true,
+      "combinedControlProgress": true,
+      "combinedPerturbedProgress": true,
+      "combinedProgressRetention": true,
+      "combinedLateSpeedRetention": true,
+      "combinedControlLateSpeed": true,
+      "recoveredSignedHeadLeading": true,
+      "recoveredLateralMotion": true,
+      "recoveredTargetAlignment": true,
+      "causalOrderingGap": true,
+      "causalProgressGap": true,
+      "localCausalInitial": true,
+      "localCausalRadiusTwo": true,
+      "localCausalRadiusThree": true,
+      "localCausalSettled": true
+    },
+    "ablationGateResults": {
+      "fullProgress": true,
+      "zeroActionStationary": true,
+      "fullBeatsFrozen": true,
+      "fullBeatsShuffled": true,
+      "noFrictionConservesCom": true
+    },
+    "ablationGateGuardBandResults": {
+      "fullProgress": true,
+      "zeroActionStationary": true,
+      "fullBeatsFrozen": true,
+      "fullBeatsShuffled": true,
+      "noFrictionConservesCom": true
+    },
+    "metrics": {
+      "fitness": 161.42110058,
+      "meanTargetProgress": 3.05925829,
+      "pathEfficiency": 0.60690785,
+      "meanFinalDistance": 2.38779397,
+      "meanSpeed": 0.61766754,
+      "actuatorTemporalStd": 0.73519601,
+      "segmentDiversity": 0.14637492,
+      "meanEnergy": 0.70770911,
+      "hiddenSaturationRatio": 0.75341797,
+      "meanHiddenTanhDerivative": 0.0869047,
+      "reachedRatio": 0.25,
+      "meanDisplacement": 2.62283714,
+      "meanHeadingAlignment": 0.46735667,
+      "signedHeadLeadingFraction": 0.81740213,
+      "positiveHeadLeadingFraction": 0.84231968,
+      "lateralMotionFraction": 0.38077637,
+      "meanHeadLeadingSpeed": 0.50488277,
+      "targetFacingHeadLeadingSpeed": 0.3517296,
+      "movingTargetFacingAlignment": 0.67472284,
+      "lateTargetFacingAlignment": 0.6569585,
+      "causalOrderingGap": 8.18608204,
+      "causalProgressGap": 0.14354322,
+      "localCausalInitialDelta": 1.08458877,
+      "localCausalRadiusTwoDelta": 0.72848171,
+      "localCausalRadiusThreeDelta": 0.05616283,
+      "localCausalSettledDelta": 0.0
+    },
+    "perturbationRecovery": {
+      "slickWindow": {
+        "preTargetFacingHeadSpeed": 0.35098023,
+        "postTargetFacingHeadSpeed": 0.30506172,
+        "recoveryRatio": 0.91395379,
+        "worstScenarioRecoveryRatio": 0.75881306,
+        "meanRecoveryTimeSeconds": 0.39166667,
+        "meanTargetProgress": 2.29860963,
+        "signedHeadLeadingFraction": 0.67092911
+      },
+      "bodyShove": {
+        "preTargetFacingHeadSpeed": 0.27144637,
+        "postTargetFacingHeadSpeed": 0.30117955,
+        "recoveryRatio": 1.70943863,
+        "worstScenarioRecoveryRatio": 0.28146855,
+        "meanRecoveryTimeSeconds": 0.57916667,
+        "meanTargetProgress": 2.50722811,
+        "signedHeadLeadingFraction": 0.6923579
+      },
+      "combinedRecoveryProxy": {
+        "controlTargetProgress": 4.37524368,
+        "perturbedTargetProgress": 4.29977885,
+        "progressRetention": 0.98275186,
+        "controlLateProgressSpeed": 0.73700024,
+        "perturbedLateProgressSpeed": 0.69364306,
+        "lateSpeedRetention": 0.94117074,
+        "perturbedSignedHeadLeadingFraction": 0.83722963,
+        "perturbedLateralMotionFraction": 0.37314614,
+        "perturbedMovingTargetFacingAlignment": 0.7274342
+      }
+    },
+    "ablations": {
+      "fullProgress": 3.0592582922,
+      "zeroProgress": 0.0,
+      "frozenProgress": 0.0409308926,
+      "shuffledProgress": 2.6661614436,
+      "noFrictionDisplacement": 0.0
+    }
+  },
+  "typescriptHostDiagnostics": {
+    "platform": {
+      "system": "Windows",
+      "node": "22.20.0"
+    },
+    "strictPolicyContract": {
+      "passed": true,
+      "artifactSha256": "558d78d6fbe9bf4915d7bba71b332723101a8337597e87e33e8a561c64183117",
+      "canonicalGenomeRecipeHash": "184075f01dafb9e69696a954a25a1d1cf25e119ef65558d49e5bae4292551c28",
+      "recipeSourceTrainerSha256": "33e70cac45410b35cdbf299749bcb646c022eb6da4f652acdb4420662647b873",
+      "pairedHostArtifactBytesEqual": true,
+      "platforms": [
+        "Windows",
+        "Linux"
+      ]
+    },
+    "locomotion": {
+      "passed": true,
+      "meanProgress": 3.97370666,
+      "worstScenarioProgress": 3.20153764,
+      "shuffledProgressGap": 0.44474873,
+      "meanTargetAlignment": 0.67032993,
+      "worstTargetAlignment": 0.55169678,
+      "meanBodyAxisVelocity": 0.91660646,
+      "worstBodyAxisVelocity": 0.87429462,
+      "meanTransverseFraction": 0.32955094,
+      "worstTransverseFraction": 0.40850682
+    },
+    "gaitMicroscope": {
+      "passed": true,
+      "baselineProgress": 9.6556102,
+      "perturbedProgress": 9.63050746,
+      "progressRetention": 0.99740019,
+      "baselineLateProgressSpeed": 0.75654783,
+      "perturbedLateProgressSpeed": 0.74001876,
+      "lateSpeedRetention": 0.97815198,
+      "baselineTargetAlignment": 0.69972581,
+      "baselineHeadAxisVelocity": 0.92661847,
+      "baselineTransverseFraction": 0.31448281,
+      "perturbedTargetAlignment": 0.74686984,
+      "perturbedHeadAxisVelocity": 0.94179097,
+      "perturbedTransverseFraction": 0.27376919,
+      "zeroTractionComDisplacement": 1.3819965170697422e-13
+    },
+    "integratedMotion": {
+      "passed": true,
+      "deterministicHash": "0fbd233b56c3af1c512660c818544b783c86b92d13f0759c8fd40b54d7fcaf43",
+      "flipsLanded": 10,
+      "remounted": true,
+      "locomotionStates": [
+        "riding",
+        "dismounting",
+        "crawling",
+        "feeding",
+        "crawling",
+        "feeding",
+        "crawling",
+        "feeding",
+        "seeking",
+        "mounting",
+        "riding",
+        "dismounting",
+        "crawling"
+      ],
+      "needsFulfillment": {
+        "food": 0.712422,
+        "water": 1.006519,
+        "wellbeing": 1.457154,
+        "wellbeingAfterRemount": 0.9392
+      },
+      "crawlDistance": {
+        "tractionProbeFull": 14.876784,
+        "goalFull": 15.19359,
+        "zero": 0.001507,
+        "frozen": 4.490023,
+        "shuffled": 12.356526,
+        "zeroFriction": 5.494003
+      },
+      "foodChallenge": {
+        "targetProgress": {
+          "full": 8.958653,
+          "frozen": -0.540053,
+          "shuffled": 6.173378
+        },
+        "restoration": {
+          "full": 1.212667,
+          "frozen": 0.0,
+          "shuffled": 1.0905
+        },
+        "firstNeuralFoodFeeding": {
+          "full": {
+            "simulationTime": 10.533333,
+            "neuralControllerTick": 559
+          },
+          "frozen": null,
+          "shuffled": {
+            "simulationTime": 13.816667,
+            "neuralControllerTick": 756
+          }
+        }
+      },
+      "presets": {
+        "ripple": {
+          "distance": 19.630966,
+          "food": true,
+          "water": true
+        },
+        "tilt": {
+          "distance": 23.49395,
+          "food": true,
+          "water": true
+        }
+      },
+      "maximumRootStep": 0.043505,
+      "maximumSegmentStep": 0.065425,
+      "bodySpeedP99": 3.058397,
+      "bodySpeedMax": 3.873318
+    }
+  },
+  "forecastStatus": "the exact 1-generation, 4-population, 1-elite retention recipe returned the retained genome without coordinate drift, passed the strict contract, locomotion, gait, and integrated-motion gates on Windows, and reproduced byte-identical artifact bytes on isolated Linux",
+  "publicRuntimeModel": false
+}

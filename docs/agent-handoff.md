@@ -6,6 +6,8 @@
 - Treat `contracts/locomotion-v2.json` as canonical. A contract change must update TypeScript, Python, artifacts, validators, and docs together.
 - Preserve skateboarding as the task family, even if morphology becomes more general.
 - Keep generated caches, virtual environments, build output, and training runs untracked. Promote a model only with reproducible provenance.
+- Treat tracked locomotion seed bytes as provenance: they are excluded from formatting, and changing one requires a reviewed artifact promotion plus the exact reproduction lane.
+- Keep every implicit trainer output under `training/runs/`; writing `public/models/` must be an explicit reviewed promotion.
 - Never add a hidden root-motion channel, gait clock, phase input, or trigonometric gait recipe to detached locomotion.
 - Keep claims explicit: the network owns segment commands; the plant owns constraints/friction/collisions; the scene owns goals and contact/stunt choreography.
 
@@ -14,7 +16,7 @@
 - Contracts or policy constants: `npm run verify:contract` and `npm run verify:parity`.
 - Terrain mesh/physics sampling: `npm run verify:terrain`.
 - Bounds, props, bowls, board, or swept contacts: `npm run verify:collisions`.
-- Articulated forces, constraints, friction, or body invariants: `npm run verify:dynamics` and `npm run verify:locomotion`.
+- Articulated forces, constraints, friction, body invariants, neural perturbations, or gait telemetry: `npm run verify:dynamics`, `npm run verify:locomotion`, and `npm run verify:gait` as applicable.
 - Food, water, inventories, mouth contact, refill, or goal selection: `npm run verify:needs`.
 - Mount/dismount/feed poses and ownership handoffs: `npm run verify:interactions`.
 - Integrated board/worm/resource lifecycle: `npm run verify:motion`.
@@ -24,7 +26,7 @@
 - Any implementation change: finish with `npm run check` and `git diff --check`.
 - Published locomotion artifact or recipe: also run the intentionally long `npm run check:repro`.
 
-Python changes additionally require `npm run python:check`. Run Python commands through `uv` from `training/` and keep `training/uv.lock` aligned with dependency changes.
+Python changes additionally require `npm run python:check`. Run Python commands through `uv` with its `--locked` flag from `training/`; update `training/uv.lock` explicitly only when dependencies change.
 
 ## Current Boundaries
 

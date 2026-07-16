@@ -46,7 +46,14 @@ verifyMissingRecordPadding(browserSnapshot)
 
 const python = spawnSync(
   'uv',
-  ['run', 'python', '-m', 'wurmkickflip_rl.fixture_observation', '../fixtures/policy-snapshot.json'],
+  [
+    'run',
+    '--locked',
+    'python',
+    '-m',
+    'wurmkickflip_rl.fixture_observation',
+    '../fixtures/policy-snapshot.json',
+  ],
   {
     cwd: resolve(root, 'training'),
     encoding: 'utf8',

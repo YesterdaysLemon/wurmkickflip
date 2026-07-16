@@ -16,6 +16,9 @@ TIMESTEP = float(CONTRACT["timestep"])
 JOINT_STIFFNESS = float(CONTRACT["joint"]["stiffness"])
 JOINT_DAMPING = float(CONTRACT["joint"]["damping"])
 JOINT_LIMIT = float(CONTRACT["joint"]["limit"])
+POST_INTEGRATION_RELAXATION_PASSES = int(
+    CONTRACT["postIntegrationRelaxationPasses"]
+)
 
 DYNAMICS: dict[str, float] = {
     key: float(value) for key, value in CONTRACT["dynamics"].items()
@@ -94,7 +97,7 @@ def articulated_plant_step(
     joint[:] = np.clip(joint + joint_velocity * dt, -JOINT_LIMIT, JOINT_LIMIT)
 
     spacing = SPACING * body_scale[None, :, None]
-    edge_bend = joint[:, :, -2::-1]
+    edge_bend = controller_joints_to_scene_edges(joint)
     edge_yaw = old_heading[:, :, None] + np.cumsum(
         edge_bend * SHAPE_BEND_SCALE, axis=2
     )
@@ -149,16 +152,24 @@ def articulated_plant_step(
     body_position += body_velocity * dt
     satisfy_distance_constraints(body_position, spacing)
 
-    obstacle_normal_scene = project_obstacles(
-        body_position,
-        body_velocity,
-        obstacle_center,
-        obstacle_radius,
-        body_scale,
-    )
-    boundary_normal_scene = project_bounds(body_position, body_velocity, body_scale)
-    obstacle_normal_scene += boundary_normal_scene
-    satisfy_distance_constraints(body_position, spacing)
+    obstacle_normal_scene = np.zeros_like(body_position)
+    for relaxation_pass in range(POST_INTEGRATION_RELAXATION_PASSES + 1):
+        if relaxation_pass > 0:
+            satisfy_distance_constraints(body_position, spacing)
+        projected_normal = project_obstacles(
+            body_position,
+            body_velocity,
+            obstacle_center,
+            obstacle_radius,
+            body_scale,
+        )
+        projected_normal += project_bounds(body_position, body_velocity, body_scale)
+        projected_contact = np.linalg.norm(projected_normal, axis=3) > 0.0
+        obstacle_normal_scene[:] = np.where(
+            projected_contact[:, :, :, None],
+            projected_normal,
+            obstacle_normal_scene,
+        )
 
     body_velocity[:] = (body_position - old_position) / max(dt, 1.0e-9)
     limit_velocity(body_velocity)
@@ -184,6 +195,15 @@ def articulated_plant_step(
         obstacle_forward_scene[:, :, ::-1],
         obstacle_right_scene[:, :, ::-1],
     )
+
+
+def controller_joints_to_scene_edges(joint: np.ndarray) -> np.ndarray:
+    """Map anterior-to-posterior controller joints to tail-to-head scene edges.
+
+    The TypeScript scene builds edge 1 from plant joint 15 through edge 15 from
+    plant joint 1. Joint 0 is the anterior/head terminal actuator and has no edge.
+    """
+    return joint[..., :0:-1]
 
 
 def satisfy_distance_constraints(body_position: np.ndarray, spacing: np.ndarray) -> None:
@@ -267,7 +287,9 @@ def limit_velocity(body_velocity: np.ndarray) -> None:
     mean_speed = np.linalg.norm(mean_velocity, axis=3, keepdims=True)
     mean_scale = np.minimum(1.0, MAXIMUM_SPEED / np.maximum(mean_speed, 1.0e-9))
     limited_mean = mean_velocity * mean_scale
-    relative = body_velocity - mean_velocity
+    # Match TypeScript exactly: relative velocities are measured around the
+    # already-clipped mean, not the pre-limit mean.
+    relative = body_velocity - limited_mean
     relative_speed = np.linalg.norm(relative, axis=3)
     relative_scale = np.minimum(
         1.0, MAXIMUM_SPEED / np.maximum(relative_speed, 1.0e-9)

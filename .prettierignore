@@ -3,7 +3,14 @@ dist
 node_modules
 public/models
 training/.venv
+training/.pytest_cache
 training/runs
+training/seeds/wurmkickflip_locomotion_head_leading_warm_start_v3.json
+training/seeds/wurmkickflip_locomotion_head_leading_guarded_warm_start_v3.json
+training/seeds/wurmkickflip_locomotion_four_solve_swap_1_3_summary_v3.json
+training/seeds/wurmkickflip_locomotion_four_solve_swap_1_3_warm_start_v3.json
+training/seeds/wurmkickflip_locomotion_terrarium_causal_candidate_summary_v3.json
+training/seeds/wurmkickflip_locomotion_terrarium_causal_candidate_warm_start_v3.json
 training/uv.lock
 package-lock.json
 playwright-report

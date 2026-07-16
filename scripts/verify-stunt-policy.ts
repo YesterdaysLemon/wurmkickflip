@@ -67,7 +67,7 @@ if (failures.length > 0) {
   process.exit(1)
 }
 
-const python = spawnSync('uv', ['run', 'python', '-m', 'wurmkickflip_rl.validate_stunt_policy'], {
+const python = spawnSync('uv', ['run', '--locked', 'python', '-m', 'wurmkickflip_rl.validate_stunt_policy'], {
   cwd: resolve(import.meta.dirname, '../training'),
   encoding: 'utf8',
 })

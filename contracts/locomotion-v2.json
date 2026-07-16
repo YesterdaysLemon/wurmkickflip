@@ -5,6 +5,7 @@
   "segmentCount": 16,
   "muscleChannelCount": 32,
   "timestep": 0.016666666666666666,
+  "postIntegrationRelaxationPasses": 3,
   "sensorNames": [
     "targetForward",
     "targetRight",

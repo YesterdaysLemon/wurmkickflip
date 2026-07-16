@@ -31,9 +31,29 @@ const tiltEnvironment = JSON.parse(
 const artifact = parseStuntPolicy(
   JSON.parse(await readFile(resolve(root, 'public/models/wurmkickflip_stunt_policy.json'), 'utf8')),
 )
-const locomotionArtifact = parseLocomotionPolicy(
-  JSON.parse(await readFile(resolve(root, 'public/models/wurmkickflip_locomotion_policy.json'), 'utf8')),
-)
+const candidateScreen = process.env.WURMKICKFLIP_CANDIDATE_SCREEN === '1'
+const locomotionArtifactSource = process.env.WURMKICKFLIP_LOCOMOTION_ARTIFACT
+  ? resolve(process.env.WURMKICKFLIP_LOCOMOTION_ARTIFACT)
+  : resolve(root, 'public/models/wurmkickflip_locomotion_policy.json')
+const rawLocomotionArtifact = JSON.parse(await readFile(locomotionArtifactSource, 'utf8'))
+// Retained evolutionary checkpoints are intentionally not runtime-loadable V3
+// artifacts. This explicit CLI-only screen removes the publication discriminator
+// from a clone so integrated behavior can be measured without weakening the parser.
+const candidateInput = candidateScreen ? structuredClone(rawLocomotionArtifact) : rawLocomotionArtifact
+if (
+  candidateScreen &&
+  candidateInput.modelVersion !== 'locomotion-articulated-head-leading-es-v3' &&
+  candidateInput.training
+) {
+  delete candidateInput.training.objectiveVersion
+}
+const locomotionArtifact = parseLocomotionPolicy(candidateInput)
+const SEGMENT_SHUFFLE = [0, 9, 2, 13, 4, 15, 6, 11, 8, 1, 10, 3, 12, 5, 14, 7] as const
+const candidateFailures: string[] = []
+const FOOD_RESTORATION_FLOOR = 0.5
+const FOOD_TARGET_PROGRESS_GAP = 1
+const FOOD_HANDOFF_LEAD_SECONDS = 3
+const FOOD_HANDOFF_DEADLINE_SECONDS = 16
 
 const fullAudit: RolloutAudit = {
   geometry: true,
@@ -45,14 +65,86 @@ const geometryAudit: RolloutAudit = { geometry: true }
 const traceAudit: RolloutAudit = { trace: true }
 const minimalAudit: RolloutAudit = {}
 
+if (candidateScreen && process.env.WURMKICKFLIP_CANDIDATE_FOCUS === 'food') {
+  const full = simulate('freestyle', 32, 'full', undefined, environment, minimalAudit, 'food-bowl')
+  const frozen = simulate('freestyle', 32, 'frozen', undefined, environment, minimalAudit, 'food-bowl')
+  const shuffled = simulate('freestyle', 32, 'shuffled', undefined, environment, minimalAudit, 'food-bowl')
+  const fullOverFrozen = full.foodFulfillment - frozen.foodFulfillment
+  const fullOverShuffled = full.foodFulfillment - shuffled.foodFulfillment
+  const fullFeeds =
+    full.firstNeuralFoodFeedingTime !== null &&
+    full.firstNeuralFoodFeedingTime <= FOOD_HANDOFF_DEADLINE_SECONDS &&
+    full.foodFulfillment >= FOOD_RESTORATION_FLOOR
+  const fullBeatsFrozen =
+    full.needTargetProgress >= frozen.needTargetProgress + FOOD_TARGET_PROGRESS_GAP &&
+    foodHandoffLeads(full, frozen)
+  const fullBeatsShuffled =
+    full.needTargetProgress >= shuffled.needTargetProgress + FOOD_TARGET_PROGRESS_GAP &&
+    foodHandoffLeads(full, shuffled)
+  const passed = fullFeeds && fullBeatsFrozen && fullBeatsShuffled
+  console.log(
+    JSON.stringify(
+      {
+        candidateScreen: true,
+        focus: 'food',
+        modelVersion: locomotionArtifact.modelVersion,
+        passed,
+        criteria: { fullFeeds, fullBeatsFrozen, fullBeatsShuffled },
+        thresholds: {
+          fullRestorationAtLeast: FOOD_RESTORATION_FLOOR,
+          fullFirstFoodHandoffAtMostSeconds: FOOD_HANDOFF_DEADLINE_SECONDS,
+          targetProgressGapAtLeast: FOOD_TARGET_PROGRESS_GAP,
+          firstFoodHandoffLeadSecondsAtLeast: FOOD_HANDOFF_LEAD_SECONDS,
+        },
+        crawlDistance: {
+          full: round(full.crawlDistance),
+          frozen: round(frozen.crawlDistance),
+          shuffled: round(shuffled.crawlDistance),
+        },
+        targetProgress: {
+          full: round(full.needTargetProgress),
+          frozen: round(frozen.needTargetProgress),
+          shuffled: round(shuffled.needTargetProgress),
+        },
+        foodRestoration: {
+          full: round(full.foodFulfillment),
+          frozen: round(frozen.foodFulfillment),
+          shuffled: round(shuffled.foodFulfillment),
+        },
+        firstNeuralFoodFeeding: {
+          full: firstFoodHandoffJson(full),
+          frozen: firstFoodHandoffJson(frozen),
+          shuffled: firstFoodHandoffJson(shuffled),
+        },
+        foodRestorationGaps: {
+          fullOverFrozen: round(fullOverFrozen),
+          fullOverShuffled: round(fullOverShuffled),
+        },
+      },
+      null,
+      2,
+    ),
+  )
+  process.exit(passed ? 0 : 1)
+}
+
 const first = simulate('kickflip', 150, 'full', undefined, environment, fullAudit)
 // The duplicate pass only proves deterministic state evolution. Repeating the
 // first pass's clearance and motion bookkeeping would not strengthen that assertion.
 const second = simulate('kickflip', 150, 'full', undefined, environment, traceAudit)
 const freestyle = simulate('freestyle', 32, 'full', undefined, environment, geometryAudit)
 const zeroFreestyle = simulate('freestyle', 32, 'zero', undefined, environment, minimalAudit)
-const frozenFreestyle = simulate('freestyle', 32, 'frozen', undefined, environment, minimalAudit)
-const shuffledFreestyle = simulate('freestyle', 32, 'shuffled', undefined, environment, minimalAudit)
+const goalFreestyle = simulate('freestyle', 32, 'full', undefined, environment, minimalAudit, 'food-bowl')
+const frozenFreestyle = simulate('freestyle', 32, 'frozen', undefined, environment, minimalAudit, 'food-bowl')
+const shuffledFreestyle = simulate(
+  'freestyle',
+  32,
+  'shuffled',
+  undefined,
+  environment,
+  minimalAudit,
+  'food-bowl',
+)
 const zeroFrictionFreestyle = simulate('freestyle', 32, 'full', 0, environment, minimalAudit)
 const rippleFreestyle = simulate('freestyle', 48, 'full', undefined, rippleEnvironment, geometryAudit)
 const tiltFreestyle = simulate('freestyle', 48, 'full', undefined, tiltEnvironment, geometryAudit)
@@ -177,25 +269,56 @@ expect(
     `the exact obstacle-free COM invariant is checked by verify-worm-dynamics`,
 )
 expect(
-  freestyle.crawlDistance > frozenFreestyle.crawlDistance + 1,
-  'full recurrent crawl did not beat a frozen-command scene intervention',
+  goalFreestyle.firstNeuralFoodFeedingTime !== null &&
+    goalFreestyle.firstNeuralFoodFeedingTime <= FOOD_HANDOFF_DEADLINE_SECONDS &&
+    goalFreestyle.foodFulfillment >= FOOD_RESTORATION_FLOOR,
+  `full recurrent crawl did not reach and feed from the food bowl ` +
+    `by the ${FOOD_HANDOFF_DEADLINE_SECONDS.toFixed(1)} s challenge deadline ` +
+    `(handoff ${formatFoodHandoff(goalFreestyle)}, restoration ${goalFreestyle.foodFulfillment.toFixed(3)})`,
 )
-expect(
-  freestyle.foodFulfillment + freestyle.waterFulfillment >
-    shuffledFreestyle.foodFulfillment + shuffledFreestyle.waterFulfillment + 0.5,
-  `full recurrent crawl did not functionally outperform a temporally shuffled ownership intervention ` +
-    `(resource fulfillment ${(freestyle.foodFulfillment + freestyle.waterFulfillment).toFixed(3)} vs ` +
-    `${(shuffledFreestyle.foodFulfillment + shuffledFreestyle.waterFulfillment).toFixed(3)})`,
-)
-expect(
-  freestyle.crawlDistance > shuffledFreestyle.crawlDistance + 0.5,
-  `full recurrent crawl did not beat a shuffled-segment scene intervention ` +
-    `(${freestyle.crawlDistance.toFixed(3)} m vs ${shuffledFreestyle.crawlDistance.toFixed(3)} m)`,
-)
-
+for (const [label, interventionRollout] of [
+  ['frozen-command', frozenFreestyle],
+  ['shuffled-segment', shuffledFreestyle],
+] as const) {
+  expect(
+    goalFreestyle.needTargetProgress >= interventionRollout.needTargetProgress + FOOD_TARGET_PROGRESS_GAP,
+    `full recurrent crawl did not beat the ${label} cumulative need-target-progress challenge ` +
+      `(${goalFreestyle.needTargetProgress.toFixed(3)} m vs ` +
+      `${interventionRollout.needTargetProgress.toFixed(3)} m; required gap ` +
+      `${FOOD_TARGET_PROGRESS_GAP.toFixed(1)} m)`,
+  )
+  expect(
+    foodHandoffLeads(goalFreestyle, interventionRollout),
+    `full recurrent crawl did not reach authored feeding at least ` +
+      `${FOOD_HANDOFF_LEAD_SECONDS.toFixed(1)} s before the ${label} intervention ` +
+      `(full ${formatFoodHandoff(goalFreestyle)}, intervention ${formatFoodHandoff(interventionRollout)})`,
+  )
+}
 console.log(
   JSON.stringify(
     {
+      ...(candidateScreen
+        ? {
+            candidateScreen: true,
+            passed: candidateFailures.length === 0,
+            failures: candidateFailures,
+            candidateDiagnostics: {
+              traction: {
+                fullCrawlDistance: round(freestyle.crawlDistance),
+                zeroFrictionCrawlDistance: round(zeroFrictionFreestyle.crawlDistance),
+                reduction: round(freestyle.crawlDistance - zeroFrictionFreestyle.crawlDistance),
+                neuralActionMax: {
+                  zeroIntervention: round(zeroFreestyle.neuralActionMax),
+                  zeroFriction: round(zeroFrictionFreestyle.neuralActionMax),
+                },
+              },
+              foodRestorationGaps: {
+                fullOverFrozen: round(goalFreestyle.foodFulfillment - frozenFreestyle.foodFulfillment),
+                fullOverShuffled: round(goalFreestyle.foodFulfillment - shuffledFreestyle.foodFulfillment),
+              },
+            },
+          }
+        : {}),
       bodySpeedMax: round(first.maximumBodySpeed),
       bodySpeedP99: round(first.bodySpeedP99),
       boardRange: [round(first.boardRangeX), round(first.boardRangeZ)],
@@ -203,10 +326,25 @@ console.log(
       flipsLanded: first.flipsLanded,
       freestyleWormRange: [round(freestyle.wormRangeX), round(freestyle.wormRangeZ)],
       integratedCrawlAblations: {
-        full: round(freestyle.crawlDistance),
+        full: round(goalFreestyle.crawlDistance),
         zero: round(zeroFreestyle.crawlDistance),
         frozen: round(frozenFreestyle.crawlDistance),
         shuffled: round(shuffledFreestyle.crawlDistance),
+        targetProgress: {
+          full: round(goalFreestyle.needTargetProgress),
+          frozen: round(frozenFreestyle.needTargetProgress),
+          shuffled: round(shuffledFreestyle.needTargetProgress),
+        },
+        foodRestoration: {
+          full: round(goalFreestyle.foodFulfillment),
+          frozen: round(frozenFreestyle.foodFulfillment),
+          shuffled: round(shuffledFreestyle.foodFulfillment),
+        },
+        firstNeuralFoodFeeding: {
+          full: firstFoodHandoffJson(goalFreestyle),
+          frozen: firstFoodHandoffJson(frozenFreestyle),
+          shuffled: firstFoodHandoffJson(shuffledFreestyle),
+        },
         zeroFriction: round(zeroFrictionFreestyle.crawlDistance),
         zeroFinalLateralSpan: round(zeroFreestyle.finalLateralSpan),
       },
@@ -262,7 +400,8 @@ console.log(
     2,
   ),
 )
-console.log('Stunt motion verification passed.')
+console.log(candidateScreen ? 'Stunt motion candidate screen complete.' : 'Stunt motion verification passed.')
+if (candidateScreen && candidateFailures.length > 0) process.exitCode = 1
 
 type LocomotionIntervention = 'full' | 'zero' | 'frozen' | 'shuffled'
 
@@ -365,6 +504,7 @@ function simulate(
   frictionOverride?: number,
   simulationEnvironment: EnvironmentConfig = environment,
   audit: RolloutAudit = minimalAudit,
+  initialNeedTarget?: 'food-bowl',
 ) {
   const originalField = createTerrainField(simulationEnvironment)
   const field =
@@ -375,6 +515,12 @@ function simulate(
           sample: (x: number, z: number) => ({ ...originalField.sample(x, z), friction: frictionOverride }),
         }
   const state = createStuntState(field, simulationEnvironment)
+  if (initialNeedTarget === 'food-bowl') {
+    state.needs.hunger = 1
+    state.needs.thirst = 0
+    state.needs.wellbeing = 0
+    state.needs.targetResourceId = 'food-bowl'
+  }
   const decor = makeTerrariumDecor(
     simulationEnvironment.seed,
     field,
@@ -387,6 +533,8 @@ function simulate(
   const idleAction = makeInitialAction()
   const intervenedAction = makeInitialAction()
   const frozenAction = makeInitialAction()
+  const intervenedFeedback = new Float64Array(SEGMENT_COUNT)
+  const frozenFeedback = new Float64Array(SEGMENT_COUNT)
   const bodySpeeds: number[] = []
   const locomotionStates: string[] = []
   const boardX: number[] = [state.boardX]
@@ -415,6 +563,9 @@ function simulate(
   let drankWhileNeurallyCrawling = false
   let locomotionStep = 0
   let neuralActionMax = 0
+  let needTargetProgress = 0
+  let firstNeuralFoodFeedingTime: number | null = null
+  let firstNeuralFoodFeedingTick: number | null = null
 
   for (let step = 0; step < Math.round(seconds / POLICY_TIMESTEP); step += 1) {
     const wasRiding = state.locomotionState === 'riding'
@@ -422,6 +573,12 @@ function simulate(
     const observation = snapshotToObservation(toSnapshot(state))
     if (audit.observations) observationsFinite &&= observation.every(Number.isFinite)
     const locomotionOwnsBody = state.locomotionState === 'crawling' || state.locomotionState === 'seeking'
+    const previousNeedTarget = locomotionOwnsBody
+      ? state.resources.find(resource => resource.id === state.needs.targetResourceId)
+      : null
+    const previousNeedTargetDistance = previousNeedTarget
+      ? Math.hypot(previousNeedTarget.position[0] - state.wormX, previousNeedTarget.position[2] - state.wormZ)
+      : null
     const rawAction =
       state.locomotionState === 'riding'
         ? policy.run(observation)
@@ -435,9 +592,18 @@ function simulate(
     if (state.locomotionState === 'riding') smoothAction(appliedAction, rawAction, POLICY_TIMESTEP)
     else if (locomotionOwnsBody) {
       for (const activation of rawAction) neuralActionMax = Math.max(neuralActionMax, Math.abs(activation))
-      appliedAction.set(
-        interveneLocomotionAction(rawAction, intervention, locomotionStep, frozenAction, intervenedAction),
+      interveneLocomotion(
+        rawAction,
+        locomotionPolicy.getTelemetry().commands,
+        intervention,
+        locomotionStep,
+        frozenAction,
+        frozenFeedback,
+        intervenedAction,
+        intervenedFeedback,
       )
+      appliedAction.set(intervenedAction)
+      if (intervention !== 'full') locomotionPolicy.commitCommandFeedback(intervenedFeedback)
       locomotionStep += 1
     } else appliedAction.fill(0)
     const previousBoardX = audit.motion ? state.boardX : 0
@@ -459,6 +625,16 @@ function simulate(
       simulationEnvironment,
       decor.obstacles,
     )
+    if (
+      previousNeedTarget &&
+      previousNeedTargetDistance !== null &&
+      state.needs.targetResourceId === previousNeedTarget.id &&
+      state.previousActionApplication === 'neural'
+    ) {
+      needTargetProgress +=
+        previousNeedTargetDistance -
+        Math.hypot(previousNeedTarget.position[0] - state.wormX, previousNeedTarget.position[2] - state.wormZ)
+    }
     if (audit.geometry && state.obstacleContactId) obstacleContacts.add(state.obstacleContactId)
     const boardProbes = audit.geometry
       ? skateboardFootprintObstacles(
@@ -501,6 +677,15 @@ function simulate(
     }
     ateWhileNeurallyCrawling ||=
       locomotionOwnsBody && state.locomotionState === 'feeding' && state.feedingResourceId === 'food-bowl'
+    if (
+      firstNeuralFoodFeedingTime === null &&
+      locomotionOwnsBody &&
+      state.locomotionState === 'feeding' &&
+      state.feedingResourceId === 'food-bowl'
+    ) {
+      firstNeuralFoodFeedingTime = state.time
+      firstNeuralFoodFeedingTick = locomotionStep
+    }
     drankWhileNeurallyCrawling ||=
       locomotionOwnsBody && state.locomotionState === 'feeding' && state.feedingResourceId === 'water-bowl'
     if (wasRiding && state.locomotionState !== 'riding') {
@@ -509,6 +694,8 @@ function simulate(
       wellbeingFulfillmentAtFirstDetach ??= state.needs.fulfillment.wellbeing
       locomotionStep = 0
       frozenAction.fill(0)
+      frozenFeedback.fill(0)
+      intervenedFeedback.fill(0)
     }
 
     if (locomotionStates.at(-1) !== state.locomotionState) locomotionStates.push(state.locomotionState)
@@ -700,6 +887,8 @@ function simulate(
     finalObstacleContact: state.obstacleContactId,
     obstacleContacts: [...obstacleContacts].sort(),
     finalLateralSpan: range(finalLaterals),
+    firstNeuralFoodFeedingTick,
+    firstNeuralFoodFeedingTime,
     hash: createHash('sha256').update(trace.join('\n')).digest('hex'),
     inBounds,
     locomotionStates,
@@ -714,6 +903,7 @@ function simulate(
     minimumStaticObstacleClearance,
     minimumStaticObstacleContext,
     neuralActionMax,
+    needTargetProgress,
     observationsFinite,
     postRemountWellbeingFulfillment,
     remounted,
@@ -725,39 +915,43 @@ function simulate(
   }
 }
 
-function interveneLocomotionAction(
+function interveneLocomotion(
   rawAction: Float32Array,
+  rawFeedback: ArrayLike<number>,
   intervention: LocomotionIntervention,
   locomotionStep: number,
   frozenAction: Float32Array,
-  output: Float32Array,
+  frozenFeedback: Float64Array,
+  outputAction: Float32Array,
+  outputFeedback: Float64Array,
 ) {
   if (intervention === 'zero') {
-    output.fill(0)
-    return output
+    outputAction.fill(0)
+    outputFeedback.fill(0)
+    return
   }
   if (intervention === 'frozen') {
-    if (locomotionStep < 24) {
-      output.set(rawAction)
-      if (locomotionStep === 23) frozenAction.set(rawAction)
-    } else {
-      output.set(frozenAction)
+    if (locomotionStep === 24) {
+      frozenAction.set(rawAction)
+      frozenFeedback.set(rawFeedback)
     }
-    return output
+    outputAction.set(locomotionStep < 24 ? rawAction : frozenAction)
+    outputFeedback.set(locomotionStep < 24 ? rawFeedback : frozenFeedback)
+    return
   }
   if (intervention === 'shuffled') {
-    // A deterministic rotating derangement denies every actuator stable segment
-    // ownership while preserving the exact command distribution and energy.
-    const offset = 1 + (Math.floor(locomotionStep / 4) % (SEGMENT_COUNT - 1))
+    // Match the fixed causal ownership ablation used by evolution and the
+    // authoritative isolated-plant verifier.
     for (let segment = 0; segment < SEGMENT_COUNT; segment += 1) {
-      const source = (segment + offset) % SEGMENT_COUNT
-      output[segment * 2] = rawAction[source * 2]
-      output[segment * 2 + 1] = rawAction[source * 2 + 1]
+      const source = SEGMENT_SHUFFLE[segment]
+      outputAction[segment * 2] = rawAction[source * 2]
+      outputAction[segment * 2 + 1] = rawAction[source * 2 + 1]
+      outputFeedback[segment] = rawFeedback[source] ?? 0
     }
-    return output
+    return
   }
-  output.set(rawAction)
-  return output
+  outputAction.set(rawAction)
+  outputFeedback.set(rawFeedback)
 }
 
 function range(values: number[]) {
@@ -772,12 +966,39 @@ function round(value: number) {
   return Number(value.toFixed(6))
 }
 
+function firstFoodHandoffJson(rollout: ReturnType<typeof simulate>) {
+  return rollout.firstNeuralFoodFeedingTime === null
+    ? null
+    : {
+        simulationTime: round(rollout.firstNeuralFoodFeedingTime),
+        neuralControllerTick: rollout.firstNeuralFoodFeedingTick,
+      }
+}
+
+function foodHandoffLeads(full: ReturnType<typeof simulate>, intervention: ReturnType<typeof simulate>) {
+  if (full.firstNeuralFoodFeedingTime === null) return false
+  return (
+    intervention.firstNeuralFoodFeedingTime === null ||
+    intervention.firstNeuralFoodFeedingTime - full.firstNeuralFoodFeedingTime >= FOOD_HANDOFF_LEAD_SECONDS
+  )
+}
+
+function formatFoodHandoff(rollout: ReturnType<typeof simulate>) {
+  return rollout.firstNeuralFoodFeedingTime === null
+    ? 'never'
+    : `${rollout.firstNeuralFoodFeedingTime.toFixed(3)} s / neural tick ${rollout.firstNeuralFoodFeedingTick}`
+}
+
 function wrapAngle(angle: number) {
   return Math.atan2(Math.sin(angle), Math.cos(angle))
 }
 
-function expect(condition: boolean, message: string): asserts condition {
+function expect(condition: boolean, message: string) {
   if (!condition) {
+    if (candidateScreen) {
+      candidateFailures.push(message)
+      return
+    }
     console.error(`Stunt motion verification failed: ${message}`)
     process.exit(1)
   }

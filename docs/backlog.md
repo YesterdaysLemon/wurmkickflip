@@ -8,7 +8,7 @@ No open P0 implementation task. Keep these invariants green before promoting ano
 - exactly 16 segment owners and 32 dorsal/ventral channels;
 - no gait clock/phase/trigonometric teacher or direct root-motion action;
 - obstacle-free zero-friction horizontal center-of-mass conservation;
-- reproducible public model bytes from an isolated two-stage run;
+- reproducible public model bytes from an isolated retained-seed refinement;
 - real mouth contact and nonempty inventory required for food/water restoration;
 - scripted kickflip and lifecycle layers labeled honestly.
 
@@ -21,7 +21,7 @@ No open P0 implementation task. Keep these invariants green before promoting ano
 - Add actuator delay/noise, partial sensor loss, board mass/wheel friction, restitution, and stronger obstacle-layout randomization to evaluation.
 - Calibrate compact plant distributions against the chosen higher-fidelity backend rather than against authored browser choreography.
 - Add generation comparison and held-out evaluation views using the existing replay/metric contracts.
-- Add an explicit manual muscle debugger with per-segment commands, contacts, slip, and obstacle normals.
+- Extend the gait microscope with optional per-force decomposition once the plant exposes muscle, constraint, longitudinal traction, lateral traction, and obstacle impulses separately.
 - Move expensive simulation or lightweight evolution into a worker only if interactive workloads outgrow the current measured frame budget.
 
 ## P2 — Presentation And Inspection
@@ -41,8 +41,9 @@ No open P0 implementation task. Keep these invariants green before promoting ano
 - Shared render/physics triangle heightfield with deterministic normals, surfaces, and friction.
 - Pure headless terrarium simulation separated from React/Three rendering.
 - Free 16-particle articulated body with mean-free muscle forces, equal/opposite constraints, anisotropic ground friction, height-aware swept contacts, and measured root state.
-- Clock-free 45-value recurrent controller: 16 segment owners, local contact/slip/obstacle feedback, 32 antagonistic channels, deterministic two-stage evolution, and exact reproduction lane.
-- Zero, frozen, segment-deranged, steering/locality, deterministic-trace, and zero-friction COM checks.
+- Clock-free 45-value recurrent controller: 16 segment owners, local contact/slip/obstacle feedback, 32 antagonistic channels, deterministic retained-seed evolution, and exact reproduction lane.
+- Zero action, frozen action, fixed segment shuffle, steering/locality, deterministic-trace, and zero-friction COM checks.
+- Live head-to-tail gait microscope with exact neural/requested/applied command telemetry, bend/support/slip rows, body-axis diagnostics, segment lesions, mirrored sensory wiring, physical traction scaling, whole-body shove recovery, causal-cone checks, and replay-unavailable labeling.
 - Finite food/water inventories, deterministic refill, exact 3D mouth-to-contents restoration, skateboard well-being, urgency/hysteresis, and repeated autonomous resource cycles.
 - Solid glass, trees, rocks, annular bowl rims, skateboard probes, and tapered body segments with anti-tunneling, overlap recovery, tangent motion, and collision property tests.
 - Scripted head-to-tail mounting, head-first dismounting, feeding poses, board routing, kickflip/pop/landing, and an honestly labeled distilled mounted pose prior.
