@@ -23,7 +23,23 @@ import type { CSSProperties, ChangeEvent, ReactNode } from 'react'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { deriveWurmAnatomy } from './creature/anatomy'
 import { createCreatureRuntimeAdapter, FIXED_ARTICULATED_RUNTIME_PROFILE } from './creature/runtimeProfile'
+import type { EnvironmentConfig } from './creature/types'
 import { useLabConfigs } from './creature/useLabConfigs'
+import {
+  createDomainLocks,
+  createNominalDomainSample,
+  createPresetDomainSample,
+  DOMAIN_SAMPLE_KIND,
+  DOMAIN_SAMPLE_SCHEMA_VERSION,
+  materializeDomainEnvironment,
+  nextDomainSeed,
+  sampleDomain,
+  validateDomainSample,
+  type DomainLocks,
+  type DomainParameterKey,
+  type DomainSample,
+  type SeedForgePresetId,
+} from './environment/seedForge'
 import { PolicyRunner } from './policy/policyRunner'
 import {
   POLICY_TIMESTEP,
@@ -49,12 +65,21 @@ import {
 } from './replay'
 import { WurmkickflipScene } from './scene/WurmkickflipScene'
 import type { ShowcaseMode } from './scene/terrariumSimulation'
+import { SeedForgePanel } from './seedForge/SeedForgePanel'
 
 type CaptureState = 'idle' | 'recording' | 'captured'
 
 type ActiveReplay = {
   artifact: ReplayArtifact
   player: ReplayPlayer
+}
+
+type SeedForgeState = {
+  environmentId: string
+  sample: DomainSample
+  draftSeed: string
+  locks: DomainLocks
+  activePreset: SeedForgePresetId | null
 }
 
 type StuntMetrics = ViewerMetrics & {
@@ -133,6 +158,8 @@ export function App() {
   const [replayCursorSeconds, setReplayCursorSeconds] = useState(0)
   const [replayPlaying, setReplayPlaying] = useState(false)
   const [replayError, setReplayError] = useState<string | null>(null)
+  const [seedForgeState, setSeedForgeState] = useState<SeedForgeState | null>(null)
+  const replayDomainLocks = useMemo(() => createDomainLocks(), [])
 
   const selectedCreature = useMemo(
     () => labConfigs.creatures.find(creature => creature.id === selectedCreatureId) ?? labConfigs.creature,
@@ -143,6 +170,41 @@ export function App() {
       labConfigs.environments.find(environment => environment.id === selectedEnvironmentId) ??
       labConfigs.environment,
     [labConfigs.environment, labConfigs.environments, selectedEnvironmentId],
+  )
+  const activeSeedForge = useMemo(
+    () =>
+      selectedEnvironment
+        ? seedForgeState?.environmentId === selectedEnvironment.id
+          ? seedForgeState
+          : createInitialSeedForgeState(selectedEnvironment)
+        : null,
+    [seedForgeState, selectedEnvironment],
+  )
+  const liveDomainSample = activeSeedForge?.sample ?? null
+  const replayBaseEnvironment = useMemo(
+    () =>
+      activeReplay
+        ? (labConfigs.environments.find(
+            environment => environment.id === activeReplay.artifact.source.environmentId,
+          ) ?? null)
+        : null,
+    [activeReplay, labConfigs.environments],
+  )
+  const replayDomainSample = useMemo(() => {
+    if (!activeReplay || !replayBaseEnvironment) return null
+    const candidate = domainSampleFromReplay(activeReplay.artifact.environmentSample)
+    return validateDomainSample(candidate, replayBaseEnvironment).length === 0 ? candidate : null
+  }, [activeReplay, replayBaseEnvironment])
+  const sceneBaseEnvironment = activeReplay
+    ? (replayBaseEnvironment ?? selectedEnvironment)
+    : selectedEnvironment
+  const sceneDomainSample = activeReplay ? replayDomainSample : liveDomainSample
+  const sceneEnvironment = useMemo(
+    () =>
+      sceneBaseEnvironment && sceneDomainSample
+        ? materializeDomainEnvironment(sceneBaseEnvironment, sceneDomainSample)
+        : sceneBaseEnvironment,
+    [sceneBaseEnvironment, sceneDomainSample],
   )
   const selectedAnatomy = useMemo(() => deriveWurmAnatomy(selectedCreature), [selectedCreature])
   const selectedRuntime = useMemo(
@@ -210,6 +272,17 @@ export function App() {
 
   const isReplay = activeReplay !== null && replaySample !== null
   const activeRunning = isReplay ? replayPlaying : running
+  const displayedForgeState =
+    isReplay && replayDomainSample && replayBaseEnvironment
+      ? {
+          environmentId: replayBaseEnvironment.id,
+          sample: replayDomainSample,
+          draftSeed: String(replayDomainSample.seed),
+          locks: replayDomainLocks,
+          activePreset: null,
+        }
+      : activeSeedForge
+  const displayedForgeEnvironment = isReplay ? replayBaseEnvironment : selectedEnvironment
   const replayProgress = activeReplay
     ? Math.min(1, replayCursorSeconds / Math.max(activeReplay.player.durationSeconds, POLICY_TIMESTEP))
     : 0
@@ -318,7 +391,7 @@ export function App() {
           modelVersion: policyStatus.modelVersion,
         },
         timestep: POLICY_TIMESTEP,
-        environmentSample: replayEnvironmentSampleFor(selectedEnvironment),
+        environmentSample: replayEnvironmentSampleFor(selectedEnvironment, liveDomainSample),
       })
       setCaptureState('recording')
       setCaptureFrameCount(0)
@@ -418,6 +491,65 @@ export function App() {
     restartSimulation(mode)
   }
 
+  const chooseEnvironment = (environmentId: string) => {
+    setSelectedEnvironmentId(environmentId)
+    const environment = labConfigs.environments.find(candidate => candidate.id === environmentId)
+    if (environment) setSeedForgeState(createInitialSeedForgeState(environment))
+    restartSimulation()
+  }
+
+  const applyForgedSample = (
+    sample: DomainSample,
+    activePreset: SeedForgePresetId | null,
+    locks = activeSeedForge?.locks ?? createDomainLocks(),
+  ) => {
+    if (!selectedEnvironment) return
+    setSeedForgeState({
+      environmentId: selectedEnvironment.id,
+      sample,
+      draftSeed: String(sample.seed),
+      locks,
+      activePreset,
+    })
+    restartSimulation()
+  }
+
+  const applySeed = (seed: number) => {
+    if (!selectedEnvironment || !activeSeedForge) return
+    applyForgedSample(
+      sampleDomain(selectedEnvironment, seed, {
+        locks: activeSeedForge.locks,
+        previous: activeSeedForge.sample,
+      }),
+      null,
+    )
+  }
+
+  const rerollSeedForge = () => {
+    if (!activeSeedForge) return
+    applySeed(nextDomainSeed(activeSeedForge.sample.seed))
+  }
+
+  const applySeedForgePreset = (presetId: SeedForgePresetId) => {
+    if (!selectedEnvironment || !activeSeedForge) return
+    applyForgedSample(
+      createPresetDomainSample(selectedEnvironment, presetId, activeSeedForge.sample.seed),
+      presetId,
+    )
+  }
+
+  const resetSeedForgeNominal = () => {
+    if (!selectedEnvironment) return
+    applyForgedSample(createNominalDomainSample(selectedEnvironment), 'nominal', createDomainLocks())
+  }
+
+  const updateSeedForgeLock = (key: DomainParameterKey, locked: boolean) => {
+    setSeedForgeState(current => {
+      const state = current ?? activeSeedForge
+      return state ? { ...state, locks: { ...state.locks, [key]: locked } } : current
+    })
+  }
+
   const runGaitExperiment = (kind: 'numb-neuron' | 'reverse-sensors' | 'lateral-shove') => {
     if (isReplay || !displayedMetrics.gait.controllerActive) return
     gaitExperimentSequence.current += 1
@@ -452,7 +584,8 @@ export function App() {
         <WurmkickflipScene
           {...sceneInteractionProps}
           creature={selectedCreature}
-          environmentConfig={selectedEnvironment}
+          domainSample={sceneDomainSample}
+          environmentConfig={sceneEnvironment}
           gaitExperiment={gaitExperiment}
           gaitTractionScale={gaitTractionScale}
           onMetrics={setMetrics}
@@ -775,12 +908,9 @@ export function App() {
           <label className="select-control">
             <span>Environment</span>
             <select
-              value={selectedEnvironment?.id ?? ''}
-              disabled={labConfigs.environments.length === 0}
-              onChange={event => {
-                setSelectedEnvironmentId(event.target.value)
-                restartSimulation()
-              }}
+              value={(isReplay ? replayBaseEnvironment : selectedEnvironment)?.id ?? ''}
+              disabled={isReplay || labConfigs.environments.length === 0}
+              onChange={event => chooseEnvironment(event.target.value)}
             >
               {labConfigs.environments.map(environment => (
                 <option key={environment.id} value={environment.id}>
@@ -789,33 +919,54 @@ export function App() {
               ))}
             </select>
           </label>
-          {selectedEnvironment ? (
+          {sceneEnvironment ? (
             <dl className="environment-facts" aria-label="Selected environment parameters">
               <div>
                 <dt>Terrain</dt>
                 <dd>
-                  {selectedEnvironment.terrain.kind} / seed {selectedEnvironment.seed}
+                  {sceneEnvironment.terrain.kind} / seed {sceneEnvironment.seed}
                 </dd>
               </div>
               <div>
                 <dt>Gravity</dt>
-                <dd>{Math.abs(selectedEnvironment.world.gravity[1]).toFixed(1)} m/s²</dd>
+                <dd>{Math.abs(sceneEnvironment.world.gravity[1]).toFixed(1)} m/s²</dd>
               </div>
               <div>
                 <dt>Arena</dt>
                 <dd>
-                  {selectedEnvironment.world.size[0].toFixed(1)} ×{' '}
-                  {selectedEnvironment.world.size[2].toFixed(1)} m
+                  {sceneEnvironment.world.size[0].toFixed(1)} × {sceneEnvironment.world.size[2].toFixed(1)} m
                 </dd>
               </div>
               <div>
                 <dt>Grip</dt>
                 <dd>
-                  {selectedEnvironment.terrain.baseFriction.toFixed(2)} ground /{' '}
-                  {selectedEnvironment.skateboard.wheelFriction.toFixed(2)} wheel
+                  {sceneEnvironment.terrain.baseFriction.toFixed(2)} ground /{' '}
+                  {sceneEnvironment.skateboard.wheelFriction.toFixed(2)} wheel
                 </dd>
               </div>
             </dl>
+          ) : null}
+
+          {displayedForgeEnvironment && displayedForgeState ? (
+            <SeedForgePanel
+              activePreset={displayedForgeState.activePreset}
+              disabled={isReplay}
+              draftSeed={displayedForgeState.draftSeed}
+              locks={displayedForgeState.locks}
+              onApplySeed={applySeed}
+              onDraftSeedChange={draftSeed =>
+                setSeedForgeState(current => {
+                  const state = current ?? activeSeedForge
+                  return state ? { ...state, draftSeed } : current
+                })
+              }
+              onLockChange={updateSeedForgeLock}
+              onPreset={applySeedForgePreset}
+              onReroll={rerollSeedForge}
+              onResetNominal={resetSeedForgeNominal}
+              ranges={displayedForgeEnvironment.randomization}
+              sample={displayedForgeState.sample}
+            />
           ) : null}
 
           <details className="genome-drawer">
@@ -1256,6 +1407,39 @@ function Telemetry({ icon, label, value, meter }: TelemetryProps) {
       )}
     </div>
   )
+}
+
+function createInitialSeedForgeState(environment: EnvironmentConfig): SeedForgeState {
+  const sample = createNominalDomainSample(environment)
+  return {
+    environmentId: environment.id,
+    sample,
+    draftSeed: String(sample.seed),
+    locks: createDomainLocks(),
+    activePreset: 'nominal',
+  }
+}
+
+function domainSampleFromReplay(sample: ReplayArtifact['environmentSample']): DomainSample {
+  return {
+    schemaVersion: DOMAIN_SAMPLE_SCHEMA_VERSION,
+    kind: DOMAIN_SAMPLE_KIND,
+    seed: sample.seed,
+    gravityScale: sample.gravityScale,
+    frictionScale: sample.frictionScale,
+    dragScale: sample.dragScale,
+    slopeDegrees: sample.slopeDegrees,
+    roughness: sample.roughness,
+    obstacleDensity: sample.obstacleDensity,
+    actuatorStrength: sample.actuatorStrength,
+    actuatorLatencyMs: sample.actuatorLatencyMs,
+    sensorNoise: sample.sensorNoise,
+    spawnYawDegrees: sample.spawnYawDegrees,
+    skateboardSpawnX: sample.skateboardSpawn[0],
+    skateboardSpawnZ: sample.skateboardSpawn[1],
+    skateboardMass: sample.skateboardMass,
+    wheelFriction: sample.wheelFriction,
+  }
 }
 
 function getNeuralStatus(backend: PolicyBackend) {

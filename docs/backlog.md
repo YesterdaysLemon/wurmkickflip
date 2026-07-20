@@ -38,6 +38,7 @@ No open P0 implementation task. Keep these invariants green before promoting ano
 
 - Vite/React/TypeScript/Three.js terrarium with config-derived creatures and seeded environments.
 - Resource-granular config loading, strict validation, failure preservation, retry UI, and a fixed-runtime compatibility adapter.
+- Nominal-first Seed Forge with 14 range-validated channels, deterministic uint32 seeds, locks/presets, TypeScript/Python parity, fixed-tick actuator/sensor effects, and exact replay provenance.
 - Shared render/physics triangle heightfield with deterministic normals, surfaces, and friction.
 - Pure headless terrarium simulation separated from React/Three rendering.
 - Free 16-particle articulated body with mean-free muscle forces, equal/opposite constraints, anisotropic ground friction, height-aware swept contacts, and measured root state.
@@ -48,7 +49,7 @@ No open P0 implementation task. Keep these invariants green before promoting ano
 - Solid glass, trees, rocks, annular bowl rims, skateboard probes, and tapered body segments with anti-tunneling, overlap recovery, tangent motion, and collision property tests.
 - Contact-gated neural boarding with deterministic deck support/friction; scripted head-first dismounting, feeding poses, board routing, kickflip/pop/landing; and an honestly labeled distilled mounted pose prior.
 - Semantic scene names plus current/high-water browser telemetry for exactly one worm root, 16 segments, 15 connectors, and one face; worm body cast shadows removed to eliminate the offset duplicate-worm illusion during skateboard phases.
-- Versioned checksummed replay recorder/player with strict timing, all muscle channels, deterministic interpolation, import/export UI, and tamper rejection.
+- Versioned checksummed replay recorder/player with strict timing, all muscle channels, exact forged-domain provenance plus historical defaults, deterministic interpolation, import/export UI, and tamper rejection.
 - Reduced-motion simulation pause with explicit user override.
 - Static analysis, Python checks, bundle budget and retired-ONNX assertion, collision/dynamics/performance verifiers, long integrated lifecycle rollout, and Playwright flows.
 - Browser ONNX Runtime/WASM payloads removed; older PPO/ONNX and sinusoidal CPG/morphology paths retained only as offline legacy experiments.

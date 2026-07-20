@@ -9,13 +9,15 @@ Keep these aligned:
 - `src/replay/types.ts`
 - `src/replay/index.ts`
 - `src/replay/replayValidation.ts`
+- `src/replay/liveReplayCapture.ts`
+- `src/replay/replayClone.ts`
 - `src/replay/replayRecorder.ts`
 - `src/replay/replayPlayer.ts`
 - `src/replay/replayIntegrity.ts`
 - `training/wurmkickflip_rl/replay_schema.py`
 - `fixtures/replay-artifact.json`
 
-Run `npm run verify:replay` after changing the replay schema, fixture, recorder, player, or checksum rules. It verifies the TypeScript/Python base contract, recorder round trips, deterministic interpolation, defensive copies, legacy opt-in, and corruption/tamper rejection.
+Run `npm run verify:replay` after changing the replay schema, fixture, recorder, player, environment provenance, or checksum rules. It verifies the TypeScript/Python base contract, exact Seed Forge round trips, historical defaults, deterministic interpolation, defensive copies, legacy opt-in, and corruption/tamper rejection.
 
 ## Versioning And Identity
 
@@ -39,6 +41,19 @@ The deterministic TypeScript recorder adds a paired extension:
 Early schema-v1 artifacts may omit both `playback` and `integrity`. Structural validation still accepts them, but `ReplayPlayer` requires a checksummed recorder-core artifact by default. A caller must explicitly pass `{ requireIntegrity: false }` to inspect legacy data. Supplying only one member of the extension pair is invalid.
 
 This extension version lets playback rules evolve without pretending that the older Python base fields changed. A breaking base-field change still requires `schemaVersion` to advance in TypeScript, Python, fixtures, and docs together.
+
+## Environment Provenance
+
+New browser recordings preserve the active Seed Forge seed and all 14 sampled channel values under `environmentSample`. Skateboard X/Z use `skateboardSpawn: [x, z]`; gravity, friction, drag, slope, roughness, obstacle density, skateboard mass/friction, actuator strength/latency, sensor noise, and spawn yaw remain named values. The recorder and clone path own the spawn tuple defensively.
+
+Historical schema-v1 artifacts may omit all four later additions:
+
+- `actuatorStrength`, defaulting to `1`;
+- `actuatorLatencyMs`, defaulting to `0`;
+- `sensorNoise`, defaulting to `0`;
+- `spawnYawDegrees`, defaulting to `0`.
+
+TypeScript validation rejects a partial quartet. For a checksummed historical artifact, it first verifies the digest over the untouched source JSON, then installs the nominal defaults and recomputes the normalized in-memory checksum. A new recording includes all four fields, and changing any forged value without recomputing integrity is rejected. These defaults preserve inspectability; they do not recover information that an old artifact never recorded.
 
 ## Frames And Timing
 
@@ -114,7 +129,7 @@ This checksum detects accidental corruption and ordinary tampering. It is not a 
 
 ## Browser Integration
 
-`LiveReplayCapture` starts its own frame-zero clock even when capture begins in the middle of a live rollout. It latches skateboard discovery and derives first contact, mount duration, rolling distance/velocity, contact average, and energy only from recorded fixed-step frames; contact events cannot precede discovery.
+`LiveReplayCapture` starts its own frame-zero clock even when capture begins in the middle of a live rollout. At capture start it copies the exact active Seed Forge sample into replay provenance. It latches skateboard discovery and derives first contact, mount duration, rolling distance/velocity, contact average, and energy only from recorded fixed-step frames; contact events cannot precede discovery.
 
 The Replay lab in `App.tsx` can start/finish a live capture, export stable validated JSON, import and verify JSON, play/pause/restart it, and return to live simulation. A rejected or tampered import never replaces the active live/replay state. Scene playback uses recorded board/root poses, contacts, reward, and all 32 channels. Schema v1 does not store every segment pose, lifecycle/homeostasis state, or bowl inventory, so the visual adapter deterministically reconstructs the body from the recorded root and muscle channels and labels that limitation in the UI.
 

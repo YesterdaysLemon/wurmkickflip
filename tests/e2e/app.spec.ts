@@ -329,6 +329,52 @@ test('honors reduced-motion preferences', async ({ page }) => {
   expect(runtimeErrors).toEqual([])
 })
 
+test('forges deterministic domains, preserves locks, and resets the scene', async ({ page }) => {
+  const runtimeErrors = watchRuntimeErrors(page)
+  await page.emulateMedia({ reducedMotion: 'reduce' })
+  await page.goto('/', { waitUntil: 'networkidle' })
+
+  const forge = page.getByRole('region', { name: 'Seed Forge' })
+  await forge.scrollIntoViewIfNeeded()
+  await expect(forge.locator('.seed-forge__parameter')).toHaveCount(14)
+  await expect(forge.getByText('14 sampled channels')).toBeVisible()
+
+  const canvas = page.getByRole('region', { name: 'Wurmkickflip terrarium simulation' }).locator('canvas')
+  const initialRoot = await canvas.getAttribute('data-worm-root-uuid')
+  const seedInput = forge.getByLabel('uint32 seed')
+  await seedInput.fill('42')
+  await seedInput.focus()
+  await page.keyboard.press('Tab')
+  await expect(forge.getByRole('button', { name: 'Apply seed' })).toBeFocused()
+  await page.keyboard.press('Tab')
+  await expect(forge.getByRole('button', { name: 'Reroll' })).toBeFocused()
+  await forge.getByRole('button', { name: 'Apply seed' }).click()
+  await expect(forge.getByText('#42', { exact: true })).toBeVisible()
+  await expect.poll(() => canvas.getAttribute('data-worm-root-uuid')).not.toBe(initialRoot)
+
+  const gravityRow = forge.locator('.seed-forge__parameter').filter({ hasText: 'Gravity' })
+  const frictionRow = forge.locator('.seed-forge__parameter').filter({ hasText: 'Ground grip' })
+  const lockedGravity = await gravityRow.locator('output').textContent()
+  const previousFriction = await frictionRow.locator('output').textContent()
+  await gravityRow.getByRole('button', { name: /Gravity scale lock/i }).click()
+  await forge.getByRole('button', { name: 'Reroll' }).click()
+  await expect(forge.getByText('#2654435811', { exact: true })).toBeVisible()
+  await expect(gravityRow.locator('output')).toHaveText(lockedGravity!)
+  await expect(frictionRow.locator('output')).not.toHaveText(previousFriction!)
+
+  await seedInput.fill('4294967296')
+  await expect(seedInput).toHaveAttribute('aria-invalid', 'true')
+  await expect(forge.getByRole('button', { name: 'Apply seed' })).toBeDisabled()
+
+  const iceRink = forge.getByRole('button', { name: /Ice rink/i })
+  await iceRink.click()
+  await expect(iceRink).toHaveAttribute('aria-pressed', 'true')
+  await forge.getByRole('button', { name: 'Restore authored baseline' }).click()
+  await expect(forge.locator('[data-preset="nominal"]')).toHaveAttribute('aria-pressed', 'true')
+  await expect(gravityRow.getByRole('button')).toHaveAttribute('aria-pressed', 'false')
+  expect(runtimeErrors).toEqual([])
+})
+
 test('preserves valid configs and retries a failed resource in place', async ({ page }) => {
   const runtimeErrors = watchRuntimeErrors(page)
   let failTripod = true
@@ -363,6 +409,10 @@ test('captures, exports, replays, and rejects a tampered recorder-core artifact'
     timeout: 15_000,
   })
 
+  const forge = page.getByRole('region', { name: 'Seed Forge' })
+  await forge.getByLabel('uint32 seed').fill('4242')
+  await forge.getByRole('button', { name: 'Apply seed' }).click()
+  await forge.locator('[data-preset="nominal"]').click()
   await page.locator('.replay-panel summary').click()
   await page.getByRole('button', { name: 'Start capture' }).click()
   const replayStatus = page.locator('.replay-status')
@@ -381,7 +431,13 @@ test('captures, exports, replays, and rejects a tampered recorder-core artifact'
   const artifact = JSON.parse(await readFile(downloadedPath!, 'utf8')) as {
     frameCount: number
     source: { creatureId: string; environmentId: string; modelVersion: string }
-    environmentSample: { seed: number }
+    environmentSample: {
+      seed: number
+      actuatorStrength: number
+      actuatorLatencyMs: number
+      sensorNoise: number
+      spawnYawDegrees: number
+    }
     frames: Array<{ reward: number; muscleActivations: number[] }>
   }
   expect(artifact.frameCount).toBeGreaterThan(0)
@@ -390,10 +446,27 @@ test('captures, exports, replays, and rejects a tampered recorder-core artifact'
   expect(artifact.source.creatureId).toBeTruthy()
   expect(artifact.source.environmentId).toBeTruthy()
   expect(artifact.source.modelVersion).toBeTruthy()
-  expect(Number.isFinite(artifact.environmentSample.seed)).toBe(true)
+  expect(artifact.environmentSample).toMatchObject({
+    seed: 4242,
+    actuatorStrength: 1,
+    actuatorLatencyMs: 0,
+    sensorNoise: 0,
+    spawnYawDegrees: 0,
+  })
+  expect(Object.keys(artifact.environmentSample)).toHaveLength(14)
+
+  const terrainFact = page.locator('.environment-facts > div').filter({ hasText: 'Terrain' })
+  await forge.getByLabel('uint32 seed').fill('99')
+  await forge.getByRole('button', { name: 'Apply seed' }).click()
+  await expect(forge.getByText('#99', { exact: true })).toBeVisible()
+  await expect(terrainFact).toContainText('seed 99')
 
   await page.getByRole('slider', { name: 'Traction scale' }).fill('0')
   await page.getByRole('button', { name: 'Load captured replay' }).click()
+  await expect(forge.getByText('Replay provenance is locked.')).toBeVisible()
+  await expect(forge.getByLabel('uint32 seed')).toBeDisabled()
+  await expect(forge.getByText('#4242', { exact: true })).toBeVisible()
+  await expect(terrainFact).toContainText('seed 4242')
   await expect(replayStatus).toContainText('Playback 0.00')
   await expect(page.getByText('Terrarium replay', { exact: true })).toBeVisible()
   const replayMicroscope = page.getByTestId('gait-microscope')

@@ -28,6 +28,12 @@ Verification compares the live controller with zero action, frozen action, and a
 
 The separate `stunt-distilled-v2` artifact shapes mounted exhibition poses. It is behavior-distilled imitation and is not the source of detached locomotion or proof that a kickflip was learned.
 
+## Seed Forge
+
+The Seed Forge panel starts every environment at its authored nominal baseline, then lets you apply or reroll a deterministic uint32 seed, lock individual values, or select the Nominal, Ice rink, Moon dirt, and Cinderblock deck presets. Its 14 channels cover world/terrain physics, actuator strength and fixed-tick latency, deterministic sensor noise, spawn yaw, and skateboard spawn/mass/grip. Applying a forge state restarts the same fixed-step terrarium with that exact sample; it changes the evaluation domain, not the tracked policy weights or the scripted ownership boundaries.
+
+TypeScript and Python share the seeded sampler and preset contract. New replay captures preserve the seed and all 14 channel values, while historical schema-v1 artifacts receive explicit nominal defaults for the four newer actuator/noise/yaw fields. See [`docs/seed-forge.md`](docs/seed-forge.md) for the channel map, lock semantics, runtime effects, parity contract, and focused checks.
+
 ## Run It
 
 Requires Node 22.
@@ -44,9 +50,10 @@ npm run check          # static checks, fast verifiers, build, integration rollo
 npm run check:browser  # Playwright UI coverage
 npm run check:repro    # exact long-form published locomotion reproduction
 npm run verify:gait    # neural locality, perturbations, traction, and recovery
+npm run verify:seed-forge # deterministic domains and TypeScript/Python parity
 ```
 
-The fast suite covers the shared render/physics heightfield, articulated dynamics, swept contacts, mouth resources, interaction poses, policy contracts, replay integrity, and bundle budgets. The integration suite runs deterministic long terrarium lifecycles, autonomous boarding gates, and locomotion interventions. Browser checks also enforce one live worm rig (16 segments, 15 connectors, and one face), including high-water counts across resets and stunt transitions. The worm body no longer casts the separated articulated shadow that could resemble a second worm while elevated over the skateboard.
+The fast suite covers deterministic domain sampling/runtime, the shared render/physics heightfield, articulated dynamics, swept contacts, mouth resources, interaction poses, policy contracts, replay integrity, and bundle budgets. The integration suite runs deterministic long terrarium lifecycles, autonomous boarding gates, and locomotion interventions. Browser checks cover Seed Forge controls and also enforce one live worm rig (16 segments, 15 connectors, and one face), including high-water counts across resets and stunt transitions. The worm body no longer casts the separated articulated shadow that could resemble a second worm while elevated over the skateboard.
 
 ## Evolve The Crawl Brain
 
@@ -79,6 +86,7 @@ The old browser ONNX Runtime dependency and WASM payloads were retired. The Pyth
 - `src/scene/skateboardContact.ts`: oriented deck support, friction, and measured boarding contact.
 - `src/scene/terrariumNeeds.ts`: goal selection, finite resource inventories, mouth-contact restoration, and refill.
 - `src/scene/WurmkickflipScene.tsx`: Three.js rendering, browser integration, and scene-graph integrity telemetry.
+- `src/environment/`: deterministic Seed Forge sampling, materialization, and fixed-tick perturbations.
 - `src/policy/locomotionPolicy.ts`: dependency-free recurrent inference, exact trace snapshots, perturbations, and schema migration.
 - `src/replay/`: checksummed deterministic recorder/player core.
 - `training/wurmkickflip_rl/`: vectorized evolution plus older experimental trainers.
