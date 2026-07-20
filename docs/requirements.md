@@ -100,7 +100,10 @@ Longer-term success:
 
 - Web app: Vite, React, TypeScript, Three.js, React Three Fiber, and Drei.
 - Browser: current Chrome, Edge, Firefox, or Safari with WebGL support.
-- Training: Python 3.11 managed with `uv`, Gymnasium, Stable Baselines3, PyTorch, ONNX.
+- Current locomotion evolution: Python 3.11 managed with `uv` and NumPy.
+- Mounted-pose distillation: PyTorch, used only when intentionally retraining the stunt JSON.
+- Retained legacy experiments: Gymnasium, Stable Baselines3, and ONNX tooling remain offline-only and are
+  not browser runtime dependencies or provenance for the tracked recurrent crawl controller.
 - Future training candidates: MuJoCo, Brax, PufferLib, or custom vectorized simulators once the genome/environment contract stabilizes.
 
 ## Acceptance Checks
@@ -125,5 +128,5 @@ Longer-term success:
 - `npm run verify:replay` confirms strict timing, deterministic interpolation, all 32 channels, semantic metrics, defensive copies, and tamper rejection.
 - With the locomotion JSON absent or invalid, ground/boarding actions stay at zero and status clearly reports the unavailable brain.
 - With the stunt JSON absent or invalid, the mounted action request falls back to `scripted` with a clear message.
-- `npm run verify:bundle` confirms that browser ONNX Runtime/WASM assets remain retired and enforces the initial bundle budget.
+- `npm run verify:bundle` recursively rejects ONNX models, ONNX Runtime JavaScript/WASM assets, and retired ONNX policy metadata anywhere in `dist/` while enforcing the initial bundle budget.
 - `npm run check:browser` covers config recovery, reduced-motion pause/override, the live gait microscope and experiments, replay honesty, replay capture/import/export, live/replay reset behavior, and exact current/high-water scene-graph counts for one worm root, 16 segments, 15 connectors, and one face.

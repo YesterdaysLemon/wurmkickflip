@@ -2,7 +2,6 @@ import { MathUtils } from 'three'
 import { LOCOMOTION_PLANT_CONTRACT } from '../policy/locomotionPolicy'
 import type { PolicyAction } from '../policy/types'
 
-export const LOCOMOTION_PLANT_VERSION = LOCOMOTION_PLANT_CONTRACT.version
 export const LOCOMOTION_SEGMENT_COUNT = 16
 
 export type WormLocomotionPlant = {
