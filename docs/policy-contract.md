@@ -96,7 +96,7 @@ The JavaScript runtime validates this shape before inference. `npm run verify:st
 
 ## Retired Browser ONNX Backend
 
-The browser no longer ships ONNX Runtime, generated WASM binaries, or `wurmkickflip_policy.meta.json`. The older Python PPO/ONNX exporter remains an offline experiment, but its artifacts are not a supported exhibit backend. Historical replay artifacts may retain ONNX backend labels as provenance.
+The browser no longer ships ONNX Runtime, generated WASM binaries, or `wurmkickflip_policy.meta.json`. The older Python PPO/ONNX exporter remains an offline experiment and defaults to the ignored `training/runs/ppo_onnx/` directory; its artifacts are not a supported exhibit backend. Historical replay artifacts may retain ONNX backend labels as provenance.
 
 ## Evolved Locomotion Contract
 

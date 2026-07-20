@@ -6,6 +6,7 @@ from pathlib import Path
 import onnx
 
 from .contracts import ACTION_SIZE, OBSERVATION_SIZE
+from .legacy_onnx_paths import DEFAULT_MODEL_OUT
 
 
 def _last_dim(value_info: onnx.ValueInfoProto) -> int | None:
@@ -18,7 +19,7 @@ def _last_dim(value_info: onnx.ValueInfoProto) -> int | None:
 
 def main() -> None:
     parser = argparse.ArgumentParser()
-    parser.add_argument("--model", type=Path, default=Path("../public/models/wurmkickflip_policy.onnx"))
+    parser.add_argument("--model", type=Path, default=DEFAULT_MODEL_OUT)
     args = parser.parse_args()
 
     model = onnx.load(args.model)
