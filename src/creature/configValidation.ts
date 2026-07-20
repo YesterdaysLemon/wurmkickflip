@@ -9,6 +9,7 @@ import type {
   RuntimeProfile,
   Vec3,
 } from './types'
+import { validateDomainEnvironment } from '../environment/seedForge'
 
 export type ConfigValidationResult<T> = { ok: true; value: T } | { ok: false; errors: string[] }
 
@@ -136,7 +137,7 @@ export function validateEnvironmentConfig(value: unknown): ConfigValidationResul
     id: asNonEmptyString(root?.id, 'environment.id', errors),
     name: asNonEmptyString(root?.name, 'environment.name', errors),
     description: asString(root?.description, 'environment.description', errors),
-    seed: asFiniteNumber(root?.seed, 'environment.seed', errors),
+    seed: asSafeInteger(root?.seed, 'environment.seed', errors),
     world: {
       size: asVec3(world?.size, 'environment.world.size', errors),
       gravity: asVec3(world?.gravity, 'environment.world.gravity', errors),
@@ -263,6 +264,7 @@ export function validateEnvironmentConfig(value: unknown): ConfigValidationResul
     },
   }
 
+  errors.push(...validateDomainEnvironment(environment))
   return errors.length > 0 ? { ok: false, errors } : { ok: true, value: environment }
 }
 
@@ -411,6 +413,14 @@ function asFiniteNumber(value: unknown, path: string, errors: string[]): number 
     return 0
   }
   return value
+}
+
+function asSafeInteger(value: unknown, path: string, errors: string[]): number {
+  const result = asFiniteNumber(value, path, errors)
+  if (!Number.isSafeInteger(result)) {
+    errors.push(`${path} must be a safe integer.`)
+  }
+  return result
 }
 
 function asPositiveNumber(value: unknown, path: string, errors: string[]): number {

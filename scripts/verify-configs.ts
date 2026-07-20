@@ -72,6 +72,30 @@ assertRejects(
   'environment.randomization.gravityScale minimum must be less than or equal to maximum.',
 )
 
+for (const [key, range, expectedError] of [
+  [
+    'actuatorStrength',
+    [-2, -1],
+    'environment.randomization.actuatorStrength minimum must be greater than 0.',
+  ],
+  ['actuatorLatencyMs', [-50, -1], 'environment.randomization.actuatorLatencyMs minimum must be at least 0.'],
+  ['sensorNoise', [2, 3], 'environment.randomization.sensorNoise maximum must be at most 1.'],
+  ['spawnYawDegrees', [200, 300], 'environment.randomization.spawnYawDegrees maximum must be at most 180.'],
+  ['dragScale', [-1, 1], 'environment.randomization.dragScale minimum must be at least 0.'],
+  ['skateboardMass', [0, 1], 'environment.randomization.skateboardMass minimum must be greater than 0.'],
+] as const) {
+  const invalidSemanticRange = structuredClone(starterEnvironment.value)
+  invalidSemanticRange.randomization[key] = [...range]
+  assertRejects(validateEnvironmentConfig(invalidSemanticRange), expectedError)
+}
+
+const missingNominal = structuredClone(starterEnvironment.value)
+missingNominal.randomization.gravityScale = [1.1, 1.4]
+assertRejects(
+  validateEnvironmentConfig(missingNominal),
+  'environment.randomization.gravityScale must contain its authored nominal value 1.',
+)
+
 const fixedProfileValidation = validateRuntimeProfile(FIXED_ARTICULATED_RUNTIME_PROFILE)
 if (!fixedProfileValidation.ok) {
   fail(`Fixed runtime profile must validate:\n${fixedProfileValidation.errors.join('\n')}`)
