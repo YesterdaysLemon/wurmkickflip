@@ -3,6 +3,12 @@ export const REPLAY_KIND = 'wurmkickflip.replay'
 export const REPLAY_CORE_VERSION = 1
 export const REPLAY_INTERPOLATION = 'linear-v1'
 export const REPLAY_INTEGRITY_ALGORITHM = 'fnv1a-64-v1'
+export const REPLAY_LEGACY_DOMAIN_DEFAULTS = Object.freeze({
+  actuatorStrength: 1,
+  actuatorLatencyMs: 0,
+  sensorNoise: 0,
+  spawnYawDegrees: 0,
+} as const)
 
 // The current controller lattice has 16 anatomical segments. Each segment owns
 // an antagonistic dorsal/ventral actuator pair, producing 32 muscle channels.
@@ -76,6 +82,10 @@ export type ReplayEnvironmentSample = {
   skateboardSpawn: [number, number]
   skateboardMass: number
   wheelFriction: number
+  actuatorStrength: number
+  actuatorLatencyMs: number
+  sensorNoise: number
+  spawnYawDegrees: number
 }
 
 export type ReplayArtifact = {

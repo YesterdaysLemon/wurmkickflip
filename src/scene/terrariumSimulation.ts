@@ -1,6 +1,7 @@
 import { MathUtils } from 'three'
 import { deriveWurmAnatomy, type WurmAnatomy } from '../creature/anatomy'
 import type { EnvironmentConfig, Vec3 } from '../creature/types'
+import type { DomainSample } from '../environment/seedForge'
 import type { LocomotionSensors } from '../policy/locomotionPolicy'
 import { makeInitialAction } from '../policy/simulationAdapter'
 import {
@@ -193,10 +194,27 @@ export function createStuntState(
   field: TerrainField,
   environmentConfig: EnvironmentConfig | null = null,
   anatomy: WurmAnatomy = deriveWurmAnatomy(null),
+  domainSample: DomainSample | null = null,
 ): StuntState {
-  const start = field.waypoints[0] ?? [-2.8, -1.8]
+  const routeStart = field.waypoints[0] ?? [-2.8, -1.8]
+  const start: [number, number] = domainSample
+    ? [
+        MathUtils.clamp(
+          domainSample.skateboardSpawnX,
+          -field.width * 0.5 + ARENA_MARGIN,
+          field.width * 0.5 - ARENA_MARGIN,
+        ),
+        MathUtils.clamp(
+          domainSample.skateboardSpawnZ,
+          -field.depth * 0.5 + ARENA_MARGIN,
+          field.depth * 0.5 - ARENA_MARGIN,
+        ),
+      ]
+    : routeStart
   const next = field.waypoints[1] ?? [2.4, -1.5]
-  const boardHeading = Math.atan2(next[1] - start[1], next[0] - start[0])
+  const boardHeading = domainSample
+    ? (domainSample.spawnYawDegrees * Math.PI) / 180
+    : Math.atan2(next[1] - start[1], next[0] - start[0])
   const boardY = boardGroundY(field, start[0], start[1])
   const wormStartDistance = 2.65
   const wormHeading = wrapAngle(boardHeading + Math.PI)
@@ -262,7 +280,9 @@ export function createStuntState(
     wormVz: 0,
     wormHeading,
     wormDistance: 0,
-    boardWaypointIndex: Math.min(1, Math.max(0, field.waypoints.length - 1)),
+    boardWaypointIndex: domainSample
+      ? nextWaypointIndex(field.waypoints, start)
+      : Math.min(1, Math.max(0, field.waypoints.length - 1)),
     terrainFriction: field.sample(wormX, wormZ).friction,
     distanceToBoard: wormStartDistance,
     feedingResourceId: null,
@@ -340,7 +360,7 @@ export function advanceStunt(
   state.time += delta
   state.locomotionTime += delta
   const decoded = decodeAction(action)
-  state.previousAction = action
+  state.previousAction.set(action)
   state.previousActionOrder = commandApplication === 'neural' ? 'anterior-to-posterior' : 'scene-tail-to-head'
   state.poke = Math.max(0, state.poke - delta * 0.58)
   state.landingFlash = Math.max(0, state.landingFlash - delta * 1.35)
@@ -820,6 +840,10 @@ function updateBoardPlanar(
   const velocityResponse = state.grounded ? 1.4 + traction * 2.2 : 0.25
   state.boardVx = MathUtils.damp(state.boardVx, targetVx, velocityResponse, delta)
   state.boardVz = MathUtils.damp(state.boardVz, targetVz, velocityResponse, delta)
+  const airDamping = Math.exp(-Math.max(0, environmentConfig?.world.airDrag ?? 0) * delta)
+  state.boardSpeed *= airDamping
+  state.boardVx *= airDamping
+  state.boardVz *= airDamping
   const oldBoardX = state.boardX
   const oldBoardZ = state.boardZ
   state.boardX += state.boardVx * delta
@@ -1068,6 +1092,20 @@ function recordBoardContact(state: StuntState, contact: SkateboardDeckContact, d
 function averageSegmentComponent(segments: readonly SegmentSnapshot[], key: 'vx' | 'vz' | 'y') {
   if (segments.length === 0) return 0
   return segments.reduce((sum, segment) => sum + segment[key], 0) / segments.length
+}
+
+function nextWaypointIndex(waypoints: readonly [number, number][], position: readonly [number, number]) {
+  if (waypoints.length === 0) return 0
+  let nearestIndex = 0
+  let nearestDistance = Number.POSITIVE_INFINITY
+  waypoints.forEach((waypoint, index) => {
+    const distance = Math.hypot(waypoint[0] - position[0], waypoint[1] - position[1])
+    if (distance < nearestDistance) {
+      nearestDistance = distance
+      nearestIndex = index
+    }
+  })
+  return (nearestIndex + 1) % waypoints.length
 }
 
 function launchKickflip(state: StuntState, gravity: number) {

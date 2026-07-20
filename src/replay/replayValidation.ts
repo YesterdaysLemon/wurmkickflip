@@ -4,6 +4,7 @@ import {
   REPLAY_INTEGRITY_ALGORITHM,
   REPLAY_INTERPOLATION,
   REPLAY_KIND,
+  REPLAY_LEGACY_DOMAIN_DEFAULTS,
   REPLAY_MUSCLE_CHANNEL_COUNT,
   REPLAY_SCHEMA_VERSION,
   REPLAY_SEGMENT_COUNT,
@@ -14,7 +15,7 @@ import {
   type ReplayPolicyBackend,
   type ReplayVec3,
 } from './types'
-import { replayIntegrityMatches } from './replayIntegrity'
+import { replayIntegrityFor, replayIntegrityMatches } from './replayIntegrity'
 
 export type ReplayValidationResult = { ok: true; value: ReplayArtifact } | { ok: false; errors: string[] }
 
@@ -95,6 +96,17 @@ export function validateReplayArtifact(value: unknown): ReplayValidationResult {
 
   const playback = playbackInput ? parsePlaybackContract(playbackInput, errors) : undefined
   const integrity = integrityInput ? parseIntegrity(integrityInput, errors) : undefined
+  const seedForgeFieldCount = [
+    'actuatorStrength',
+    'actuatorLatencyMs',
+    'sensorNoise',
+    'spawnYawDegrees',
+  ].filter(field => environmentSample && Object.hasOwn(environmentSample, field)).length
+  if (seedForgeFieldCount !== 0 && seedForgeFieldCount !== 4) {
+    errors.push(
+      'replay.environmentSample must include all Seed Forge actuator/noise fields or omit all four for a historical schema-v1 artifact.',
+    )
+  }
 
   const replay: ReplayArtifact = {
     schemaVersion: asLiteral(root?.schemaVersion, REPLAY_SCHEMA_VERSION, 'replay.schemaVersion', errors),
@@ -111,18 +123,22 @@ export function validateReplayArtifact(value: unknown): ReplayValidationResult {
     durationSeconds: asNonNegativeNumber(root?.durationSeconds, 'replay.durationSeconds', errors),
     frameCount,
     environmentSample: {
-      seed: asFiniteNumber(environmentSample?.seed, 'replay.environmentSample.seed', errors),
-      gravityScale: asFiniteNumber(
+      seed: asUint32(environmentSample?.seed, 'replay.environmentSample.seed', errors),
+      gravityScale: asNonNegativeNumber(
         environmentSample?.gravityScale,
         'replay.environmentSample.gravityScale',
         errors,
       ),
-      frictionScale: asFiniteNumber(
+      frictionScale: asNonNegativeNumber(
         environmentSample?.frictionScale,
         'replay.environmentSample.frictionScale',
         errors,
       ),
-      dragScale: asFiniteNumber(environmentSample?.dragScale, 'replay.environmentSample.dragScale', errors),
+      dragScale: asNonNegativeNumber(
+        environmentSample?.dragScale,
+        'replay.environmentSample.dragScale',
+        errors,
+      ),
       slopeDegrees: asFiniteNumber(
         environmentSample?.slopeDegrees,
         'replay.environmentSample.slopeDegrees',
@@ -133,7 +149,7 @@ export function validateReplayArtifact(value: unknown): ReplayValidationResult {
         'replay.environmentSample.roughness',
         errors,
       ),
-      obstacleDensity: asNonNegativeNumber(
+      obstacleDensity: asUnitNumber(
         environmentSample?.obstacleDensity,
         'replay.environmentSample.obstacleDensity',
         errors,
@@ -151,6 +167,36 @@ export function validateReplayArtifact(value: unknown): ReplayValidationResult {
       wheelFriction: asNonNegativeNumber(
         environmentSample?.wheelFriction,
         'replay.environmentSample.wheelFriction',
+        errors,
+      ),
+      actuatorStrength: asOptionalPositiveNumber(
+        environmentSample,
+        'actuatorStrength',
+        REPLAY_LEGACY_DOMAIN_DEFAULTS.actuatorStrength,
+        'replay.environmentSample.actuatorStrength',
+        errors,
+      ),
+      actuatorLatencyMs: asOptionalNonNegativeNumber(
+        environmentSample,
+        'actuatorLatencyMs',
+        REPLAY_LEGACY_DOMAIN_DEFAULTS.actuatorLatencyMs,
+        'replay.environmentSample.actuatorLatencyMs',
+        errors,
+      ),
+      sensorNoise: asOptionalUnitNumber(
+        environmentSample,
+        'sensorNoise',
+        REPLAY_LEGACY_DOMAIN_DEFAULTS.sensorNoise,
+        'replay.environmentSample.sensorNoise',
+        errors,
+      ),
+      spawnYawDegrees: asOptionalBoundedNumber(
+        environmentSample,
+        'spawnYawDegrees',
+        REPLAY_LEGACY_DOMAIN_DEFAULTS.spawnYawDegrees,
+        -180,
+        180,
+        'replay.environmentSample.spawnYawDegrees',
         errors,
       ),
     },
@@ -191,9 +237,11 @@ export function validateReplayArtifact(value: unknown): ReplayValidationResult {
   }
 
   if (playback) validateRecorderCoreContract(replay, errors)
+  let sourceIntegrityVerified = false
   if (integrity) {
     try {
-      if (!replayIntegrityMatches(value, integrity)) {
+      sourceIntegrityVerified = replayIntegrityMatches(value, integrity)
+      if (!sourceIntegrityVerified) {
         errors.push('replay.integrity.digest does not match the replay payload.')
       }
     } catch (error) {
@@ -203,6 +251,12 @@ export function validateReplayArtifact(value: unknown): ReplayValidationResult {
           : 'replay.integrity could not be computed.',
       )
     }
+  }
+  if (sourceIntegrityVerified && seedForgeFieldCount === 0 && replay.integrity) {
+    // Historical schema-v1 checksums cover the original payload without the
+    // four Seed Forge fields. Verify that source first, then keep the
+    // normalized in-memory artifact internally self-consistent.
+    replay.integrity = replayIntegrityFor(replay)
   }
 
   return errors.length > 0 ? { ok: false, errors } : { ok: true, value: replay }
@@ -449,6 +503,61 @@ function asUnitNumber(value: unknown, path: string, errors: string[]): number {
   const result = asFiniteNumber(value, path, errors)
   if (result < 0 || result > 1) {
     errors.push(`${path} must be between 0 and 1.`)
+  }
+  return result
+}
+
+function asOptionalPositiveNumber(
+  record: Record<string, unknown> | null,
+  key: string,
+  fallback: number,
+  path: string,
+  errors: string[],
+): number {
+  return record && Object.hasOwn(record, key) ? asPositiveNumber(record[key], path, errors) : fallback
+}
+
+function asUint32(value: unknown, path: string, errors: string[]): number {
+  const result = asFiniteNumber(value, path, errors)
+  if (!Number.isInteger(result) || result < 0 || result > 0xffffffff) {
+    errors.push(`${path} must be an unsigned 32-bit integer.`)
+  }
+  return result
+}
+
+function asOptionalNonNegativeNumber(
+  record: Record<string, unknown> | null,
+  key: string,
+  fallback: number,
+  path: string,
+  errors: string[],
+): number {
+  return record && Object.hasOwn(record, key) ? asNonNegativeNumber(record[key], path, errors) : fallback
+}
+
+function asOptionalUnitNumber(
+  record: Record<string, unknown> | null,
+  key: string,
+  fallback: number,
+  path: string,
+  errors: string[],
+): number {
+  return record && Object.hasOwn(record, key) ? asUnitNumber(record[key], path, errors) : fallback
+}
+
+function asOptionalBoundedNumber(
+  record: Record<string, unknown> | null,
+  key: string,
+  fallback: number,
+  minimum: number,
+  maximum: number,
+  path: string,
+  errors: string[],
+): number {
+  if (!record || !Object.hasOwn(record, key)) return fallback
+  const result = asFiniteNumber(record[key], path, errors)
+  if (result < minimum || result > maximum) {
+    errors.push(`${path} must be between ${minimum} and ${maximum}.`)
   }
   return result
 }

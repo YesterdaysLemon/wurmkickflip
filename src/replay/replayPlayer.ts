@@ -1,5 +1,12 @@
 import { cloneReplayArtifact, cloneReplayFrame, cloneReplayJson } from './replayClone'
-import type { ReplayArtifact, ReplayFrame, ReplayPose, ReplayVec3 } from './types'
+import { replayIntegrityFor } from './replayIntegrity'
+import {
+  REPLAY_LEGACY_DOMAIN_DEFAULTS,
+  type ReplayArtifact,
+  type ReplayFrame,
+  type ReplayPose,
+  type ReplayVec3,
+} from './types'
 import { validateReplayArtifact } from './replayValidation'
 
 export type ReplayPlayerOptions = {
@@ -20,14 +27,29 @@ export class ReplayPlayer {
   private cursorSeconds = 0
 
   constructor(value: unknown, options: ReplayPlayerOptions = {}) {
-    const validation = validateReplayArtifact(value)
+    let validation = validateReplayArtifact(value)
     if (!validation.ok) throw new Error(`Invalid replay artifact: ${validation.errors.join(' ')}`)
     if ((options.requireIntegrity ?? true) && (!validation.value.playback || !validation.value.integrity)) {
       throw new Error('Replay player requires a recorder-core artifact with verified integrity.')
     }
     if (validation.value.frames.length === 0) throw new Error('Replay player requires at least one frame.')
+
+    const sourceArtifact = cloneReplayJson(value as ReplayArtifact)
+    const sourceEnvironment = sourceArtifact.environmentSample as unknown as Record<string, unknown>
+    const isHistoricalDomainSample = Object.keys(REPLAY_LEGACY_DOMAIN_DEFAULTS).every(
+      field => !Object.hasOwn(sourceEnvironment, field),
+    )
+    if (isHistoricalDomainSample) {
+      Object.assign(sourceEnvironment, REPLAY_LEGACY_DOMAIN_DEFAULTS)
+      if (sourceArtifact.integrity) sourceArtifact.integrity = replayIntegrityFor(sourceArtifact)
+      validation = validateReplayArtifact(sourceArtifact)
+      if (!validation.ok) {
+        throw new Error(`Normalized replay artifact is invalid: ${validation.errors.join(' ')}`)
+      }
+    }
+
     this.replay = cloneReplayArtifact(validation.value)
-    this.sourceArtifact = cloneReplayJson(value as ReplayArtifact)
+    this.sourceArtifact = sourceArtifact
   }
 
   get durationSeconds() {

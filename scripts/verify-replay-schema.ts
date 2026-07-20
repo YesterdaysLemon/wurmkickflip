@@ -2,9 +2,15 @@ import assert from 'node:assert/strict'
 import { spawnSync } from 'node:child_process'
 import { readFile } from 'node:fs/promises'
 import { resolve } from 'node:path'
+import {
+  DOMAIN_SAMPLE_KIND,
+  DOMAIN_SAMPLE_SCHEMA_VERSION,
+  type DomainSample,
+} from '../src/environment/seedForge'
 import { computeReplayDigest } from '../src/replay/replayIntegrity'
-import { LiveReplayCapture } from '../src/replay/liveReplayCapture'
+import { LiveReplayCapture, replayEnvironmentSampleFor } from '../src/replay/liveReplayCapture'
 import { replayPlayerFromJson, serializeReplayArtifact } from '../src/replay/replayBrowser'
+import { cloneReplayEnvironmentSample } from '../src/replay/replayClone'
 import { ReplayPlayer } from '../src/replay/replayPlayer'
 import { ReplayRecorder, recordReplay } from '../src/replay/replayRecorder'
 import {
@@ -15,6 +21,7 @@ import {
 import {
   REPLAY_INTEGRITY_ALGORITHM,
   REPLAY_KIND,
+  REPLAY_LEGACY_DOMAIN_DEFAULTS,
   REPLAY_MUSCLE_CHANNEL_COUNT,
   REPLAY_SCHEMA_VERSION,
 } from '../src/replay/types'
@@ -30,24 +37,74 @@ assert(
   `TypeScript replay validation failed: ${validation.ok ? '' : validation.errors.join(' ')}`,
 )
 const artifact = validation.value
+const fixtureRecord = fixture as Record<string, unknown>
+const fixtureIntegrity = fixtureRecord.integrity as { algorithm: string; digest: string }
 assert.equal(artifact.source.policyBackend, 'neural-js', 'canonical fixture must use neural-js')
 assert(artifact.playback, 'canonical fixture must exercise the recorder-core contract')
 assert(artifact.integrity, 'canonical fixture must include verified integrity')
 assert.equal(artifact.integrity.algorithm, REPLAY_INTEGRITY_ALGORITHM)
-assert.equal(artifact.integrity.digest, computeReplayDigest(fixture))
+assert.equal(fixtureIntegrity.digest, computeReplayDigest(fixture))
+assert.equal(
+  artifact.integrity.digest,
+  computeReplayDigest(artifact),
+  'normalized historical artifacts must remain internally checksummed',
+)
+assert(validateReplayArtifact(artifact).ok, 'normalized historical artifacts must validate again')
 assert(
   artifact.frames.every(frame => frame.muscleActivations?.length === REPLAY_MUSCLE_CHANNEL_COUNT),
   'recorder-core fixture must contain all 32 muscle channels in every frame',
 )
 
-// Recorder -> canonical JSON -> validator is a lossless round trip.
+assert.deepEqual(
+  {
+    actuatorStrength: artifact.environmentSample.actuatorStrength,
+    actuatorLatencyMs: artifact.environmentSample.actuatorLatencyMs,
+    sensorNoise: artifact.environmentSample.sensorNoise,
+    spawnYawDegrees: artifact.environmentSample.spawnYawDegrees,
+  },
+  REPLAY_LEGACY_DOMAIN_DEFAULTS,
+  'historical schema-v1 artifacts must receive honest nominal Seed Forge defaults',
+)
+
+// New recorder artifacts preserve every exact Seed Forge value through JSON.
+const exactEnvironmentSample = {
+  ...artifact.environmentSample,
+  actuatorStrength: 1.375,
+  actuatorLatencyMs: 37.5,
+  sensorNoise: 0.0625,
+  spawnYawDegrees: -17.25,
+}
+const exactDomainSample: DomainSample = {
+  schemaVersion: DOMAIN_SAMPLE_SCHEMA_VERSION,
+  kind: DOMAIN_SAMPLE_KIND,
+  seed: exactEnvironmentSample.seed,
+  gravityScale: exactEnvironmentSample.gravityScale,
+  frictionScale: exactEnvironmentSample.frictionScale,
+  dragScale: exactEnvironmentSample.dragScale,
+  slopeDegrees: exactEnvironmentSample.slopeDegrees,
+  roughness: exactEnvironmentSample.roughness,
+  obstacleDensity: exactEnvironmentSample.obstacleDensity,
+  skateboardSpawnX: exactEnvironmentSample.skateboardSpawn[0],
+  skateboardSpawnZ: exactEnvironmentSample.skateboardSpawn[1],
+  skateboardMass: exactEnvironmentSample.skateboardMass,
+  wheelFriction: exactEnvironmentSample.wheelFriction,
+  actuatorStrength: exactEnvironmentSample.actuatorStrength,
+  actuatorLatencyMs: exactEnvironmentSample.actuatorLatencyMs,
+  sensorNoise: exactEnvironmentSample.sensorNoise,
+  spawnYawDegrees: exactEnvironmentSample.spawnYawDegrees,
+}
+assert.deepEqual(
+  replayEnvironmentSampleFor({} as never, exactDomainSample),
+  exactEnvironmentSample,
+  'live capture must map the exact forged domain into replay provenance',
+)
 const recorded = recordReplay(
   {
     replayId: artifact.replayId,
     createdAt: artifact.createdAt,
     source: artifact.source,
     timestep: artifact.timestep,
-    environmentSample: artifact.environmentSample,
+    environmentSample: exactEnvironmentSample,
   },
   artifact.frames.map(frame => ({
     ...frame,
@@ -55,10 +112,37 @@ const recorded = recordReplay(
   })),
   artifact.taskMetrics,
 )
-assert.deepEqual(recorded, artifact, 'recorder output drifted from the canonical fixture')
+assert.equal(
+  Object.keys(recorded.environmentSample).length,
+  14,
+  'new replay samples must store all 14 named domain fields',
+)
+assert.deepEqual(
+  recorded.environmentSample,
+  exactEnvironmentSample,
+  'recorder must preserve the exact Seed Forge sample',
+)
 const serializedRoundTrip = validateReplayArtifact(JSON.parse(JSON.stringify(recorded)) as unknown)
 assert(serializedRoundTrip.ok, 'serialized recorder output must remain valid')
-assert.deepEqual(serializedRoundTrip.value, artifact)
+assert.deepEqual(serializedRoundTrip.value, recorded)
+
+const callerOwnedEnvironmentSample = {
+  ...exactEnvironmentSample,
+  skateboardSpawn: [...exactEnvironmentSample.skateboardSpawn] as [number, number],
+}
+const clonedEnvironmentSample = cloneReplayEnvironmentSample(callerOwnedEnvironmentSample)
+callerOwnedEnvironmentSample.skateboardSpawn[0] = 999
+assert.notEqual(
+  clonedEnvironmentSample.skateboardSpawn[0],
+  999,
+  'environment sample clones must not retain caller-owned tuples',
+)
+clonedEnvironmentSample.skateboardSpawn[1] = 999
+assert.notEqual(
+  callerOwnedEnvironmentSample.skateboardSpawn[1],
+  999,
+  'environment sample clones must not expose their owned tuple',
+)
 
 // Recorder copies caller-owned arrays and rejects invalid sequencing/actions.
 const copiedChannels = [...artifact.frames[0].muscleActivations!]
@@ -132,6 +216,23 @@ assert.throws(
 
 // Sampling is deterministic, interpolation is stable, and returned values are copies.
 const player = new ReplayPlayer(fixture)
+const normalizedPlayerArtifact = player.artifact()
+assert.deepEqual(
+  {
+    actuatorStrength: normalizedPlayerArtifact.environmentSample.actuatorStrength,
+    actuatorLatencyMs: normalizedPlayerArtifact.environmentSample.actuatorLatencyMs,
+    sensorNoise: normalizedPlayerArtifact.environmentSample.sensorNoise,
+    spawnYawDegrees: normalizedPlayerArtifact.environmentSample.spawnYawDegrees,
+  },
+  REPLAY_LEGACY_DOMAIN_DEFAULTS,
+  'ReplayPlayer must expose normalized historical domain provenance',
+)
+assert.equal(
+  normalizedPlayerArtifact.integrity?.digest,
+  computeReplayDigest(normalizedPlayerArtifact),
+  'ReplayPlayer must rechecksum normalized historical provenance',
+)
+assert(validateReplayArtifact(normalizedPlayerArtifact).ok)
 const midpointTime = artifact.timestep * 0.5
 const midpoint = player.sample(midpointTime)
 assert.deepEqual(midpoint, player.sample(midpointTime), 'same replay time must produce the same sample')
@@ -306,7 +407,7 @@ assert.throws(() => new ReplayPlayer(legacy), /requires a recorder-core artifact
 assert.doesNotThrow(() => new ReplayPlayer(legacy, { requireIntegrity: false }))
 
 // Integrity covers semantic fields and unknown extensions, independent of key order.
-const reorderedSource = structuredClone(artifact) as unknown as Record<string, unknown>
+const reorderedSource = structuredClone(fixture) as Record<string, unknown>
 const source = reorderedSource.source as Record<string, unknown>
 reorderedSource.source = {
   modelVersion: source.modelVersion,
@@ -314,17 +415,49 @@ reorderedSource.source = {
   environmentId: source.environmentId,
   creatureId: source.creatureId,
 }
-assert.equal(computeReplayDigest(reorderedSource), artifact.integrity.digest)
+assert.equal(computeReplayDigest(reorderedSource), fixtureIntegrity.digest)
 
-const tamperedReward = structuredClone(artifact)
+const tamperedReward = structuredClone(recorded)
 tamperedReward.frames[1].reward += 1
 expectValidationError(tamperedReward, 'replay.integrity.digest does not match the replay payload.')
 
-const tamperedExtension = structuredClone(artifact) as unknown as Record<string, unknown>
+for (const field of ['actuatorStrength', 'actuatorLatencyMs', 'sensorNoise', 'spawnYawDegrees'] as const) {
+  const tamperedDomain = structuredClone(recorded)
+  tamperedDomain.environmentSample[field] += 0.125
+  expectValidationError(tamperedDomain, 'replay.integrity.digest does not match the replay payload.')
+}
+
+const partialSeedForgeSample = structuredClone(recorded) as unknown as Record<string, unknown>
+const partialEnvironment = partialSeedForgeSample.environmentSample as Record<string, unknown>
+delete partialEnvironment.sensorNoise
+;(partialSeedForgeSample.integrity as { digest: string }).digest = computeReplayDigest(partialSeedForgeSample)
+expectValidationError(
+  partialSeedForgeSample,
+  'replay.environmentSample must include all Seed Forge actuator/noise fields or omit all four for a historical schema-v1 artifact.',
+)
+
+for (const [field, invalidValue, expected] of [
+  ['seed', -1, 'replay.environmentSample.seed must be an unsigned 32-bit integer.'],
+  ['gravityScale', -1, 'replay.environmentSample.gravityScale must be at least 0.'],
+  ['frictionScale', -1, 'replay.environmentSample.frictionScale must be at least 0.'],
+  ['dragScale', -1, 'replay.environmentSample.dragScale must be at least 0.'],
+  ['obstacleDensity', 1.01, 'replay.environmentSample.obstacleDensity must be between 0 and 1.'],
+  ['actuatorStrength', 0, 'replay.environmentSample.actuatorStrength must be greater than 0.'],
+  ['actuatorLatencyMs', -1, 'replay.environmentSample.actuatorLatencyMs must be at least 0.'],
+  ['sensorNoise', 1.01, 'replay.environmentSample.sensorNoise must be between 0 and 1.'],
+  ['spawnYawDegrees', 180.01, 'replay.environmentSample.spawnYawDegrees must be between -180 and 180.'],
+] as const) {
+  const invalidDomain = structuredClone(recorded) as unknown as Record<string, unknown>
+  ;(invalidDomain.environmentSample as Record<string, unknown>)[field] = invalidValue
+  ;(invalidDomain.integrity as { digest: string }).digest = computeReplayDigest(invalidDomain)
+  expectValidationError(invalidDomain, expected)
+}
+
+const tamperedExtension = structuredClone(recorded) as unknown as Record<string, unknown>
 tamperedExtension.unrecognizedExtension = { value: 1 }
 expectValidationError(tamperedExtension, 'replay.integrity.digest does not match the replay payload.')
 
-const compatibleExtension = structuredClone(artifact) as unknown as Record<string, unknown>
+const compatibleExtension = structuredClone(recorded) as unknown as Record<string, unknown>
 compatibleExtension.futureAnnotation = { label: 'preserved' }
 ;(compatibleExtension.integrity as { digest: string }).digest = computeReplayDigest(compatibleExtension)
 const extendedPlayer = new ReplayPlayer(compatibleExtension)
@@ -371,6 +504,44 @@ const python = spawnSync(
   },
 )
 assert.equal(python.status, 0, `${python.stdout}\n${python.stderr}`)
+
+const pythonSeedForgeReplay = spawnSync(
+  'uv',
+  [
+    'run',
+    '--locked',
+    'python',
+    '-c',
+    [
+      'import json, sys',
+      'from wurmkickflip_rl.replay_schema import validate_replay_artifact',
+      'payload = json.load(sys.stdin)',
+      'valid_errors = validate_replay_artifact(payload["valid"])',
+      'partial_errors = validate_replay_artifact(payload["partial"])',
+      'unsafe_errors = validate_replay_artifact(payload["unsafe"])',
+      'expected = "replay.environmentSample must include all Seed Forge actuator/noise fields or omit all four for a historical schema-v1 artifact."',
+      'unsafe_expected = "replay.environmentSample.actuatorStrength must be greater than 0."',
+      'raise SystemExit(0 if not valid_errors and expected in partial_errors and unsafe_expected in unsafe_errors else 1)',
+    ].join('; '),
+  ],
+  {
+    cwd: resolve(root, 'training'),
+    encoding: 'utf8',
+    input: JSON.stringify({
+      valid: recorded,
+      partial: partialSeedForgeSample,
+      unsafe: {
+        ...recorded,
+        environmentSample: { ...recorded.environmentSample, actuatorStrength: 0 },
+      },
+    }),
+  },
+)
+assert.equal(
+  pythonSeedForgeReplay.status,
+  0,
+  `Python replay validation drifted from the Seed Forge field contract.\n${pythonSeedForgeReplay.stdout}\n${pythonSeedForgeReplay.stderr}`,
+)
 
 const pythonRejectsUnknownBackend = spawnSync(
   'uv',
