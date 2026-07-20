@@ -49,8 +49,6 @@ import {
   type TerrariumDecor,
 } from './terrariumSimulation'
 
-export * from './terrariumSimulation'
-
 type SceneProps = {
   policyRunner: PolicyRunner
   running: boolean

@@ -3,7 +3,8 @@
 Current visible assets are intentionally primitive and generated in code/config:
 
 - Creature bodies: colored boxes, spheres, cylinders, and capsules from creature genome JSON.
-- Future creature connectors: articulated spherical/hinge constraints with simple joint markers.
+- Creature connectors: 15 procedural tapered links join the fixed 16-segment runtime, with genome
+  appendages and primitive silhouettes projected visually onto that inspected lattice.
 - Skateboard: procedural deck, trucks, and wheels.
 - Terrain: a seeded, vertex-colored square heightfield with hills, mounds, microrelief, sand/moss/clay friction regions, procedural rocks/sprouts, and terrarium walls.
 

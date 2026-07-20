@@ -8,8 +8,6 @@
  * which lets the lifecycle enter and leave an interaction without a visual pop.
  */
 
-export const WORM_INTERACTION_ANIMATION_VERSION = 'contact-choreography-v1'
-
 export type WormInteractionKind = 'mounting' | 'dismounting' | 'eating' | 'drinking'
 
 export type WormInteractionPhase =

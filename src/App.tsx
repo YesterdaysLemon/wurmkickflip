@@ -48,8 +48,8 @@ import {
   type ReplayRecorderFrame,
 } from './replay'
 import { WurmkickflipScene } from './scene/WurmkickflipScene'
+import type { ShowcaseMode } from './scene/terrariumSimulation'
 
-type ShowcaseMode = 'kickflip' | 'freestyle'
 type CaptureState = 'idle' | 'recording' | 'captured'
 
 type ActiveReplay = {

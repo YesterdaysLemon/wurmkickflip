@@ -61,12 +61,3 @@ export function snapshotToObservation(snapshot: SimulationSnapshot): PolicyObser
 
   return observation
 }
-
-export function scoreSnapshot(snapshot: SimulationSnapshot): number {
-  const forwardProgress = snapshot.board.x * 0.7
-  const contact = snapshot.contactRatio * 4
-  const balancePenalty = Math.abs(snapshot.board.roll) * 1.5 + Math.abs(snapshot.board.pitch) * 0.8
-  const energyPenalty = snapshot.previousAction.reduce((total, value) => total + Math.abs(value), 0) * 0.003
-
-  return forwardProgress + contact - balancePenalty - energyPenalty
-}
