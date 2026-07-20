@@ -5,6 +5,13 @@ import type { Group, Mesh, MeshStandardMaterial, Object3D } from 'three'
 import { BufferAttribute, BufferGeometry, Color, MathUtils, Quaternion, Vector3 } from 'three'
 import { deriveWurmAnatomy, type GenomeAppendage, type WurmAnatomy } from '../creature/anatomy'
 import type { CreatureGenome, EnvironmentConfig, Vec3 } from '../creature/types'
+import {
+  DomainActionPipeline,
+  handoffDomainActionOwner,
+  perturbLocomotionInputs,
+  perturbPolicyObservation,
+} from '../environment/domainRuntime'
+import type { DomainSample } from '../environment/seedForge'
 import { LocomotionPolicyRunner } from '../policy/locomotionRunner'
 import { PolicyRunner } from '../policy/policyRunner'
 import { makeInitialAction, snapshotToObservation } from '../policy/simulationAdapter'
@@ -57,6 +64,7 @@ type SceneProps = {
   showcaseMode?: ShowcaseMode
   creature: CreatureGenome | null
   environmentConfig: EnvironmentConfig | null
+  domainSample?: DomainSample | null
   onMetrics: (metrics: ViewerMetrics) => void
   onGaitTelemetry?: (gait: GaitTelemetry) => void
   onPolicyStatus: (status: PolicyStatus) => void
@@ -82,6 +90,7 @@ export function WurmkickflipScene({
   showcaseMode = 'kickflip',
   creature,
   environmentConfig,
+  domainSample = null,
   onMetrics,
   onGaitTelemetry,
   onPolicyStatus,
@@ -115,7 +124,7 @@ export function WurmkickflipScene({
     }
   }, [locomotionRunner, onPolicyStatus, policyRunner])
 
-  const sceneKey = `${creature?.id ?? 'wurm'}-${environmentConfig?.id ?? 'terrarium'}-${resetNonce}`
+  const sceneKey = `${creature?.id ?? 'wurm'}-${environmentConfig?.id ?? 'terrarium'}-${domainSample ? JSON.stringify(domainSample) : 'base'}-${resetNonce}`
   const arenaSpan = Math.max(
     environmentConfig?.world.size[0] ?? 11.5,
     environmentConfig?.world.size[2] ?? 11.5,
@@ -142,6 +151,7 @@ export function WurmkickflipScene({
       />
       <TerrariumWorld
         creature={creature}
+        domainSample={domainSample}
         environmentConfig={environmentConfig}
         gaitExperiment={gaitExperiment}
         gaitTractionScale={gaitTractionScale}
@@ -178,6 +188,7 @@ type TerrariumWorldProps = {
   showcaseMode: ShowcaseMode
   creature: CreatureGenome | null
   environmentConfig: EnvironmentConfig | null
+  domainSample: DomainSample | null
   onMetrics: (metrics: ViewerMetrics) => void
   onGaitTelemetry?: (gait: GaitTelemetry) => void
   onReplayFrame?: (frame: ReplayRecorderFrame) => void
@@ -194,6 +205,7 @@ function TerrariumWorld({
   showcaseMode,
   creature,
   environmentConfig,
+  domainSample,
   gaitExperiment,
   gaitTractionScale,
   onMetrics,
@@ -203,10 +215,19 @@ function TerrariumWorld({
 }: TerrariumWorldProps) {
   const terrainField = useMemo(() => createTerrainField(environmentConfig), [environmentConfig])
   const anatomy = useMemo(() => deriveWurmAnatomy(creature), [creature])
-  const state = useRef(createStuntState(terrainField, environmentConfig, anatomy))
+  const state = useRef(createStuntState(terrainField, environmentConfig, anatomy, domainSample))
+  const runtimeDomain = domainSample ?? {
+    seed: environmentConfig?.seed ?? 1337,
+    actuatorStrength: 1,
+    actuatorLatencyMs: 0,
+    sensorNoise: 0,
+  }
+  const actionPipeline = useRef(new DomainActionPipeline(runtimeDomain))
+  const simulationStep = useRef(0)
   const latestAction = useRef<PolicyAction>(makeInitialAction())
   const appliedAction = useRef<PolicyAction>(makeInitialAction())
   const inferencePending = useRef(false)
+  const mountedInferenceGeneration = useRef(0)
   const physicsAccumulator = useRef(0)
   const inferenceAccumulator = useRef(POLICY_TIMESTEP)
   const metricsAccumulator = useRef(0)
@@ -389,19 +410,34 @@ function TerrariumWorld({
         if (state.current.locomotionState === 'riding') {
           smoothAction(appliedAction.current, latestAction.current, POLICY_TIMESTEP)
         } else if (locomotionOwnsBody) {
+          const noisyInputs = perturbLocomotionInputs(
+            locomotionSensorsFor(state.current, terrainField, gaitTractionScale),
+            state.current.locomotionPlant.joints,
+            state.current.locomotionPlant.jointVelocities,
+            runtimeDomain,
+            simulationStep.current,
+          )
           appliedAction.current.set(
             locomotionRunner.run(
-              locomotionSensorsFor(state.current, terrainField, gaitTractionScale),
-              state.current.locomotionPlant.joints,
-              state.current.locomotionPlant.jointVelocities,
+              noisyInputs.sensors,
+              noisyInputs.segmentBends,
+              noisyInputs.segmentBendVelocities,
             ),
           )
         } else {
           appliedAction.current.fill(0)
+          actionPipeline.current.reset()
         }
+        const actionOwner =
+          state.current.locomotionState === 'riding'
+            ? 'mounted'
+            : locomotionOwnsBody
+              ? 'locomotion'
+              : 'authored'
+        const domainAction = actionPipeline.current.step(appliedAction.current, actionOwner)
         advanceStunt(
           state.current,
-          appliedAction.current,
+          domainAction,
           POLICY_TIMESTEP,
           gravity,
           showcaseMode,
@@ -412,6 +448,22 @@ function TerrariumWorld({
           gaitTractionScale,
         )
         const controllerStillOwnsBody = gaitControllerOwnsBody(state.current)
+        const nextActionOwner =
+          state.current.locomotionState === 'riding'
+            ? 'mounted'
+            : controllerStillOwnsBody
+              ? 'locomotion'
+              : 'authored'
+        const actionOwnerChanged = handoffDomainActionOwner(
+          actionOwner,
+          nextActionOwner,
+          actionPipeline.current,
+          appliedAction.current,
+          latestAction.current,
+        )
+        if (actionOwnerChanged && (actionOwner === 'mounted' || nextActionOwner === 'mounted')) {
+          mountedInferenceGeneration.current += 1
+        }
         if (!controllerStillOwnsBody) {
           if (locomotionOwnsBody && (bodyExperiment.current || locomotionRunner.hasActivePerturbation())) {
             experimentNotice.current = EXPERIMENT_ENDED_NOTICE
@@ -427,8 +479,8 @@ function TerrariumWorld({
         )
         if (wasRiding && state.current.locomotionState !== 'riding') {
           locomotionRunner.reset()
-          appliedAction.current.fill(0)
         }
+        simulationStep.current += 1
         physicsAccumulator.current -= POLICY_TIMESTEP
         steps += 1
       }
@@ -440,11 +492,21 @@ function TerrariumWorld({
       ) {
         inferenceAccumulator.current %= POLICY_TIMESTEP
         inferencePending.current = true
-        const observation = snapshotToObservation(toSnapshot(state.current))
+        const observation = perturbPolicyObservation(
+          snapshotToObservation(toSnapshot(state.current)),
+          runtimeDomain,
+          simulationStep.current,
+        )
+        const inferenceGeneration = mountedInferenceGeneration.current
         void policyRunner
           .run(observation)
           .then(action => {
-            latestAction.current = action
+            if (
+              inferenceGeneration === mountedInferenceGeneration.current &&
+              state.current.locomotionState === 'riding'
+            ) {
+              latestAction.current = action
+            }
           })
           .catch(() => {
             // Keep the last known-safe action; PolicyRunner reports backend failures in its status.

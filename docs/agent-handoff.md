@@ -20,6 +20,8 @@
 - Food, water, inventories, mouth contact, refill, or goal selection: `npm run verify:needs`.
 - Interaction reference samples, dismount/feed poses, and ownership handoffs: `npm run verify:interactions`.
 - Integrated board/worm/resource lifecycle: `npm run verify:motion`.
+- Seed Forge sampling, presets, locks, or range semantics: `npm run verify:seed-forge`; also run `npm run verify:configs` for config-range changes.
+- Seed Forge actuator latency/strength, sensor noise, spawn, or physics application: `npm run verify:domain-runtime`.
 - Replay schema/recorder/player: `npm run verify:replay`.
 - Config loading/runtime adapter: `npm run verify:configs`.
 - UI or accessibility behavior: `npm run check:browser` plus an interactive browser pass.

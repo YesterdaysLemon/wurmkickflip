@@ -9,6 +9,12 @@ REPLAY_SCHEMA_VERSION = 1
 REPLAY_KIND = "wurmkickflip.replay"
 POLICY_BACKENDS = {"scripted", "neural-js", "onnx-webgpu", "onnx-wasm", "training"}
 FALL_REASONS = {"none", "lost_contact", "fell_below_height", "out_of_bounds", "timeout"}
+SEED_FORGE_REPLAY_FIELDS = (
+    "actuatorStrength",
+    "actuatorLatencyMs",
+    "sensorNoise",
+    "spawnYawDegrees",
+)
 
 
 def validate_replay_artifact(value: Any) -> list[str]:
@@ -37,19 +43,46 @@ def validate_replay_artifact(value: Any) -> list[str]:
         non_empty_string(source.get("modelVersion"), "replay.source.modelVersion", errors)
 
     if environment:
-        finite_number(environment.get("seed"), "replay.environmentSample.seed", errors)
-        finite_number(environment.get("gravityScale"), "replay.environmentSample.gravityScale", errors)
-        finite_number(environment.get("frictionScale"), "replay.environmentSample.frictionScale", errors)
-        finite_number(environment.get("dragScale"), "replay.environmentSample.dragScale", errors)
+        uint32_number(environment.get("seed"), "replay.environmentSample.seed", errors)
+        non_negative_number(environment.get("gravityScale"), "replay.environmentSample.gravityScale", errors)
+        non_negative_number(environment.get("frictionScale"), "replay.environmentSample.frictionScale", errors)
+        non_negative_number(environment.get("dragScale"), "replay.environmentSample.dragScale", errors)
         finite_number(environment.get("slopeDegrees"), "replay.environmentSample.slopeDegrees", errors)
         non_negative_number(environment.get("roughness"), "replay.environmentSample.roughness", errors)
-        non_negative_number(environment.get("obstacleDensity"), "replay.environmentSample.obstacleDensity", errors)
+        unit_number(environment.get("obstacleDensity"), "replay.environmentSample.obstacleDensity", errors)
         tuple_numbers(environment.get("skateboardSpawn"), 2, "replay.environmentSample.skateboardSpawn", errors)
         positive_number(environment.get("skateboardMass"), "replay.environmentSample.skateboardMass", errors)
         non_negative_number(environment.get("wheelFriction"), "replay.environmentSample.wheelFriction", errors)
+        seed_forge_field_count = sum(field in environment for field in SEED_FORGE_REPLAY_FIELDS)
+        if seed_forge_field_count not in {0, len(SEED_FORGE_REPLAY_FIELDS)}:
+            errors.append(
+                "replay.environmentSample must include all Seed Forge actuator/noise fields or omit all four "
+                "for a historical schema-v1 artifact."
+            )
+        if seed_forge_field_count == len(SEED_FORGE_REPLAY_FIELDS):
+            positive_number(
+                environment.get("actuatorStrength"),
+                "replay.environmentSample.actuatorStrength",
+                errors,
+            )
+            non_negative_number(
+                environment.get("actuatorLatencyMs"),
+                "replay.environmentSample.actuatorLatencyMs",
+                errors,
+            )
+            unit_number(environment.get("sensorNoise"), "replay.environmentSample.sensorNoise", errors)
+            bounded_number(
+                environment.get("spawnYawDegrees"),
+                -180,
+                180,
+                "replay.environmentSample.spawnYawDegrees",
+                errors,
+            )
 
     if metrics:
-        nullable_non_negative_number(metrics.get("skateboardDiscoveredAt"), "replay.taskMetrics.skateboardDiscoveredAt", errors)
+        nullable_non_negative_number(
+            metrics.get("skateboardDiscoveredAt"), "replay.taskMetrics.skateboardDiscoveredAt", errors
+        )
         nullable_non_negative_number(metrics.get("firstContactAt"), "replay.taskMetrics.firstContactAt", errors)
         non_negative_number(metrics.get("mountTime"), "replay.taskMetrics.mountTime", errors)
         non_negative_number(metrics.get("rollingDistance"), "replay.taskMetrics.rollingDistance", errors)
@@ -121,7 +154,11 @@ def boolean_value(value: Any, path: str, errors: list[str]) -> bool:
 
 
 def finite_number(value: Any, path: str, errors: list[str]) -> float:
-    if isinstance(value, bool) or not isinstance(value, (int, float)) or not float("-inf") < float(value) < float("inf"):
+    if (
+        isinstance(value, bool)
+        or not isinstance(value, (int, float))
+        or not float("-inf") < float(value) < float("inf")
+    ):
         errors.append(f"{path} must be a finite number.")
         return 0.0
     return float(value)
@@ -131,6 +168,13 @@ def non_negative_integer(value: Any, path: str, errors: list[str]) -> int:
     number = finite_number(value, path, errors)
     if int(number) != number or number < 0:
         errors.append(f"{path} must be a non-negative integer.")
+    return int(number)
+
+
+def uint32_number(value: Any, path: str, errors: list[str]) -> int:
+    number = finite_number(value, path, errors)
+    if int(number) != number or number < 0 or number > 0xFFFFFFFF:
+        errors.append(f"{path} must be an unsigned 32-bit integer.")
     return int(number)
 
 
@@ -158,6 +202,13 @@ def unit_number(value: Any, path: str, errors: list[str]) -> float:
     number = finite_number(value, path, errors)
     if number < 0 or number > 1:
         errors.append(f"{path} must be between 0 and 1.")
+    return number
+
+
+def bounded_number(value: Any, minimum: float, maximum: float, path: str, errors: list[str]) -> float:
+    number = finite_number(value, path, errors)
+    if number < minimum or number > maximum:
+        errors.append(f"{path} must be between {minimum:g} and {maximum:g}.")
     return number
 
 

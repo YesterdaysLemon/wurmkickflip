@@ -417,6 +417,12 @@ function verifyLifecycleActionOwnership() {
     'lifecycle-handoff',
     'mounting-to-riding ownership change was not reported as a lifecycle handoff',
   )
+  neuralAction.fill(0)
+  assert.equal(
+    neuralToMounting.previousAction[0],
+    0.25,
+    'mounting-to-riding handoff did not retain the action applied on its transition frame',
+  )
 
   const proximityWithoutContact = createStuntState(field)
   proximityWithoutContact.locomotionState = 'seeking'

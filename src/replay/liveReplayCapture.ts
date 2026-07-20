@@ -1,6 +1,12 @@
 import type { EnvironmentConfig } from '../creature/types'
+import type { DomainSample } from '../environment/seedForge'
 import { ReplayRecorder, type ReplayRecorderFrame, type ReplayRecorderOptions } from './replayRecorder'
-import type { RecordedReplayArtifact, ReplayEnvironmentSample, ReplayTaskMetrics } from './types'
+import {
+  REPLAY_LEGACY_DOMAIN_DEFAULTS,
+  type RecordedReplayArtifact,
+  type ReplayEnvironmentSample,
+  type ReplayTaskMetrics,
+} from './types'
 
 /**
  * Browser-facing capture accumulator. ReplayRecorder owns the artifact
@@ -80,8 +86,32 @@ export class LiveReplayCapture {
   }
 }
 
-/** The browser showcase uses the selected config at its nominal scale. */
-export function replayEnvironmentSampleFor(environment: EnvironmentConfig): ReplayEnvironmentSample {
+/**
+ * Captures the exact forged domain when one is active. The optional form keeps
+ * callers that intentionally run a nominal environment explicit and stable.
+ */
+export function replayEnvironmentSampleFor(
+  environment: EnvironmentConfig,
+  sample?: DomainSample | null,
+): ReplayEnvironmentSample {
+  if (sample) {
+    return {
+      seed: sample.seed,
+      gravityScale: sample.gravityScale,
+      frictionScale: sample.frictionScale,
+      dragScale: sample.dragScale,
+      slopeDegrees: sample.slopeDegrees,
+      roughness: sample.roughness,
+      obstacleDensity: sample.obstacleDensity,
+      skateboardSpawn: [sample.skateboardSpawnX, sample.skateboardSpawnZ],
+      skateboardMass: sample.skateboardMass,
+      wheelFriction: sample.wheelFriction,
+      actuatorStrength: sample.actuatorStrength,
+      actuatorLatencyMs: sample.actuatorLatencyMs,
+      sensorNoise: sample.sensorNoise,
+      spawnYawDegrees: sample.spawnYawDegrees,
+    }
+  }
   return {
     seed: environment.seed,
     gravityScale: Math.abs(environment.world.gravity[1]) / 9.81,
@@ -93,5 +123,6 @@ export function replayEnvironmentSampleFor(environment: EnvironmentConfig): Repl
     skateboardSpawn: [environment.skateboard.spawnPosition[0], environment.skateboard.spawnPosition[2]],
     skateboardMass: environment.skateboard.mass,
     wheelFriction: environment.skateboard.wheelFriction,
+    ...REPLAY_LEGACY_DOMAIN_DEFAULTS,
   }
 }

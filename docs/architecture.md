@@ -23,6 +23,12 @@ The current exhibit validates `fixed-wurm-articulated-v1`, which binds:
 
 Creature genomes project appearance only onto this fixed lattice. Their declared legacy `cpg`, `onnx_policy`, or `hybrid` controller metadata is displayed as provenance and is not executed.
 
+### Seed Forge domains
+
+`src/environment/seedForge.ts` owns the versioned 14-channel domain sample, uint32 seed normalization, deterministic Mulberry32 sampling, six-decimal quantization, per-channel locks, range-relative presets, validation, and non-mutating environment materialization. `training/wurmkickflip_rl/seed_forge.py` mirrors the seeded sampler and presets. The app initializes each selected environment with an authored nominal sample; applying a seed, reroll, preset, or baseline restore replaces the sample and restarts the scene.
+
+Materialization changes gravity, air drag, terrain friction/slope/roughness/obstacle density, and skateboard spawn/mass/wheel friction. `src/environment/domainRuntime.ts` owns the remaining fixed-step effects: whole-policy-tick actuator latency, bounded actuator-strength scaling, and stateless seed/step/channel sensor noise for both crawl inputs and mounted observations. Initial spawn yaw is applied when the terrarium state is created. These mechanisms change the evaluation domain around the existing policies; they are not additional training or learned behavior. The full channel and replay contract is in [`seed-forge.md`](seed-forge.md).
+
 ### Pure simulation and rendering
 
 `src/scene/terrariumSimulation.ts` owns deterministic state creation and advancement, homeostasis/lifecycle orchestration, board routing, policy sensors, snapshot conversion, decor/collider construction, and fixed-step helper math. It has no React, Fiber, or JSX dependency.
@@ -65,7 +71,7 @@ The renderer assigns semantic names to the one worm root, 16 segments, 15 connec
 
 ### Replay
 
-`src/replay/` contains a versioned recorder/player independent of React. Recorder-core artifacts use strict 60 Hz frame timing, all 32 muscle channels, deterministic interpolation, defensive copies, semantic metric validation, and a canonical FNV-1a integrity digest. The digest detects ordinary corruption, not malicious forgery. App controls can finalize/export a live capture, validate/import JSON, play/pause/seek it, and return cleanly to live simulation.
+`src/replay/` contains a versioned recorder/player independent of React. Recorder-core artifacts use strict 60 Hz frame timing, all 32 muscle channels, exact Seed Forge provenance, deterministic interpolation, defensive copies, semantic metric validation, and a canonical FNV-1a integrity digest. Historical schema-v1 artifacts missing the actuator-strength, latency, noise, and spawn-yaw quartet are normalized to nominal defaults only after their original checksum is verified. The digest detects ordinary corruption, not malicious forgery. App controls can finalize/export a live capture, validate/import JSON, play/pause/seek it, and return cleanly to live simulation.
 
 ## Offline Evolution
 
@@ -93,7 +99,7 @@ Mounted tick:
 
 ## Verification Shape
 
-Static checks cover TypeScript, ESLint/Prettier, Ruff, Pyright, dependency audit, and bundle budgets. Focused verifiers cover configs, contracts, parity, shared terrain, collision properties, articulated invariants, finite resources, interaction continuity, replay integrity, policy evolution, and performance. `verify:gait` additionally proves copied telemetry, exact perturbation expiry, mirrored wiring, one-edge-per-tick causal spread, active-neural zero-traction conservation, deterministic shove handling, and paired recovery. The integrated motion rollout exercises repeated food/water/board cycles, contact-gated neural boarding, scripted kickflips, and zero/frozen/shuffled/no-traction interventions. Playwright covers the live microscope, recovery/error UI, reduced motion, replay flows, and exact current/high-water worm-rig counts across resets and stunt transitions; the long reproduction lane reruns the published evolution recipe in an isolated workspace.
+Static checks cover TypeScript, ESLint/Prettier, Ruff, Pyright, dependency audit, and bundle budgets. Focused verifiers cover configs, contracts, Seed Forge TypeScript/Python parity and runtime effects, shared terrain, collision properties, articulated invariants, finite resources, interaction continuity, replay integrity/provenance, policy evolution, and performance. `verify:gait` additionally proves copied telemetry, exact perturbation expiry, mirrored wiring, one-edge-per-tick causal spread, active-neural zero-traction conservation, deterministic shove handling, and paired recovery. The integrated motion rollout exercises repeated food/water/board cycles, contact-gated neural boarding, scripted kickflips, and zero/frozen/shuffled/no-traction interventions. Playwright covers the Seed Forge controls, live microscope, recovery/error UI, reduced motion, replay flows, and exact current/high-water worm-rig counts across resets and stunt transitions; the long reproduction lane reruns the published evolution recipe in an isolated workspace.
 
 ## Honest Limits
 

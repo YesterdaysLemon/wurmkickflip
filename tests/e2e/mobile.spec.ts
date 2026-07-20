@@ -41,6 +41,33 @@ test('keeps the terrarium and controls usable in a narrow mobile viewport', asyn
   await expect(microscope).toContainText('Traction 50%')
   await page.getByRole('button', { name: 'Clear perturbations' }).click()
   await expect(microscope).toContainText('Traction 100%')
+
+  const forge = page.getByRole('region', { name: 'Seed Forge' })
+  await forge.scrollIntoViewIfNeeded()
+  await expect(forge.locator('.seed-forge__parameter')).toHaveCount(14)
+  const forgeGeometry = await forge.evaluate(element => ({
+    left: element.getBoundingClientRect().left,
+    right: element.getBoundingClientRect().right,
+    scrollWidth: element.scrollWidth,
+    clientWidth: element.clientWidth,
+    viewportWidth: innerWidth,
+  }))
+  expect(forgeGeometry.left).toBeGreaterThanOrEqual(0)
+  expect(forgeGeometry.right).toBeLessThanOrEqual(forgeGeometry.viewportWidth + 1)
+  expect(forgeGeometry.scrollWidth).toBeLessThanOrEqual(forgeGeometry.clientWidth + 1)
+  const forgeButtonHeights = await forge
+    .locator('.seed-forge__button, .seed-forge__preset, .seed-forge__lock')
+    .evaluateAll(buttons => buttons.map(button => button.getBoundingClientRect().height))
+  expect(forgeButtonHeights.every(height => height >= 44)).toBe(true)
+  await expect(forge.getByLabel('uint32 seed')).toHaveCSS('height', '44px')
+
+  await page.setViewportSize({ width: 320, height: 640 })
+  await forge.scrollIntoViewIfNeeded()
+  const narrowViewport = await page.evaluate(() => ({
+    innerWidth,
+    scrollWidth: document.documentElement.scrollWidth,
+  }))
+  expect(narrowViewport.scrollWidth).toBeLessThanOrEqual(narrowViewport.innerWidth + 1)
   expect(runtimeErrors).toEqual([])
 })
 

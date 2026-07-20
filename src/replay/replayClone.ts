@@ -30,8 +30,20 @@ export function cloneReplayFrame(frame: ReplayFrame): ReplayFrame {
 
 export function cloneReplayEnvironmentSample(sample: ReplayEnvironmentSample): ReplayEnvironmentSample {
   return {
-    ...sample,
+    seed: sample.seed,
+    gravityScale: sample.gravityScale,
+    frictionScale: sample.frictionScale,
+    dragScale: sample.dragScale,
+    slopeDegrees: sample.slopeDegrees,
+    roughness: sample.roughness,
+    obstacleDensity: sample.obstacleDensity,
     skateboardSpawn: [...sample.skateboardSpawn],
+    skateboardMass: sample.skateboardMass,
+    wheelFriction: sample.wheelFriction,
+    actuatorStrength: sample.actuatorStrength,
+    actuatorLatencyMs: sample.actuatorLatencyMs,
+    sensorNoise: sample.sensorNoise,
+    spawnYawDegrees: sample.spawnYawDegrees,
   }
 }
 
