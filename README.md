@@ -34,6 +34,12 @@ The Seed Forge panel starts every environment at its authored nominal baseline, 
 
 TypeScript and Python share the seeded sampler and preset contract. New replay captures preserve the seed and all 14 channel values, while historical schema-v1 artifacts receive explicit nominal defaults for the four newer actuator/noise/yaw fields. See [`docs/seed-forge.md`](docs/seed-forge.md) for the channel map, lock semantics, runtime effects, parity contract, and focused checks.
 
+## Wurm Olympics
+
+Forge Trials runs 8–32 held-out Seed Forge worlds for eight simulated seconds each. Every heat compares the tracked recurrent controller with a zero-command lane and a controller frozen after 24 locomotion ticks. A result is labeled a **causal win** only when the changing neural lane reaches stable riding and both controls do not; control mounts and neural misses remain visible.
+
+The live exhibit and Olympics use the same synchronous 60 Hz episode engine for policy observations, domain perturbations, actuator transport, lifecycle handoffs, plant advance, and replay-frame emission. Each neural heat retains a checksummed recorder-core replay that can be scrubbed or jumped to discovery/contact events. These are finite compact-plant evaluations, not proof of learned kickflips or real-world transfer. See [`docs/forge-trials.md`](docs/forge-trials.md).
+
 ## Run It
 
 Requires Node 22.
@@ -51,6 +57,7 @@ npm run check:browser  # Playwright UI coverage
 npm run check:repro    # exact long-form published locomotion reproduction
 npm run verify:gait    # neural locality, perturbations, traction, and recovery
 npm run verify:seed-forge # deterministic domains and TypeScript/Python parity
+npm run verify:forge-trials # shared episode engine, causal controls, and deterministic meets
 ```
 
 The fast suite covers deterministic domain sampling/runtime, the shared render/physics heightfield, articulated dynamics, swept contacts, mouth resources, interaction poses, policy contracts, replay integrity, and bundle budgets. The integration suite runs deterministic long terrarium lifecycles, autonomous boarding gates, and locomotion interventions. Browser checks cover Seed Forge controls and also enforce one live worm rig (16 segments, 15 connectors, and one face), including high-water counts across resets and stunt transitions. The worm body no longer casts the separated articulated shadow that could resemble a second worm while elevated over the skateboard.

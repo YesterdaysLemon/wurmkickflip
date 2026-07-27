@@ -50,6 +50,7 @@ The first implementation can use a simple segmented creature. Future implementat
 - Make creature selection visibly change anatomy (primitive silhouette, proportions, and configured branching appendages), not only palette.
 - Load an environment JSON and show key environment parameters in the viewer.
 - Start each selected environment at its authored nominal domain, then expose deterministic uint32 sampling, per-channel locks, range-valid presets, and exact replay provenance for all 14 configured randomization channels.
+- Evaluate 8–32 held-out forged domains with the same fixed-step engine as the live scene, compare the recurrent controller against zero and frozen causal controls, preserve misses/control successes, and load representative neural lanes into replay inspection.
 - Load configuration resources independently, retain every valid creature/environment when a sibling fails, expose the failing resource path and validation/request error, and provide an in-app retry action.
 - Validate the selected creature against an explicit articulated runtime profile. For the current exhibit, label genome morphology as an appearance-only projection and do not imply that its declared controller executes.
 - Keep the existing worm/skateboard policy demo working as the first skateboard scenario.
@@ -115,6 +116,7 @@ Longer-term success:
 - `npm run verify:configs` confirms strict schemas, partial-load preservation, per-resource failures, malformed/incompatible runtime rejection, and the successful fixed adapter.
 - `npm run verify:seed-forge` confirms uint32 determinism, locks, declared ranges, distinct presets, a stable canonical fingerprint, and exact TypeScript/Python sample parity.
 - `npm run verify:domain-runtime` confirms whole-tick actuator latency, bounded strength, deterministic sensor noise, forged board spawn/yaw, and board air-drag damping.
+- `npm run verify:forge-trials` confirms uint32 held-out scheduling, canonical neural/zero/frozen behavior, shared live/headless episode ownership, deterministic repeated meets, and valid representative replay provenance.
 - The fixed adapter identifies 16 antagonistic actuator pairs—one dorsal/ventral pair for each segment—and 32 scalar muscle channels; UI terminology must not conflate those counts.
 - Built-in creature selections render distinct anatomy while the stunt policy keeps its fixed 16-segment action lattice.
 - With the tracked locomotion JSON present, detached crawling reports the evolved model and uses segment-local recurrence without a gait clock.
@@ -132,4 +134,4 @@ Longer-term success:
 - With the locomotion JSON absent or invalid, ground/boarding actions stay at zero and status clearly reports the unavailable brain.
 - With the stunt JSON absent or invalid, the mounted action request falls back to `scripted` with a clear message.
 - `npm run verify:bundle` recursively rejects ONNX models, ONNX Runtime JavaScript/WASM assets, and retired ONNX policy metadata anywhere in `dist/` while enforcing the initial bundle budget.
-- `npm run check:browser` covers config recovery, Seed Forge controls and resets, reduced-motion pause/override, the live gait microscope and experiments, replay honesty, replay capture/import/export, live/replay reset behavior, and exact current/high-water scene-graph counts for one worm root, 16 segments, 15 connectors, and one face.
+- `npm run check:browser` covers config recovery, Seed Forge controls and resets, Wurm Olympics evaluation/replay handoff, reduced-motion pause/override, the live gait microscope and experiments, replay honesty, replay capture/import/export/timeline controls, live/replay reset behavior, and exact current/high-water scene-graph counts for one worm root, 16 segments, 15 connectors, and one face.

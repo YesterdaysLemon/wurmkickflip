@@ -22,6 +22,7 @@
 - Integrated board/worm/resource lifecycle: `npm run verify:motion`.
 - Seed Forge sampling, presets, locks, or range semantics: `npm run verify:seed-forge`; also run `npm run verify:configs` for config-range changes.
 - Seed Forge actuator latency/strength, sensor noise, spawn, or physics application: `npm run verify:domain-runtime`.
+- Fixed-step episode ownership, held-out seed scheduling, neural/zero/frozen controls, or Wurm Olympics reporting: `npm run verify:forge-trials`.
 - Replay schema/recorder/player: `npm run verify:replay`.
 - Config loading/runtime adapter: `npm run verify:configs`.
 - UI or accessibility behavior: `npm run check:browser` plus an interactive browser pass.
@@ -36,6 +37,7 @@ Python changes additionally require `npm run python:check`. Run Python commands 
 - Detached locomotion is genuinely evolved inside a compact free-particle contact plant. Mean-free muscle forces and constraints cannot translate the center of mass without friction or obstacle impulses.
 - Homeostasis chooses targets but is not a learned planner. Food/water restoration requires live 3D mouth contact with finite contents; well-being requires mounting.
 - Neural segment commands drive planar skateboard approach and live mounting, but the unchanged locomotion artifact was not evolved against a skateboard objective. Deck support/friction and the stable-contact gate are deterministic plant behavior.
+- Forge Trials are finite deterministic evaluations in the same compact browser plant. Causal wins and misses are evidence about the sampled seeds only, not a promotion gate or a learned-skateboarding claim.
 - Feeding, dismounting, route selection, post-contact recovery, pop, aerial board rotation, landing, and stunt lifecycle timing are scripted.
 - The mounted stunt JSON is behavior-distilled imitation, not reinforcement-learned kickflip physics.
 - The scene graph must contain one worm root, 16 segments, 15 connectors, and one face; preserve current/high-water browser telemetry across keyed resets. Keep worm body cast shadows disabled unless a replacement cannot be mistaken for a duplicate articulated rig.

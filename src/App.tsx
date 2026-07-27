@@ -40,6 +40,7 @@ import {
   type DomainSample,
   type SeedForgePresetId,
 } from './environment/seedForge'
+import { ForgeTrialsPanel } from './forgeTrials/ForgeTrialsPanel'
 import { PolicyRunner } from './policy/policyRunner'
 import {
   POLICY_TIMESTEP,
@@ -157,6 +158,7 @@ export function App() {
   const [replaySample, setReplaySample] = useState<ReplayPlaybackSample | null>(null)
   const [replayCursorSeconds, setReplayCursorSeconds] = useState(0)
   const [replayPlaying, setReplayPlaying] = useState(false)
+  const [replayPlaybackRate, setReplayPlaybackRate] = useState(1)
   const [replayError, setReplayError] = useState<string | null>(null)
   const [seedForgeState, setSeedForgeState] = useState<SeedForgeState | null>(null)
   const replayDomainLocks = useMemo(() => createDomainLocks(), [])
@@ -238,7 +240,7 @@ export function App() {
     const tick = (time: number) => {
       if (previousTime !== null) {
         const deltaSeconds = Math.min(0.08, Math.max(0, (time - previousTime) / 1000))
-        const sample = activeReplay.player.advance(deltaSeconds)
+        const sample = activeReplay.player.advance(deltaSeconds * replayPlaybackRate)
         setReplaySample(sample)
         setReplayCursorSeconds(activeReplay.player.currentTime)
         if (activeReplay.player.ended) {
@@ -251,7 +253,7 @@ export function App() {
     }
     animationFrame = requestAnimationFrame(tick)
     return () => cancelAnimationFrame(animationFrame)
-  }, [activeReplay, replayPlaying])
+  }, [activeReplay, replayPlaybackRate, replayPlaying])
 
   const handleReplayFrame = useCallback((frame: ReplayRecorderFrame) => {
     const capture = captureRef.current
@@ -286,6 +288,10 @@ export function App() {
   const replayProgress = activeReplay
     ? Math.min(1, replayCursorSeconds / Math.max(activeReplay.player.durationSeconds, POLICY_TIMESTEP))
     : 0
+  const replayMarkers = useMemo(
+    () => (activeReplay ? replayMarkersFor(activeReplay.artifact) : []),
+    [activeReplay],
+  )
   const displayedMetrics: StuntMetrics = isReplay
     ? {
         ...metrics,
@@ -338,6 +344,7 @@ export function App() {
     setReplaySample(null)
     setReplayCursorSeconds(0)
     setReplayPlaying(false)
+    setReplayPlaybackRate(1)
   }
 
   const restartSimulation = (mode: ShowcaseMode = showcaseMode) => {
@@ -367,6 +374,7 @@ export function App() {
     setReplaySample(sample)
     setReplayCursorSeconds(0)
     setReplayPlaying(false)
+    setReplayPlaybackRate(1)
     setRunning(false)
     setReplayError(null)
   }
@@ -480,6 +488,14 @@ export function App() {
     if (!activeReplay) return
     setReplaySample(activeReplay.player.reset())
     setReplayCursorSeconds(0)
+    setReplayPlaying(false)
+  }
+
+  const seekReplay = (timeSeconds: number) => {
+    if (!activeReplay) return
+    const sample = activeReplay.player.seek(timeSeconds)
+    setReplaySample(sample)
+    setReplayCursorSeconds(activeReplay.player.currentTime)
     setReplayPlaying(false)
   }
 
@@ -806,6 +822,50 @@ export function App() {
                 {activeReplay.artifact.source.modelVersion}
               </p>
             ) : null}
+            {activeReplay ? (
+              <div className="replay-timeline">
+                <label>
+                  <span>Timeline</span>
+                  <output>{`${fixed(replayCursorSeconds, 2)} / ${fixed(activeReplay.player.durationSeconds, 2)} s`}</output>
+                  <input
+                    aria-label="Replay timeline"
+                    max={activeReplay.player.durationSeconds}
+                    min={0}
+                    step={POLICY_TIMESTEP}
+                    type="range"
+                    value={replayCursorSeconds}
+                    onChange={event => seekReplay(Number(event.target.value))}
+                  />
+                </label>
+                {replayMarkers.length > 0 ? (
+                  <div className="replay-markers" aria-label="Replay event markers">
+                    {replayMarkers.map(marker => (
+                      <button
+                        key={`${marker.label}-${marker.time}`}
+                        type="button"
+                        onClick={() => seekReplay(marker.time)}
+                      >
+                        <span>{marker.label}</span>
+                        <b>{fixed(marker.time, 2)}s</b>
+                      </button>
+                    ))}
+                  </div>
+                ) : null}
+                <div className="replay-rates" aria-label="Replay playback speed">
+                  <span>Speed</span>
+                  {[0.5, 1, 2].map(rate => (
+                    <button
+                      aria-pressed={replayPlaybackRate === rate}
+                      key={rate}
+                      type="button"
+                      onClick={() => setReplayPlaybackRate(rate)}
+                    >
+                      {rate}×
+                    </button>
+                  ))}
+                </div>
+              </div>
+            ) : null}
             {replayError ? (
               <div className="replay-error" role="alert">
                 {replayError}
@@ -966,6 +1026,24 @@ export function App() {
               onResetNominal={resetSeedForgeNominal}
               ranges={displayedForgeEnvironment.randomization}
               sample={displayedForgeState.sample}
+            />
+          ) : null}
+
+          {selectedEnvironment && activeSeedForge ? (
+            <ForgeTrialsPanel
+              baseSeed={activeSeedForge.sample.seed}
+              creature={selectedCreature}
+              disabled={isReplay || runtimeAdapter === null}
+              environment={selectedEnvironment}
+              key={`${selectedEnvironment.id}-${selectedCreature?.id ?? 'canonical'}-${activeSeedForge.sample.seed}`}
+              onLoadReplay={artifact => {
+                try {
+                  activateReplay(new ReplayPlayer(artifact))
+                } catch (error) {
+                  setReplayError(replayErrorMessage(error, 'Forge Trial replay was rejected.'))
+                }
+              }}
+              onRunStart={() => setRunning(false)}
             />
           ) : null}
 
@@ -1551,6 +1629,19 @@ function formatNeedTarget(target: ViewerMetrics['needTarget']) {
   if (target === 'water-bowl') return 'Water bowl'
   if (target === 'skateboard') return 'Skateboard'
   return 'Choosing'
+}
+
+function replayMarkersFor(artifact: ReplayArtifact) {
+  const markers: Array<{ label: string; time: number }> = []
+  if (artifact.taskMetrics.skateboardDiscoveredAt !== null) {
+    markers.push({ label: 'Discovered', time: artifact.taskMetrics.skateboardDiscoveredAt })
+  }
+  if (artifact.taskMetrics.firstContactAt !== null) {
+    markers.push({ label: 'First contact', time: artifact.taskMetrics.firstContactAt })
+  }
+  const stableRideFrame = artifact.frames.find(frame => frame.contactRatio >= 0.5)
+  if (stableRideFrame) markers.push({ label: 'Ride contact', time: stableRideFrame.time })
+  return markers
 }
 
 function replayBackendFor(backend: PolicyBackend): ReplayPolicyBackend {

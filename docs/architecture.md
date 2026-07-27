@@ -10,7 +10,7 @@ The present creature is a fixed 16-segment worm, but configs and UI use creature
 
 ### App and configuration
 
-`src/App.tsx` owns controls, selected creature/environment, policy status, reduced-motion behavior, replay controls, and viewer telemetry.
+`src/App.tsx` owns controls, selected creature/environment, policy status, reduced-motion behavior, Wurm Olympics/replay controls, and viewer telemetry.
 
 `src/creature/` provides strict config validation and resource-granular loading. Every built-in creature, environment, optional manifest, and generated creature reports `loaded`, `error`, or `optional-missing`; one bad sibling does not discard valid resources. The UI exposes failing paths and retry.
 
@@ -33,7 +33,9 @@ Materialization changes gravity, air drag, terrain friction/slope/roughness/obst
 
 `src/scene/terrariumSimulation.ts` owns deterministic state creation and advancement, homeostasis/lifecycle orchestration, board routing, policy sensors, snapshot conversion, decor/collider construction, and fixed-step helper math. It has no React, Fiber, or JSX dependency.
 
-`src/scene/WurmkickflipScene.tsx` owns React Three Fiber integration, meshes/materials/lights, live frame accumulation, policy calls, replay instrumentation, and metric delivery. Keeping the state machine outside the view lets headless verifiers execute the same simulation without mounting React.
+`src/scene/terrariumEpisode.ts` is the canonical synchronous 60 Hz episode engine. It owns recurrent/mounted policy inference, Seed Forge observation and actuator perturbations, action-owner handoffs, the plant advance, and replay-frame emission. The live exhibit and Forge Trials instantiate this same engine.
+
+`src/scene/WurmkickflipScene.tsx` owns React Three Fiber integration, meshes/materials/lights, live frame accumulation, replay projection, and metric delivery. It never calls `advanceStunt` directly. Slow render frames may present multiple completed policy ticks together, but they cannot choose different mounted actions for those ticks.
 
 `src/scene/terrainField.ts` precomputes a seeded grid. Rendering and physics sample the exact same piecewise triangles, so visible surface height, normals, board pitch, segment ground height, and friction cannot drift apart.
 
@@ -65,13 +67,15 @@ The support channel is a compact traction proxy derived from terrain friction, s
 
 Mounted pose inference uses the tracked `stunt-distilled-v2` JSON with the stable 174-float observation and 32-channel action. Its teacher-supported input mask is enforced by zero weights and perturbation tests. The browser still scripts the kickflip launch and board trajectory, so the artifact is correctly described as an imitation-learned pose prior rather than learned physics.
 
-`src/policy/policyRunner.ts` loads tracked JSON or the explicit `?policyBackend=scripted` mounted diagnostic. A missing stunt JSON falls back safely; a missing crawl JSON holds ground and boarding muscle channels at zero and reports unavailable. Browser ONNX Runtime and its WASM assets are retired. Historical replay backend labels and offline Python ONNX exporters remain for provenance only.
+`src/policy/policyRunner.ts` loads tracked JSON or the explicit `?policyBackend=scripted` mounted diagnostic. Its dependency-free synchronous lane is consumed by `TerrariumEpisode`; the Promise API remains compatible with existing callers. A missing stunt JSON falls back safely; a missing crawl JSON holds ground and boarding muscle channels at zero and reports unavailable. Browser ONNX Runtime and its WASM assets are retired. Historical replay backend labels and offline Python ONNX exporters remain for provenance only.
 
 The renderer assigns semantic names to the one worm root, 16 segments, 15 connectors, and face. A scene-integrity probe publishes current and high-water counts on the canvas while surviving keyed world resets, so browser tests can detect even a one-frame stale/new rig overlap. Worm segment and connector cast shadows are disabled: the offset articulated shadow during elevated skateboard phases could resemble a second rendered worm even though only one rig existed.
 
 ### Replay
 
 `src/replay/` contains a versioned recorder/player independent of React. Recorder-core artifacts use strict 60 Hz frame timing, all 32 muscle channels, exact Seed Forge provenance, deterministic interpolation, defensive copies, semantic metric validation, and a canonical FNV-1a integrity digest. Historical schema-v1 artifacts missing the actuator-strength, latency, noise, and spawn-yaw quartet are normalized to nominal defaults only after their original checksum is verified. The digest detects ordinary corruption, not malicious forgery. App controls can finalize/export a live capture, validate/import JSON, play/pause/seek it, and return cleanly to live simulation.
+
+`src/forgeTrials/forgeTrials.ts` dynamically loads only when a meet starts. It derives 8–32 seeds after the active live seed, runs neural/zero/frozen lanes through `TerrariumEpisode`, preserves every finite outcome, and retains the neural recorder-core artifact. `ForgeTrialsPanel.tsx` reports causal wins, contested controls, and neural misses without using the batch itself as a promotion gate.
 
 ## Offline Evolution
 
@@ -99,7 +103,7 @@ Mounted tick:
 
 ## Verification Shape
 
-Static checks cover TypeScript, ESLint/Prettier, Ruff, Pyright, dependency audit, and bundle budgets. Focused verifiers cover configs, contracts, Seed Forge TypeScript/Python parity and runtime effects, shared terrain, collision properties, articulated invariants, finite resources, interaction continuity, replay integrity/provenance, policy evolution, and performance. `verify:gait` additionally proves copied telemetry, exact perturbation expiry, mirrored wiring, one-edge-per-tick causal spread, active-neural zero-traction conservation, deterministic shove handling, and paired recovery. The integrated motion rollout exercises repeated food/water/board cycles, contact-gated neural boarding, scripted kickflips, and zero/frozen/shuffled/no-traction interventions. Playwright covers the Seed Forge controls, live microscope, recovery/error UI, reduced motion, replay flows, and exact current/high-water worm-rig counts across resets and stunt transitions; the long reproduction lane reruns the published evolution recipe in an isolated workspace.
+Static checks cover TypeScript, ESLint/Prettier, Ruff, Pyright, dependency audit, and bundle budgets. Focused verifiers cover configs, contracts, Seed Forge TypeScript/Python parity and runtime effects, Forge Trial seed/control/determinism/replay contracts, shared terrain, collision properties, articulated invariants, finite resources, interaction continuity, replay integrity/provenance, policy evolution, and performance. `verify:gait` additionally proves copied telemetry, exact perturbation expiry, mirrored wiring, one-edge-per-tick causal spread, active-neural zero-traction conservation, deterministic shove handling, and paired recovery. The integrated motion rollout exercises repeated food/water/board cycles, contact-gated neural boarding, scripted kickflips, and zero/frozen/shuffled/no-traction interventions. Playwright covers Seed Forge, Wurm Olympics/replay handoff, the live microscope, recovery/error UI, reduced motion, replay flows, and exact current/high-water worm-rig counts across resets and stunt transitions; the long reproduction lane reruns the published evolution recipe in an isolated workspace.
 
 ## Honest Limits
 

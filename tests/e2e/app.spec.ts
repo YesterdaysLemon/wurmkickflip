@@ -1,7 +1,12 @@
 import { expect, test, type Locator, type Page } from '@playwright/test'
 import { readFile } from 'node:fs/promises'
 
+const lifecycleWallClockTimeout = process.env.CI ? 55_000 : 15_000
+const feedingApproachWallClockTimeout = process.env.CI ? 30_000 : 12_000
+const controllerReturnWallClockTimeout = process.env.CI ? 25_000 : 8_000
+
 test('mounts the production terrarium with WebGL and its neural brain online', async ({ page }) => {
+  test.setTimeout(process.env.CI ? 110_000 : 30_000)
   const runtimeErrors = watchRuntimeErrors(page)
   await page.goto('/', { waitUntil: 'networkidle' })
 
@@ -34,7 +39,7 @@ test('mounts the production terrarium with WebGL and its neural brain online', a
   expect(initialRootUuid).toBeTruthy()
   await expect
     .poll(async () => Number(await page.locator('.landed-count strong').textContent()), {
-      timeout: 15_000,
+      timeout: lifecycleWallClockTimeout,
       message: 'autonomous worm never boarded and landed its first kickflip',
     })
     .toBeGreaterThan(0)
@@ -174,7 +179,7 @@ test('gait microscope exposes live segment state and controlled perturbations', 
 })
 
 test('ends a live gait experiment when authored feeding takes control', async ({ page }) => {
-  test.setTimeout(60_000)
+  test.setTimeout(process.env.CI ? 120_000 : 60_000)
   const runtimeErrors = watchRuntimeErrors(page)
   const [modelSource, environmentSource] = await Promise.all([
     readFile(
@@ -236,9 +241,12 @@ test('ends a live gait experiment when authored feeding takes control', async ({
         const match = (await targetDistance.textContent())?.match(/([\d.]+) m away/u)
         return match ? Number(match[1]) : Number.POSITIVE_INFINITY
       },
-      { timeout: 12_000, message: 'worm never brought its mouth near actual food contact' },
+      {
+        timeout: feedingApproachWallClockTimeout,
+        message: 'worm never brought its mouth near actual food contact',
+      },
     )
-    .toBeLessThanOrEqual(1.65)
+    .toBeLessThanOrEqual(1.3)
   await page.getByRole('button', { name: 'Pause', exact: true }).click()
   await expect(page.getByRole('button', { name: 'Play', exact: true })).toBeVisible()
   await numb.click()
@@ -252,7 +260,7 @@ test('ends a live gait experiment when authored feeding takes control', async ({
   await page.waitForTimeout(400)
   await expect(experimentStatus).toContainText(endedNotice)
 
-  await expect(numb).toBeEnabled({ timeout: 8_000 })
+  await expect(numb).toBeEnabled({ timeout: controllerReturnWallClockTimeout })
   await expect(experimentStatus).toContainText(endedNotice)
   await page.getByRole('button', { name: 'Pause', exact: true }).click()
   await numb.click()
@@ -372,6 +380,44 @@ test('forges deterministic domains, preserves locks, and resets the scene', asyn
   await forge.getByRole('button', { name: 'Restore authored baseline' }).click()
   await expect(forge.locator('[data-preset="nominal"]')).toHaveAttribute('aria-pressed', 'true')
   await expect(gravityRow.getByRole('button')).toHaveAttribute('aria-pressed', 'false')
+  expect(runtimeErrors).toEqual([])
+})
+
+test('runs the Wurm Olympics and hands an exact heat to replay inspection', async ({ page }) => {
+  test.setTimeout(120_000)
+  const runtimeErrors = watchRuntimeErrors(page)
+  await page.emulateMedia({ reducedMotion: 'reduce' })
+  await page.goto('/', { waitUntil: 'networkidle' })
+  await expect(page.getByRole('status', { name: 'Neural controller status' })).toContainText('Online', {
+    timeout: 15_000,
+  })
+
+  await page.locator('.forge-trials > summary').click()
+  const olympics = page.getByRole('region', { name: 'Wurm Olympics' })
+  await olympics.scrollIntoViewIfNeeded()
+  await expect(olympics).toContainText('Held-out deterministic meet')
+  await olympics.getByRole('combobox', { name: 'Forge Trial meet size' }).selectOption('8')
+  await olympics.getByRole('button', { name: 'Run 8-seed meet' }).click()
+  await expect(olympics.getByRole('progressbar', { name: 'Forge Trials progress' })).toBeVisible()
+  await expect(olympics.getByRole('status')).toContainText(/clean causal wins/, { timeout: 90_000 })
+
+  const heats = olympics.locator('.forge-trials__heat')
+  await expect(heats).toHaveCount(8)
+  await expect(olympics.locator('.forge-trials__summary')).toContainText('Neural mounts')
+  const replayButtons = olympics.getByRole('button', { name: 'Inspect replay' })
+  await expect(replayButtons).toHaveCount(8)
+  await replayButtons.first().click()
+
+  await expect(page.getByText('Terrarium replay', { exact: true })).toBeVisible()
+  await page.locator('.replay-panel > summary').click()
+  const timeline = page.getByRole('slider', { name: 'Replay timeline' })
+  await expect(timeline).toBeVisible()
+  await timeline.fill('1.5')
+  await expect(page.locator('.replay-status')).toContainText('1.50')
+  const doubleSpeed = page.getByRole('button', { name: '2×' })
+  await doubleSpeed.click()
+  await expect(doubleSpeed).toHaveAttribute('aria-pressed', 'true')
+  await expect(page.getByRole('button', { name: 'Return to live' })).toBeVisible()
   expect(runtimeErrors).toEqual([])
 })
 

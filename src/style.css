@@ -1409,6 +1409,88 @@ h1 {
   color: rgba(244, 239, 221, 0.82);
 }
 
+.replay-timeline {
+  display: grid;
+  gap: 6px;
+  padding: 7px;
+  border: 1px solid rgba(131, 200, 223, 0.16);
+  border-radius: 7px;
+  background: rgba(0, 0, 0, 0.12);
+}
+
+.replay-timeline label {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 5px;
+  align-items: center;
+  color: rgba(244, 239, 221, 0.62);
+  font-size: 7px;
+  font-weight: 800;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+}
+
+.replay-timeline output {
+  color: var(--sky);
+  font-family: ui-monospace, SFMono-Regular, Consolas, monospace;
+}
+
+.replay-timeline input[type='range'] {
+  grid-column: 1 / -1;
+  width: 100%;
+  accent-color: var(--acid);
+}
+
+.replay-markers,
+.replay-rates {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  align-items: center;
+}
+
+.replay-markers button,
+.replay-rates button {
+  display: inline-flex;
+  min-height: 25px;
+  gap: 4px;
+  align-items: center;
+  padding: 0 6px;
+  border: 1px solid var(--line);
+  border-radius: 5px;
+  color: rgba(244, 239, 221, 0.72);
+  background: rgba(255, 255, 255, 0.035);
+  cursor: pointer;
+  font: inherit;
+  font-size: 7px;
+}
+
+.replay-markers button b {
+  color: var(--mint);
+  font-family: ui-monospace, SFMono-Regular, Consolas, monospace;
+}
+
+.replay-rates > span {
+  margin-right: 2px;
+  color: rgba(244, 239, 221, 0.45);
+  font-size: 7px;
+  font-weight: 800;
+  text-transform: uppercase;
+}
+
+.replay-rates button[aria-pressed='true'] {
+  border-color: rgba(201, 244, 91, 0.52);
+  color: #122018;
+  background: var(--acid);
+}
+
+.replay-timeline input:focus-visible,
+.replay-markers button:focus-visible,
+.replay-rates button:focus-visible {
+  outline: 3px solid rgba(201, 244, 91, 0.52);
+  outline-offset: 2px;
+}
+
 .replay-error {
   padding: 7px;
   border: 1px solid rgba(255, 103, 77, 0.38);
