@@ -10,7 +10,9 @@ export default defineConfig({
   fullyParallel: false,
   forbidOnly: Boolean(process.env.CI),
   retries: process.env.CI ? 1 : 0,
-  workers: process.env.CI ? 1 : undefined,
+  // Each project runs a live SwiftShader WebGL simulation. Parallel projects
+  // contend for the software GPU and can starve fixed-step, wall-clock checks.
+  workers: 1,
   reporter: process.env.CI ? [['line'], ['html', { open: 'never' }]] : 'list',
   expect: {
     timeout: 10_000,

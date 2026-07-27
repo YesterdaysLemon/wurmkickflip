@@ -1,0 +1,364 @@
+.forge-trials {
+  --forge-paper: var(--paper, #f4efdd);
+  --forge-acid: var(--acid, #c9f45b);
+  --forge-mint: var(--mint, #58d6ae);
+  --forge-sky: var(--sky, #83c8df);
+  margin-top: 0.9rem;
+  overflow: hidden;
+  border: 1px solid rgb(201 244 91 / 20%);
+  border-radius: 12px;
+  color: var(--forge-paper);
+  background:
+    radial-gradient(circle at 92% 0%, rgb(201 244 91 / 10%), transparent 35%),
+    linear-gradient(145deg, rgb(88 214 174 / 7%), transparent 42%), rgb(0 0 0 / 12%);
+}
+
+.forge-trials > summary {
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  gap: 0.55rem;
+  align-items: center;
+  min-height: 48px;
+  padding: 0.65rem 0.8rem;
+  color: rgb(244 239 221 / 78%);
+  cursor: pointer;
+  list-style: none;
+}
+
+.forge-trials > summary::-webkit-details-marker {
+  display: none;
+}
+
+.forge-trials > summary:focus-visible,
+.forge-trials button:focus-visible,
+.forge-trials select:focus-visible {
+  outline: 3px solid rgb(201 244 91 / 52%);
+  outline-offset: 2px;
+}
+
+.forge-trials > summary b {
+  color: var(--forge-acid);
+  font-size: 0.72rem;
+  letter-spacing: 0.035em;
+  text-transform: uppercase;
+}
+
+.forge-trials__body {
+  padding: 0 0.8rem 0.85rem;
+  border-top: 1px solid var(--line, rgb(231 239 214 / 14%));
+}
+
+.forge-trials__intro {
+  padding: 0.85rem 0 0.7rem;
+}
+
+.forge-trials__eyebrow {
+  display: inline-flex;
+  gap: 0.35rem;
+  align-items: center;
+  color: var(--forge-acid);
+  font-size: 0.7rem;
+  font-weight: 800;
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+}
+
+.forge-trials__intro h3 {
+  margin: 0.28rem 0 0.2rem;
+  color: var(--forge-paper);
+  font-family: Georgia, 'Times New Roman', serif;
+  font-size: 1.18rem;
+}
+
+.forge-trials__intro p,
+.forge-trials__honesty {
+  margin: 0;
+  color: rgb(244 239 221 / 55%);
+  font-size: 0.76rem;
+  line-height: 1.45;
+}
+
+.forge-trials__setup {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: 0.55rem;
+}
+
+.forge-trials__setup label,
+.forge-trials__seed {
+  display: grid;
+  gap: 0.25rem;
+  padding: 0.55rem;
+  border: 1px solid var(--line, rgb(231 239 214 / 14%));
+  border-radius: 12px;
+  background: rgb(255 255 255 / 4%);
+}
+
+.forge-trials__setup span,
+.forge-trials__summary span {
+  color: rgb(244 239 221 / 48%);
+  font-size: 0.66rem;
+  font-weight: 700;
+  letter-spacing: 0.035em;
+  text-transform: uppercase;
+}
+
+.forge-trials__setup select {
+  width: 100%;
+  min-height: 36px;
+  border: 0;
+  color: var(--forge-paper);
+  background: transparent;
+  font: inherit;
+  font-weight: 750;
+}
+
+.forge-trials__seed b {
+  overflow: hidden;
+  color: var(--forge-sky);
+  font-size: 0.82rem;
+  text-overflow: ellipsis;
+}
+
+.forge-trials__actions {
+  display: grid;
+  gap: 0.45rem;
+  margin-top: 0.65rem;
+}
+
+.forge-trials__actions button,
+.forge-trials__heat button {
+  display: inline-flex;
+  gap: 0.4rem;
+  align-items: center;
+  justify-content: center;
+  min-height: 42px;
+  border: 0;
+  border-radius: 11px;
+  color: #fffaf0;
+  background: #2f7457;
+  font: inherit;
+  font-size: 0.77rem;
+  font-weight: 800;
+  cursor: pointer;
+}
+
+.forge-trials__actions button:disabled,
+.forge-trials__heat button:disabled {
+  cursor: not-allowed;
+  opacity: 0.48;
+}
+
+.forge-trials__actions .forge-trials__cancel {
+  color: #ffc4b9;
+  background: rgb(255 103 77 / 13%);
+}
+
+.forge-trials__status {
+  min-height: 1.2rem;
+  margin: 0;
+  color: rgb(244 239 221 / 52%);
+  font-size: 0.7rem;
+}
+
+.forge-trials__progress {
+  height: 6px;
+  margin: 0.25rem 0 0.7rem;
+  overflow: hidden;
+  border-radius: 999px;
+  background: rgb(255 255 255 / 9%);
+}
+
+.forge-trials__progress span {
+  display: block;
+  height: 100%;
+  border-radius: inherit;
+  background: linear-gradient(90deg, #3e7859, #d9a83f);
+  transition: width 160ms ease;
+}
+
+.forge-trials__error {
+  display: flex;
+  gap: 0.45rem;
+  align-items: flex-start;
+  margin-top: 0.65rem;
+  padding: 0.6rem;
+  border-radius: 11px;
+  color: #ffc4b9;
+  background: rgb(255 103 77 / 9%);
+  font-size: 0.73rem;
+}
+
+.forge-trials__summary {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 0.4rem;
+  margin-top: 0.75rem;
+}
+
+.forge-trials__summary div {
+  display: grid;
+  gap: 0.18rem;
+  min-width: 0;
+  padding: 0.5rem 0.35rem;
+  border-radius: 11px;
+  text-align: center;
+  background: rgb(255 255 255 / 5%);
+}
+
+.forge-trials__summary strong {
+  color: var(--forge-paper);
+  font-size: 0.88rem;
+}
+
+.forge-trials__heats {
+  display: grid;
+  gap: 0.55rem;
+  margin-top: 0.7rem;
+}
+
+.forge-trials__heat {
+  overflow: hidden;
+  border: 1px solid var(--line, rgb(231 239 214 / 14%));
+  border-left: 4px solid #8d9d93;
+  border-radius: 13px;
+  background: rgb(255 255 255 / 4%);
+}
+
+.forge-trials__heat.is-causal-win {
+  border-left-color: #3f835d;
+}
+
+.forge-trials__heat.is-contested {
+  border-left-color: #c27a31;
+}
+
+.forge-trials__heat.is-miss {
+  border-left-color: #a45246;
+}
+
+.forge-trials__heat header,
+.forge-trials__heat footer {
+  display: flex;
+  gap: 0.5rem;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0.52rem 0.6rem;
+}
+
+.forge-trials__heat header span {
+  display: block;
+  color: rgb(244 239 221 / 44%);
+  font-size: 0.63rem;
+  font-weight: 800;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.forge-trials__heat header strong {
+  color: var(--forge-sky);
+  font-size: 0.8rem;
+}
+
+.forge-trials__heat header > b {
+  color: rgb(244 239 221 / 62%);
+  font-size: 0.69rem;
+}
+
+.forge-trials__lanes {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 1px;
+  border-block: 1px solid var(--line, rgb(231 239 214 / 14%));
+  background: rgb(231 239 214 / 10%);
+}
+
+.forge-trials__lanes div {
+  display: grid;
+  gap: 0.12rem;
+  padding: 0.42rem;
+  background: rgb(0 0 0 / 16%);
+}
+
+.forge-trials__lanes span {
+  color: rgb(244 239 221 / 42%);
+  font-size: 0.61rem;
+  text-transform: uppercase;
+}
+
+.forge-trials__lanes b {
+  color: #ff9e8d;
+  font-size: 0.7rem;
+}
+
+.forge-trials__lanes .did-mount b {
+  color: var(--forge-mint);
+}
+
+.forge-trials__heat dl {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 0.35rem;
+  margin: 0;
+  padding: 0.5rem 0.6rem;
+}
+
+.forge-trials__heat dl div {
+  min-width: 0;
+}
+
+.forge-trials__heat dt {
+  color: rgb(244 239 221 / 40%);
+  font-size: 0.59rem;
+  text-transform: uppercase;
+}
+
+.forge-trials__heat dd {
+  margin: 0.08rem 0 0;
+  color: rgb(244 239 221 / 76%);
+  font-size: 0.69rem;
+  font-weight: 750;
+}
+
+.forge-trials__heat footer {
+  padding-top: 0;
+}
+
+.forge-trials__heat code {
+  color: rgb(244 239 221 / 42%);
+  font-size: 0.62rem;
+}
+
+.forge-trials__heat button {
+  min-height: 36px;
+  padding: 0 0.65rem;
+  font-size: 0.69rem;
+}
+
+.forge-trials__honesty {
+  margin-top: 0.7rem;
+  padding: 0.6rem;
+  border-radius: 10px;
+  background: rgb(88 214 174 / 7%);
+}
+
+@media (max-width: 460px) {
+  .forge-trials__summary {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .forge-trials__heat dl {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .forge-trials__actions button,
+  .forge-trials__heat button {
+    min-height: 44px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .forge-trials__progress span {
+    transition: none;
+  }
+}

@@ -20,15 +20,15 @@ No open P0 implementation task. Keep these invariants green before promoting ano
 - Co-evolve morphology and control without silently projecting every genome onto the fixed 16-segment lattice. Version the actuator/sensor topology when it changes.
 - Add actuator delay/noise, partial sensor loss, board mass/wheel friction, restitution, and stronger obstacle-layout randomization to evaluation.
 - Calibrate compact plant distributions against the chosen higher-fidelity backend rather than against authored browser choreography.
-- Add generation comparison and held-out evaluation views using the existing replay/metric contracts.
+- Add generation comparison views using the Forge Trials and replay metric contracts.
 - Extend the gait microscope with optional per-force decomposition once the plant exposes muscle, constraint, longitudinal traction, lateral traction, and obstacle impulses separately.
 - Move expensive simulation or lightweight evolution into a worker only if interactive workloads outgrow the current measured frame budget.
 
 ## P2 — Presentation And Inspection
 
 - Add optional segment force/contact vectors and neuron/recurrent-state overlays.
-- Add skateboard discovery, mouth-contact, inventory/refill, and rolling markers to replay inspection.
-- Add a scrubber with frame/time labels and side-by-side replay comparison.
+- Add mouth-contact, inventory/refill, and rolling markers to replay inspection.
+- Add side-by-side replay comparison.
 - Improve bowl eating/drinking art, board trucks/wheels, glass highlights, scale references, and terrain material transitions.
 - Add explicit mobile and keyboard-navigation visual regression coverage.
 - Expand genuinely branching morphology rendering once the runtime supports non-fixed control topologies.
@@ -39,6 +39,7 @@ No open P0 implementation task. Keep these invariants green before promoting ano
 - Vite/React/TypeScript/Three.js terrarium with config-derived creatures and seeded environments.
 - Resource-granular config loading, strict validation, failure preservation, retry UI, and a fixed-runtime compatibility adapter.
 - Nominal-first Seed Forge with 14 range-validated channels, deterministic uint32 seeds, locks/presets, TypeScript/Python parity, fixed-tick actuator/sensor effects, and exact replay provenance.
+- Shared synchronous 60 Hz episode engine plus Wurm Olympics evaluation across 8–32 held-out Seed Forge seeds with neural/zero/frozen lanes, causal verdicts, deterministic trajectory checks, and representative replay handoff.
 - Shared render/physics triangle heightfield with deterministic normals, surfaces, and friction.
 - Pure headless terrarium simulation separated from React/Three rendering.
 - Free 16-particle articulated body with mean-free muscle forces, equal/opposite constraints, anisotropic ground friction, height-aware swept contacts, and measured root state.
@@ -50,6 +51,7 @@ No open P0 implementation task. Keep these invariants green before promoting ano
 - Contact-gated neural boarding with deterministic deck support/friction; scripted head-first dismounting, feeding poses, board routing, kickflip/pop/landing; and an honestly labeled distilled mounted pose prior.
 - Semantic scene names plus current/high-water browser telemetry for exactly one worm root, 16 segments, 15 connectors, and one face; worm body cast shadows removed to eliminate the offset duplicate-worm illusion during skateboard phases.
 - Versioned checksummed replay recorder/player with strict timing, all muscle channels, exact forged-domain provenance plus historical defaults, deterministic interpolation, import/export UI, and tamper rejection.
+- Replay timeline scrubbing, discovery/contact/ride event jumps, and 0.5×/1×/2× playback.
 - Reduced-motion simulation pause with explicit user override.
 - Static analysis, Python checks, bundle budget and retired-ONNX assertion, collision/dynamics/performance verifiers, long integrated lifecycle rollout, and Playwright flows.
 - Browser ONNX Runtime/WASM payloads removed; older PPO/ONNX and sinusoidal CPG/morphology paths retained only as offline legacy experiments.

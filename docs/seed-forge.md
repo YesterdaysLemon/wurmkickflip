@@ -49,7 +49,7 @@ Every channel is sampled within the selected environment's `randomization` range
 
 TypeScript and Python use the same Mulberry32 sequence, uint32 arithmetic, channel order, quantization, nominal values, and range-relative presets. Python accepts integral JSON numbers such as `1.0` wherever JavaScript necessarily sees the same number as an integer, while rejecting numeric strings and unsafe integer magnitudes. A canonical seed-1337 fingerprint and adversarial boundary vectors protect the algorithm from silent drift.
 
-The perturbation layer remains fixed-step. Sensor noise is a stateless integer hash rather than `Math.random()`, and actuator latency is a policy-tick queue, so their values and queue behavior are stable at a given simulation step. Mounted policy inference remains asynchronous, so this is not a claim that every complete browser rollout is render-cadence invariant.
+The perturbation layer remains fixed-step. Sensor noise is a stateless integer hash rather than `Math.random()`, and actuator latency is a policy-tick queue, so their values and queue behavior are stable at a given simulation step. Mounted JSON inference is now synchronous inside the canonical `TerrariumEpisode` step, so live and headless policy actions share the same 60 Hz ordering instead of depending on render cadence.
 
 ## Replay Provenance
 

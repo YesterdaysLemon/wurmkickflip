@@ -61,8 +61,26 @@ test('keeps the terrarium and controls usable in a narrow mobile viewport', asyn
   expect(forgeButtonHeights.every(height => height >= 44)).toBe(true)
   await expect(forge.getByLabel('uint32 seed')).toHaveCSS('height', '44px')
 
+  await page.locator('.forge-trials > summary').click()
+  const olympics = page.getByRole('region', { name: 'Wurm Olympics' })
+  await olympics.scrollIntoViewIfNeeded()
+  const olympicsGeometry = await olympics.evaluate(element => ({
+    left: element.getBoundingClientRect().left,
+    right: element.getBoundingClientRect().right,
+    scrollWidth: element.scrollWidth,
+    clientWidth: element.clientWidth,
+    viewportWidth: innerWidth,
+  }))
+  expect(olympicsGeometry.left).toBeGreaterThanOrEqual(0)
+  expect(olympicsGeometry.right).toBeLessThanOrEqual(olympicsGeometry.viewportWidth + 1)
+  expect(olympicsGeometry.scrollWidth).toBeLessThanOrEqual(olympicsGeometry.clientWidth + 1)
+  const olympicsRun = olympics.getByRole('button', { name: 'Run 16-seed meet' })
+  expect(await olympicsRun.evaluate(button => button.getBoundingClientRect().height)).toBeGreaterThanOrEqual(
+    44,
+  )
+
   await page.setViewportSize({ width: 320, height: 640 })
-  await forge.scrollIntoViewIfNeeded()
+  await olympics.scrollIntoViewIfNeeded()
   const narrowViewport = await page.evaluate(() => ({
     innerWidth,
     scrollWidth: document.documentElement.scrollWidth,
