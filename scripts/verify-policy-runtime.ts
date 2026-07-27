@@ -84,18 +84,25 @@ function verifyObservationAdapter(environmentConfig: EnvironmentConfig) {
 }
 
 async function verifyScenePolicyIntegration() {
-  const scene = await readFile(resolve(root, 'src/scene/WurmkickflipScene.tsx'), 'utf8')
+  const [scene, episode] = await Promise.all([
+    readFile(resolve(root, 'src/scene/WurmkickflipScene.tsx'), 'utf8'),
+    readFile(resolve(root, 'src/scene/terrariumEpisode.ts'), 'utf8'),
+  ])
   assert(
-    /snapshotToObservation\s*\(/.test(scene),
-    'Scene must construct policy observations with snapshotToObservation.',
+    /snapshotToObservation\s*\(/.test(episode),
+    'Episode engine must construct policy observations with snapshotToObservation.',
   )
   assert(
-    /policyRunner\s*\.\s*run\s*\(/.test(scene),
-    'Scene must invoke PolicyRunner.run so the loaded mounted-stunt policy cannot be silently ignored.',
+    /mountedController\s*\.\s*run\s*\(/.test(episode),
+    'Episode engine must invoke the mounted controller so the tracked stunt policy cannot be silently ignored.',
   )
   assert(
-    /locomotionRunner\s*\.\s*run\s*\(/.test(scene) && /locomotionSensorsFor\s*\(/.test(scene),
-    'Scene must invoke LocomotionPolicyRunner with live segment sensors during detached locomotion.',
+    /locomotionController\s*\.\s*run\s*\(/.test(episode) && /locomotionSensorsFor\s*\(/.test(episode),
+    'Episode engine must invoke the locomotion controller with live segment sensors.',
+  )
+  assert(
+    /new\s+TerrariumEpisode\s*\(/.test(scene) && /episodeRuntime\s*\.\s*step\s*\(/.test(scene),
+    'Scene must render the canonical fixed-step episode engine instead of maintaining a parallel loop.',
   )
 }
 

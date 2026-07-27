@@ -81,6 +81,15 @@ export class PolicyRunner {
   }
 
   async run(observation: PolicyObservation): Promise<PolicyAction> {
+    return this.runSync(observation)
+  }
+
+  /**
+   * Mounted inference is dependency-free and synchronous. The fixed-step
+   * episode engine uses this lane so render cadence cannot change which policy
+   * action reaches a simulation tick.
+   */
+  runSync(observation: PolicyObservation): PolicyAction {
     return this.neural?.run(observation) ?? this.scripted.run(observation)
   }
 
