@@ -3,6 +3,7 @@ import { readFile } from 'node:fs/promises'
 
 const lifecycleWallClockTimeout = process.env.CI ? 55_000 : 15_000
 const feedingApproachWallClockTimeout = process.env.CI ? 30_000 : 12_000
+const experimentEndWallClockTimeout = process.env.CI ? 25_000 : 8_000
 const controllerReturnWallClockTimeout = process.env.CI ? 25_000 : 8_000
 
 test('mounts the production terrarium with WebGL and its neural brain online', async ({ page }) => {
@@ -256,7 +257,7 @@ test('ends a live gait experiment when authored feeding takes control', async ({
   await page.getByRole('button', { name: 'Play', exact: true }).click()
 
   const endedNotice = 'Experiment ended because authored motion took control.'
-  await expect(experimentStatus).toContainText(endedNotice, { timeout: 8_000 })
+  await expect(experimentStatus).toContainText(endedNotice, { timeout: experimentEndWallClockTimeout })
   await page.waitForTimeout(400)
   await expect(experimentStatus).toContainText(endedNotice)
 
