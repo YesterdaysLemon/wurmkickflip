@@ -12,6 +12,10 @@ test('mounts the production terrarium with WebGL and its neural brain online', a
   await page.goto('/', { waitUntil: 'networkidle' })
 
   await expect(page.getByRole('heading', { level: 1, name: /Wurm\s*Kickflip/i })).toBeVisible()
+  await expect(page.getByRole('link', { name: 'Portfolio' })).toHaveAttribute(
+    'href',
+    'https://alirezaafshan.com',
+  )
   const simulation = page.getByRole('region', { name: 'Wurmkickflip terrarium simulation' })
   await expect(simulation).toBeVisible()
 

@@ -640,6 +640,9 @@ export function App() {
               Kickflip
             </h1>
             <p className="brand-note">Tiny brain. Impossible sport.</p>
+            <a className="portfolio-link" href="https://alirezaafshan.com">
+              Portfolio
+            </a>
           </div>
 
           <div
