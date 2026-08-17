@@ -270,6 +270,26 @@ h1 {
   font-weight: 650;
 }
 
+.portfolio-link {
+  display: inline-flex;
+  min-height: 32px;
+  align-items: center;
+  margin-top: 10px;
+  border-bottom: 1px solid rgba(157, 240, 207, 0.5);
+  color: var(--mint);
+  font-size: 8px;
+  font-weight: 900;
+  letter-spacing: 0.11em;
+  text-decoration: none;
+  text-transform: uppercase;
+}
+
+.portfolio-link:hover,
+.portfolio-link:focus-visible {
+  border-color: var(--acid);
+  color: var(--acid);
+}
+
 .neural-status {
   position: relative;
   display: grid;
